@@ -55,26 +55,43 @@
             {
                 <MudPaper Class="pa-4 mb-3" Elevation="1">
                     <MudText Typo="Typo.subtitle1" Class="mb-1"><b>تفصیلی‌های مجاز این معین</b></MudText>
-                    <MudText Typo="Typo.body2" Class="mb-3">برای هر سطح، انواع تفصیلی که در سند قابل انتخاب‌اند و الزامی بودن آن.</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-3">
+                        برای هر سطح، گروه‌های تفصیلی که در سند قابل انتخاب‌اند و الزامی بودن آن. برای گروه اشخاص، «نقش‌های مجاز»
+                        فهرست اشخاص فرم سند را فیلتر می‌کند (مثلاً فقط مشتریان)؛ کاربر در صورت نیاز می‌تواند همه اشخاص را ببیند.
+                    </MudText>
                     @foreach (var level in _levels)
                     {
-                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
-                            <MudText Style="min-width:60px">سطح @level.LevelNo</MudText>
-                            <MudSelect T="short" MultiSelection="true" @bind-SelectedValues="level.TypeIds" Label="انواع مجاز"
-                                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
-                                       MultiSelectionTextFunc="@(vals => string.Join("، ", vals.Select(v => TypeTitle(short.Parse(v!)))))">
-                                @foreach (var t in _types)
+                        <MudPaper Outlined="true" Class="pa-2 mb-2">
+                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                                <MudText Style="min-width:60px"><b>سطح @level.LevelNo</b></MudText>
+                                <MudSelect T="short" MultiSelection="true" @bind-SelectedValues="level.TypeIds" Label="گروه‌های تفصیلی مجاز"
+                                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="min-width:240px"
+                                           MultiSelectionTextFunc="@(vals => string.Join("، ", vals.Select(v => TypeTitle(short.Parse(v!)))))">
+                                    @foreach (var t in _types.Where(t => t.IsActive || level.TypeIds.Contains(t.Id)))
+                                    {
+                                        <MudSelectItem T="short" Value="t.Id">@t.Title (<span class="code">@t.CodeFrom</span>)</MudSelectItem>
+                                    }
+                                </MudSelect>
+                                @if (level.TypeIds.Any(IsPersonsType))
                                 {
-                                    <MudSelectItem T="short" Value="t.Id">@t.Title (<span class="code">@t.CodeFrom</span>)</MudSelectItem>
+                                    <MudSelect T="short" MultiSelection="true" @bind-SelectedValues="level.RoleIds" Label="نقش‌های مجاز (فیلتر فهرست)"
+                                               Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="min-width:200px"
+                                               HelperText="خالی = همه اشخاص"
+                                               MultiSelectionTextFunc="@(vals => string.Join("، ", vals.Select(v => RoleTitle(short.Parse(v!)))))">
+                                        @foreach (var r in _roles.Where(r => r.IsActive || level.RoleIds.Contains(r.Id)))
+                                        {
+                                            <MudSelectItem T="short" Value="r.Id">@r.Title</MudSelectItem>
+                                        }
+                                    </MudSelect>
                                 }
-                            </MudSelect>
-                            <MudCheckBox T="bool" @bind-Value="level.IsRequired" Label="الزامی" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Save" Color="Color.Primary" OnClick="() => SaveLevelAsync(level)" Disabled="_busy" aria-label="ذخیره سطح" />
-                            @if (level == _levels.Last() && level.Saved)
-                            {
-                                <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="() => RemoveLevelAsync(level)" Disabled="_busy" aria-label="حذف سطح" />
-                            }
-                        </MudStack>
+                                <MudCheckBox T="bool" @bind-Value="level.IsRequired" Label="الزامی" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Save" Color="Color.Primary" OnClick="() => SaveLevelAsync(level)" Disabled="_busy" aria-label="ذخیره سطح" />
+                                @if (level == _levels.Last() && level.Saved)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="() => RemoveLevelAsync(level)" Disabled="_busy" aria-label="حذف سطح" />
+                                }
+                            </MudStack>
+                        </MudPaper>
                     }
                     @if (_levels.Count < 6 && _levels.All(l => l.Saved))
                     {
@@ -116,6 +133,7 @@
 @code {
     private List<AccountNodeDto> _tree = [];
     private List<DetailTypeDto> _types = [];
+    private List<PersonRoleTypeDto> _roles = [];
     private readonly HashSet<int> _expanded = [];
     private string? _filter;
     private AccountDto? _selected;
@@ -129,6 +147,7 @@
     protected override async Task OnInitializedAsync()
     {
         _types = (await Backend.Run<DetailService, List<DetailTypeDto>>(s => s.GetTypesAsync(default))).Value ?? [];
+        _roles = (await Backend.Run<PersonService, List<PersonRoleTypeDto>>(s => s.GetRoleTypesAsync(true, default))).Value ?? [];
         await LoadTreeAsync();
     }
 
@@ -140,6 +159,10 @@
     }
 
     private string TypeTitle(short id) => _types.FirstOrDefault(t => t.Id == id)?.Title ?? id.ToString();
+
+    private string RoleTitle(short id) => _roles.FirstOrDefault(r => r.Id == id)?.Title ?? id.ToString();
+
+    private bool IsPersonsType(short id) => _types.FirstOrDefault(t => t.Id == id)?.OwnerModule == OwnerModules.Persons;
 
     private bool Matches(AccountNodeDto n)
     {
@@ -194,7 +217,7 @@
         _selected = a;
         _editTitle = a.Title;
         _editActive = a.IsActive;
-        _levels = a.DetailLevels.Select(l => new LevelModel(l.LevelNo) { IsRequired = l.IsRequired, TypeIds = l.DetailTypeIds.ToHashSet(), Saved = true }).ToList();
+        _levels = a.DetailLevels.Select(l => new LevelModel(l.LevelNo) { IsRequired = l.IsRequired, TypeIds = l.DetailTypeIds.ToHashSet(), RoleIds = l.RoleIds.ToHashSet(), Saved = true }).ToList();
         _newCode = a.Code;
         _newTitle = null;
         _newNature = null;
@@ -220,7 +243,8 @@
     private async Task SaveLevelAsync(LevelModel level) => await Busy(async () =>
     {
         var r = await Backend.Run<AccountService>(s => s.SetDetailLevelAsync(_selected!.Id, level.LevelNo,
-            new SetDetailLevelRequest(level.IsRequired, level.TypeIds.ToList()), default));
+            new SetDetailLevelRequest(level.IsRequired, level.TypeIds.ToList(),
+                level.TypeIds.Any(IsPersonsType) ? level.RoleIds.ToList() : []), default));
         if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
         Snackbar.Add($"سطح {level.LevelNo} ذخیره شد.", Severity.Success);
         await ReloadSelectedAsync();
@@ -258,6 +282,7 @@
         public int LevelNo { get; } = levelNo;
         public bool IsRequired { get; set; }
         public IReadOnlyCollection<short> TypeIds { get; set; } = new HashSet<short>();
+        public IReadOnlyCollection<short> RoleIds { get; set; } = new HashSet<short>();
         public bool Saved { get; set; }
     }
 }

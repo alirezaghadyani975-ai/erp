@@ -7,10 +7,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Accounting.Application.Details;
 
+/// <param name="UsedCount">تعداد تفصیلی‌های این گروه.</param>
+/// <param name="NextCode">کد بعدی که به تفصیلی تازه داده می‌شود (null اگر بازه پر باشد).</param>
 public sealed record DetailTypeDto(short Id, string Title, string OwnerModule, PersonKind? PersonKind,
-    string CodeFrom, string CodeTo, bool IsActive);
+    string CodeFrom, string CodeTo, bool IsActive, int UsedCount = 0, string? NextCode = null,
+    string? MinUsedCode = null, string? MaxUsedCode = null)
+{
+    public int CodeLength => CodeFrom.Length;
+    public long Capacity => long.Parse(CodeTo) - long.Parse(CodeFrom) + 1;
+}
 
 public sealed record CreateDetailTypeRequest(string Title, string OwnerModule, string CodeFrom, string CodeTo, PersonKind? PersonKind);
+
+/// <summary>مالک و نوع شخص فقط وقتی گروه هنوز تفصیلی ندارد عوض می‌شوند؛ بازه با حفظ کدهای موجود.</summary>
+public sealed record UpdateDetailTypeRequest(string Title, string OwnerModule, PersonKind? PersonKind,
+    string CodeFrom, string CodeTo, bool IsActive);
 
 public sealed record DetailAccountDto(int Id, string Code, string Title, short DetailTypeId, int? PersonId, bool IsActive);
 
@@ -19,33 +30,89 @@ public sealed record CreateDetailAccountRequest(short DetailTypeId, string Title
 
 public class DetailService(IAccountingDbContext db)
 {
-    public Task<List<DetailTypeDto>> GetTypesAsync(CancellationToken ct) =>
-        db.DetailTypes.AsNoTracking().OrderBy(t => t.CodeFrom)
-            .Select(t => new DetailTypeDto(t.Id, t.Title, t.OwnerModule, t.PersonKind, t.CodeFrom, t.CodeTo, t.IsActive))
-            .ToListAsync(ct);
+    public async Task<List<DetailTypeDto>> GetTypesAsync(CancellationToken ct)
+    {
+        var usage = await db.DetailAccounts.AsNoTracking()
+            .GroupBy(d => d.DetailTypeId)
+            .Select(g => new { TypeId = g.Key, Count = g.Count(), Min = g.Min(d => d.Code), Max = g.Max(d => d.Code) })
+            .ToDictionaryAsync(x => x.TypeId, ct);
+        var types = await db.DetailTypes.AsNoTracking().OrderBy(t => t.CodeFrom.Length).ThenBy(t => t.CodeFrom).ToListAsync(ct);
+
+        return types.Select(t =>
+        {
+            var u = usage.GetValueOrDefault(t.Id);
+            string? next;
+            try { next = t.NextCode(u?.Max); } catch (DomainException) { next = null; }
+            return new DetailTypeDto(t.Id, t.Title, t.OwnerModule, t.PersonKind, t.CodeFrom, t.CodeTo, t.IsActive,
+                u?.Count ?? 0, next, u?.Min, u?.Max);
+        }).ToList();
+    }
 
     public async Task<short> CreateTypeAsync(CreateDetailTypeRequest request, CancellationToken ct)
     {
         var type = new DetailType(request.Title, request.OwnerModule, request.CodeFrom, request.CodeTo, request.PersonKind);
-        var others = await db.DetailTypes.AsNoTracking().ToListAsync(ct);
-        var overlap = others.FirstOrDefault(t => t.OverlapsWith(type.CodeFrom, type.CodeTo));
-        if (overlap is not null)
-            throw new DomainException($"بازه کد با نوع تفصیلی «{overlap.Title}» ({overlap.CodeFrom} تا {overlap.CodeTo}) هم‌پوشانی دارد.");
-
+        await EnsureValidTypeAsync(type, ct);
         db.DetailTypes.Add(type);
         await db.SaveChangesAsync(ct);
         return type.Id;
+    }
+
+    public async Task UpdateTypeAsync(short id, UpdateDetailTypeRequest request, CancellationToken ct)
+    {
+        var type = await db.DetailTypes.FirstOrDefaultAsync(t => t.Id == id, ct)
+                   ?? throw new NotFoundException("گروه تفصیلی پیدا نشد.");
+        var used = await db.DetailAccounts.Where(d => d.DetailTypeId == id)
+            .GroupBy(d => 1).Select(g => new { Min = g.Min(d => d.Code), Max = g.Max(d => d.Code) })
+            .FirstOrDefaultAsync(ct);
+
+        type.Rename(request.Title);
+        type.ChangeOwner(request.OwnerModule, request.PersonKind, hasDetails: used is not null);
+        type.ChangeRange(request.CodeFrom, request.CodeTo, used?.Min, used?.Max);
+        if (request.IsActive) type.Activate(); else type.Deactivate();
+
+        await EnsureValidTypeAsync(type, ct);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>هم‌پوشانی بازه و یکتایی گروه فعال اشخاص/کارکنان برای هر نوع شخص.</summary>
+    private async Task EnsureValidTypeAsync(DetailType type, CancellationToken ct)
+    {
+        var others = await db.DetailTypes.AsNoTracking().Where(t => t.Id != type.Id).ToListAsync(ct);
+        var overlap = others.FirstOrDefault(t => t.OverlapsWith(type.CodeFrom, type.CodeTo));
+        if (overlap is not null)
+            throw new DomainException($"بازه کد با گروه «{overlap.Title}» ({overlap.CodeFrom} تا {overlap.CodeTo}) هم‌پوشانی دارد.");
+
+        if (type.IsActive && type.OwnerModule is OwnerModules.Persons or OwnerModules.Payroll)
+        {
+            var twin = others.FirstOrDefault(t => t.IsActive && t.OwnerModule == type.OwnerModule && t.PersonKind == type.PersonKind);
+            if (twin is not null)
+                throw new DomainException($"گروه فعال «{twin.Title}» همین نقش را دارد؛ برای هر نوع شخص فقط یک گروه فعال {(type.OwnerModule == OwnerModules.Persons ? "اشخاص" : "کارکنان")} مجاز است.");
+        }
     }
 
     public Task<List<DetailAccountDto>> SearchAsync(short? detailTypeId, string? term, CancellationToken ct) =>
         SearchAsync(detailTypeId is null ? null : [detailTypeId.Value], term, ct);
 
     /// <summary>جستجوی تفصیلی‌های فعال در انواع مجاز (برای انتخاب در ردیف سند).</summary>
-    public Task<List<DetailAccountDto>> SearchAsync(IReadOnlyCollection<short>? detailTypeIds, string? term, CancellationToken ct)
+    public Task<List<DetailAccountDto>> SearchAsync(IReadOnlyCollection<short>? detailTypeIds, string? term, CancellationToken ct) =>
+        SearchAsync(detailTypeIds, null, term, ct);
+
+    /// <summary>
+    /// مثل بالا، با فیلتر نرم نقش: تفصیلی‌های گروه اشخاص فقط وقتی می‌آیند که شخصشان یکی از این نقش‌ها را داشته باشد.
+    /// تفصیلی‌های غیرشخصی (بانک، صندوق، ...) از این فیلتر تأثیر نمی‌گیرند. نقش خالی یعنی همه.
+    /// </summary>
+    public Task<List<DetailAccountDto>> SearchAsync(IReadOnlyCollection<short>? detailTypeIds, IReadOnlyCollection<short>? roleIds,
+        string? term, CancellationToken ct)
     {
         var query = db.DetailAccounts.AsNoTracking();
         if (detailTypeIds is not null)
             query = query.Where(d => detailTypeIds.Contains(d.DetailTypeId) && d.IsActive);
+        if (roleIds is { Count: > 0 })
+        {
+            var personTypes = db.DetailTypes.Where(t => t.OwnerModule == OwnerModules.Persons).Select(t => t.Id);
+            var withRole = db.Persons.Where(p => p.Roles.Any(r => roleIds.Contains(r.RoleId))).Select(p => p.Id);
+            query = query.Where(d => !personTypes.Contains(d.DetailTypeId) || withRole.Contains(d.PersonId!.Value));
+        }
         term = PersianText.NormalizeOrNull(term);
         if (term is not null)
             query = query.Where(d => d.Title.Contains(term) || d.Code.StartsWith(term));
@@ -54,6 +121,12 @@ public class DetailService(IAccountingDbContext db)
             .Select(d => new DetailAccountDto(d.Id, d.Code, d.Title, d.DetailTypeId, d.PersonId, d.IsActive))
             .ToListAsync(ct);
     }
+
+    public async Task<DetailAccountDto> GetAccountAsync(int id, CancellationToken ct) =>
+        await db.DetailAccounts.AsNoTracking().Where(d => d.Id == id)
+            .Select(d => new DetailAccountDto(d.Id, d.Code, d.Title, d.DetailTypeId, d.PersonId, d.IsActive))
+            .FirstOrDefaultAsync(ct)
+        ?? throw new NotFoundException($"تفصیلی {id} پیدا نشد.");
 
     /// <summary>
     /// تفصیلی غیرشخصی (صندوق، بانک، مرکز هزینه، پروژه و ...).
@@ -64,8 +137,8 @@ public class DetailService(IAccountingDbContext db)
     {
         var type = await db.DetailTypes.FirstOrDefaultAsync(t => t.Id == request.DetailTypeId, ct)
                    ?? throw new NotFoundException($"نوع تفصیلی {request.DetailTypeId} پیدا نشد.");
-        if (type.OwnerModule == OwnerModules.Persons)
-            throw new DomainException("تفصیلی اشخاص از قسمت تعریف شخص ساخته می‌شود.");
+        if (type.OwnerModule is OwnerModules.Persons or OwnerModules.Payroll)
+            throw new DomainException("تفصیلی اشخاص و کارکنان از قسمت تعریف شخص ساخته می‌شود.");
 
         var code = string.IsNullOrWhiteSpace(request.Code)
             ? await NextCodeAsync(type, ct)

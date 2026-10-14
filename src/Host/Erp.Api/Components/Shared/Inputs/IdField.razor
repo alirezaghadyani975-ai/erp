@@ -1,0 +1,38 @@
+@* فیلد شناسه با کنترل قالب و رقم کنترل (کد ملی، شناسه ملی، شبا، کارت، موبایل، کد پستی، ...).
+   ارقام فارسی خودکار لاتین می‌شوند و بعد از خروج از فیلد شکل استاندارد ذخیره جایگزین می‌شود.
+   همین قاعده سمت سرور هم قبل از ذخیره اجرا می‌شود (IranianIds). *@
+@using Erp.SharedKernel.Validation
+
+<MudTextField T="string" Value="Value" ValueChanged="OnChanged" Label="@Label" Placeholder="@IranianIds.Placeholder(Kind)"
+              Validation="@(new Func<string?, string?>(Validate))" Required="Required" RequiredError="@($"{Label} الزامی است.")"
+              MaxLength="@IranianIds.MaxInputLength(Kind)" InputMode="@(Kind is IdKind.Email ? InputMode.email : InputMode.numeric)"
+              HelperText="@Helper" Class="@(Kind is IdKind.Email ? null : "code")" Disabled="Disabled"
+              Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="false" OnlyValidateIfDirty="true" />
+
+@code {
+    [Parameter, EditorRequired] public IdKind Kind { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+
+    private string? Validate(string? value) => IranianIds.Error(Kind, value);
+
+    /// <summary>نام بانک برای شبا و کارت، وگرنه متن راهنما.</summary>
+    private string? Helper => Kind switch
+    {
+        IdKind.Iban => IranianIds.BankFromIban(Value) is { } bank ? $"بانک {bank}" : HelperText,
+        IdKind.CardNumber => IranianIds.BankFromCard(Value) is { } bank ? $"بانک {bank}" : HelperText,
+        _ => HelperText
+    };
+
+    private async Task OnChanged(string? value)
+    {
+        // اگر معتبر است شکل استاندارد (مثلاً شبا با IR و بدون فاصله) ذخیره شود؛ وگرنه همان ورودی بماند تا خطا دیده شود
+        var normalized = IranianIds.Error(Kind, value) is null ? IranianIds.Normalize(Kind, value) : value;
+        Value = normalized;
+        await ValueChanged.InvokeAsync(normalized);
+    }
+}

@@ -1,0 +1,186 @@
+@page "/reports/ledger"
+@inject Backend Backend
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>دفتر حساب</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3 no-print" Spacing="2">
+    <MudText Typo="Typo.h5">دفتر معین و تفصیلی</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.TableChart" Href="/reports/trial-balance">تراز آزمایشی</MudButton>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" OnClick="Print" Disabled="_result is null">چاپ</MudButton>
+</MudStack>
+
+<ReportFilterBar Model="_filter" Years="_years">
+    <MudItem xs="12" sm="6" md="4">
+        <AccountPicker @bind-Value="_account" />
+    </MudItem>
+    <MudItem xs="12" sm="6" md="4">
+        <DetailPicker @bind-Value="_detail" AllowedTypeIds="null" Label="تفصیلی (اختیاری)" />
+    </MudItem>
+    <MudItem xs="12" sm="4" md="2">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
+                   OnClick="Reload" Disabled="_running || _filter.YearId is null || (_account is null && _detail is null)"
+                   FullWidth="true">نمایش</MudButton>
+    </MudItem>
+</ReportFilterBar>
+
+@if (_result is null)
+{
+    @if (!_running)
+    {
+        <MudAlert Severity="Severity.Info" Class="no-print">حساب معین یا تفصیلی را انتخاب کنید و «نمایش» را بزنید.</MudAlert>
+    }
+}
+else
+{
+    <div class="report-head">
+        <MudText Typo="Typo.h6">دفتر @_result.Title</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            از <span class="code">@_result.FromDate</span> تا <span class="code">@_result.ToDate</span>
+            @(_filter.IncludeTemporary ? "— اسناد موقت و دائم" : "— فقط اسناد دائم")
+        </MudText>
+    </div>
+
+    <MudText Typo="Typo.body2" Class="mb-2">
+        مانده ابتدای بازه:
+        <b class="code">@Format.Amount(Math.Abs(_result.OpeningBalance))</b> @Nature(_result.OpeningBalance)
+    </MudText>
+
+    <MudTable T="LedgerRow" Items="_result.Rows" Dense="true" Hover="true" Bordered="true" Elevation="1"
+              Loading="_running" OnRowClick="RowClicked" RowStyle="cursor:pointer" Class="report-table"
+              CustomFooter="true" HorizontalScrollbar="true">
+        <HeaderContent>
+            <MudTh>تاریخ</MudTh>
+            <MudTh>سند</MudTh>
+            <MudTh>ردیف</MudTh>
+            @if (_showAccount)
+            {
+                <MudTh>حساب</MudTh>
+            }
+            <MudTh>تفصیلی</MudTh>
+            <MudTh>شرح</MudTh>
+            <MudTh Class="num-head">بدهکار</MudTh>
+            <MudTh Class="num-head">بستانکار</MudTh>
+            <MudTh Class="num-head">مانده</MudTh>
+            <MudTh>تشخیص</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd Style="white-space:nowrap">
+                @if (context.VoucherNo is int no)
+                {
+                    <span class="code">@no</span>
+                }
+                else
+                {
+                    <MudTooltip Text="سند موقت؛ شماره موقت">
+                        <span class="code temp-no">@context.TempNo</span>
+                    </MudTooltip>
+                }
+            </MudTd>
+            <MudTd><span class="code">@context.RowNo</span></MudTd>
+            @if (_showAccount)
+            {
+                <MudTd><span class="code">@context.AccountCode</span> @context.AccountTitle</MudTd>
+            }
+            <MudTd><MudText Typo="Typo.caption">@context.Details</MudText></MudTd>
+            <MudTd>@context.Description</MudTd>
+            <MudTd Class="num">@Amount(context.Debit)</MudTd>
+            <MudTd Class="num">@Amount(context.Credit)</MudTd>
+            <MudTd Class="num"><b>@Format.Amount(Math.Abs(context.Balance))</b></MudTd>
+            <MudTd>@Nature(context.Balance)</MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTFootRow Class="total-row">
+                <MudTd colspan="@(_showAccount ? 6 : 5)">جمع گردش این بازه</MudTd>
+                <MudTd Class="num">@Format.Amount(_result.TotalDebit)</MudTd>
+                <MudTd Class="num">@Format.Amount(_result.TotalCredit)</MudTd>
+                <MudTd Class="num">@Format.Amount(Math.Abs(_result.EndingBalance))</MudTd>
+                <MudTd>@Nature(_result.EndingBalance)</MudTd>
+            </MudTFootRow>
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4">در این بازه گردشی نیست.</MudText></NoRecordsContent>
+    </MudTable>
+
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="no-print">برای دیدن سند روی ردیف بزنید.</MudText>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "year")] public int? Year { get; set; }
+    [SupplyParameterFromQuery(Name = "from")] public string? From { get; set; }
+    [SupplyParameterFromQuery(Name = "to")] public string? To { get; set; }
+    [SupplyParameterFromQuery(Name = "temp")] public bool? Temp { get; set; }
+    [SupplyParameterFromQuery(Name = "noclosing")] public bool? NoClosing { get; set; }
+    [SupplyParameterFromQuery(Name = "vfrom")] public int? VFrom { get; set; }
+    [SupplyParameterFromQuery(Name = "vto")] public int? VTo { get; set; }
+    [SupplyParameterFromQuery(Name = "account")] public string? AccountCode { get; set; }
+    [SupplyParameterFromQuery(Name = "detail")] public int? DetailId { get; set; }
+
+    private readonly ReportFilterModel _filter = new();
+    private List<FiscalYearDto> _years = [];
+    private AccountDto? _account;
+    private DetailAccountDto? _detail;
+    private LedgerDto? _result;
+    private bool _running;
+    private bool _showAccount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var years = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+        if (!years.Success) { Snackbar.Add(years.Error!, Severity.Error); return; }
+        _years = years.Value!;
+
+        _filter.SetYear(_years.FirstOrDefault(y => y.Id == Year) ?? _years.FirstOrDefault());
+        if (Year is not null && _filter.YearId == Year)
+        {
+            _filter.FromDate = From ?? _filter.FromDate;
+            _filter.ToDate = To ?? _filter.ToDate;
+        }
+        _filter.IncludeTemporary = Temp ?? true;
+        _filter.ExcludeClosing = NoClosing ?? false;
+        _filter.FromVoucherNo = VFrom;
+        _filter.ToVoucherNo = VTo;
+
+        if (!string.IsNullOrWhiteSpace(AccountCode))
+        {
+            var account = await Backend.Run<AccountService, AccountDto>(s => s.GetByCodeAsync(AccountCode, default));
+            if (account.Success) _account = account.Value;
+            else Snackbar.Add(account.Error!, Severity.Warning);
+        }
+        if (DetailId is int detailId)
+        {
+            var detail = await Backend.Run<DetailService, DetailAccountDto>(s => s.GetAccountAsync(detailId, default));
+            if (detail.Success) _detail = detail.Value;
+            else Snackbar.Add(detail.Error!, Severity.Warning);
+        }
+
+        if (_filter.YearId is not null && (_account is not null || _detail is not null))
+            await RunAsync();
+    }
+
+    private Task Reload() => RunAsync();
+
+    private async Task RunAsync()
+    {
+        _running = true;
+        var request = new LedgerRequest(_filter.ToFilter(), _account?.Code, _detail?.Id);
+        var result = await Backend.Run<ReportService, LedgerDto>(s => s.LedgerAsync(request, default));
+        _running = false;
+        if (!result.Success) { Snackbar.Add(result.Error!, Severity.Error); return; }
+
+        _result = result.Value;
+        // اگر دفتر یک معین است ستون حساب لازم نیست؛ برای کل/گروه یا دفتر تفصیلی بدون حساب نمایش داده می‌شود
+        _showAccount = _account is null || _account.Level != AccountLevel.Subsidiary;
+    }
+
+    private static string Amount(decimal v) => v == 0 ? "" : Format.Amount(v);
+
+    private static string Nature(decimal balance) => balance > 0 ? "بد" : balance < 0 ? "بس" : "—";
+
+    private void RowClicked(TableRowClickEventArgs<LedgerRow> args) => Nav.NavigateTo($"/vouchers/{args.Item!.VoucherId}");
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+}

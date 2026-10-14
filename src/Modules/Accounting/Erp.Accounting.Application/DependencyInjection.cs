@@ -3,6 +3,7 @@ using Erp.Accounting.Application.Details;
 using Erp.Accounting.Application.FiscalYears;
 using Erp.Accounting.Application.Lookups;
 using Erp.Accounting.Application.Persons;
+using Erp.Accounting.Application.Reports;
 using Erp.Accounting.Application.Vouchers;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -18,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<FiscalYearService>();
         services.AddScoped<VoucherService>();
         services.AddScoped<LookupService>();
+        services.AddScoped<ReportService>();
         return services;
     }
 }

@@ -76,7 +76,7 @@ public class Account : AggregateRoot<int>
     /// <paramref name="levelsInUse"/> سطح‌هایی است که روی این معین گردش دارند (از دیتابیس).
     /// </summary>
     public void SetDetailLevel(int levelNo, bool isRequired, IReadOnlyCollection<short> detailTypeIds,
-        IReadOnlyDictionary<int, IReadOnlySet<short>>? typesInUse = null)
+        IReadOnlyDictionary<int, IReadOnlySet<short>>? typesInUse = null, IReadOnlyCollection<short>? roleIds = null)
     {
         EnsureSubsidiary();
         if (levelNo is < 1 or > MaxDetailLevels)
@@ -89,7 +89,7 @@ public class Account : AggregateRoot<int>
         var existing = _detailLevels.FirstOrDefault(l => l.LevelNo == levelNo);
         if (existing is null)
         {
-            _detailLevels.Add(new AccountDetailLevel(Id, (byte)levelNo, isRequired, detailTypeIds));
+            _detailLevels.Add(new AccountDetailLevel(Id, (byte)levelNo, isRequired, detailTypeIds, roleIds ?? []));
             return;
         }
 
@@ -100,7 +100,7 @@ public class Account : AggregateRoot<int>
                 throw new DomainException($"نوع تفصیلی‌ای که در سطح {levelNo} این معین گردش دارد از قاعده حذف نمی‌شود.");
         }
 
-        existing.Update(isRequired, detailTypeIds);
+        existing.Update(isRequired, detailTypeIds, roleIds ?? []);
     }
 
     public void RemoveDetailLevel(int levelNo, bool hasTurnover)

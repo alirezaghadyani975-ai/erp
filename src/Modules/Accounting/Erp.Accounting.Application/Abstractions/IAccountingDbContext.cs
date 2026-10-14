@@ -14,6 +14,7 @@ public interface IAccountingDbContext
     DbSet<DetailType> DetailTypes { get; }
     DbSet<DetailAccount> DetailAccounts { get; }
     DbSet<Person> Persons { get; }
+    DbSet<PersonRoleType> PersonRoleTypes { get; }
     DbSet<Currency> Currencies { get; }
     DbSet<Unit> Units { get; }
     DbSet<FiscalYear> FiscalYears { get; }

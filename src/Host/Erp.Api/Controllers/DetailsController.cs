@@ -15,6 +15,14 @@ public class DetailsController(DetailService service) : ControllerBase
     public async Task<ActionResult<short>> CreateType(CreateDetailTypeRequest request, CancellationToken ct) =>
         Ok(await service.CreateTypeAsync(request, ct));
 
+    /// <summary>ویرایش گروه تفصیلی (بازه با حفظ کدهای موجود)</summary>
+    [HttpPut("types/{id}")]
+    public async Task<IActionResult> UpdateType(short id, UpdateDetailTypeRequest request, CancellationToken ct)
+    {
+        await service.UpdateTypeAsync(id, request, ct);
+        return NoContent();
+    }
+
     /// <summary>جستجوی تفصیلی با کد یا عنوان</summary>
     [HttpGet]
     public Task<List<DetailAccountDto>> Search([FromQuery] short? typeId, [FromQuery] string? q, CancellationToken ct) =>

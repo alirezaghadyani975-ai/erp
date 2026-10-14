@@ -42,3 +42,27 @@ html, body {
 .tree-node.selected { background: var(--mud-palette-primary-hover); }
 .tree-children { padding-inline-start: 22px; }
 .tree-inactive { opacity: .55; text-decoration: line-through; }
+
+/* گزارش‌ها */
+.report-table th { font-weight: 600; }
+.report-table .group-head { text-align: center; }
+.report-table .num-head { text-align: left; }
+.report-table .total-row td { font-weight: 700; background: var(--mud-palette-background-gray); }
+.report-head { margin-bottom: 8px; }
+.temp-no { color: var(--mud-palette-info); }
+.temp-no::before { content: "م "; font-size: .75em; }
+
+@media print {
+    .no-print, .mud-appbar, .mud-drawer, .mud-snackbar-provider { display: none !important; }
+    .mud-main-content { padding: 0 !important; margin: 0 !important; }
+    .mud-container { max-width: none !important; padding: 0 !important; }
+    .report-table { box-shadow: none !important; }
+    .report-table td, .report-table th { font-size: 10pt; padding: 2px 4px !important; }
+    body { background: #fff !important; }
+}
+
+/* گروه‌های تفصیلی و اشخاص */
+.selected-row { background: var(--mud-palette-primary-hover) !important; }
+.preview-box td:first-child { color: var(--mud-palette-text-secondary); width: 45%; }
+.guide-list { padding-inline-start: 20px; line-height: 2; }
+.guide-list li { margin-bottom: 2px; }

@@ -39,6 +39,7 @@ public class AccountService(IAccountingDbContext db)
     public async Task<List<AccountDto>> SearchPostableAsync(string? term, CancellationToken ct)
     {
         var query = db.Accounts.AsNoTracking().Include(a => a.DetailLevels).ThenInclude(l => l.AllowedTypes)
+            .Include(a => a.DetailLevels).ThenInclude(l => l.AllowedRoles)
             .Where(a => a.Level == AccountLevel.Subsidiary && a.IsActive);
         term = PersianText.NormalizeOrNull(term);
         if (term is not null)
@@ -81,9 +82,13 @@ public class AccountService(IAccountingDbContext db)
         if (existing != typeIds.Count)
             throw new DomainException("یک یا چند نوع تفصیلی انتخاب‌شده وجود ندارد.");
 
+        var roleIds = (request.RoleIds ?? []).Distinct().ToList();
+        if (await db.PersonRoleTypes.CountAsync(r => roleIds.Contains(r.Id), ct) != roleIds.Count)
+            throw new DomainException("یک یا چند نقش انتخاب‌شده وجود ندارد.");
+
         var inUse = await TypesInUseAsync(id, levelNo, ct);
         account.SetDetailLevel(levelNo, request.IsRequired, typeIds,
-            new Dictionary<int, IReadOnlySet<short>> { [levelNo] = inUse });
+            new Dictionary<int, IReadOnlySet<short>> { [levelNo] = inUse }, roleIds);
         await db.SaveChangesAsync(ct);
     }
 
@@ -97,6 +102,7 @@ public class AccountService(IAccountingDbContext db)
 
     private async Task<Account> LoadAsync(int id, CancellationToken ct) =>
         await db.Accounts.Include(a => a.DetailLevels).ThenInclude(l => l.AllowedTypes)
+            .Include(a => a.DetailLevels).ThenInclude(l => l.AllowedRoles)
             .FirstOrDefaultAsync(a => a.Id == id, ct)
         ?? throw new NotFoundException($"حساب با شناسه {id} پیدا نشد.");
 
@@ -135,6 +141,7 @@ public class AccountService(IAccountingDbContext db)
     private static AccountDto ToDto(Account a) => new(
         a.Id, a.Code, a.Title, a.Level, a.ParentId, a.Nature, a.Type, a.IsStandard, a.IsActive,
         a.DetailLevels.OrderBy(l => l.LevelNo)
-            .Select(l => new DetailLevelDto(l.LevelNo, l.IsRequired, l.AllowedTypes.Select(t => t.DetailTypeId).ToList()))
+            .Select(l => new DetailLevelDto(l.LevelNo, l.IsRequired, l.AllowedTypes.Select(t => t.DetailTypeId).ToList(),
+                l.AllowedRoles.Select(r => r.RoleId).ToList()))
             .ToList());
 }

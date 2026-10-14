@@ -2,12 +2,16 @@
   <!-- Central Package Management: نسخه همه پکیج‌ها فقط این‌جا تعریف می‌شود -->
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- نسخه وابستگی‌های غیرمستقیم هم از این فایل گرفته شود (برای رفع آسیب‌پذیری‌ها) -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.6" />
+    <!-- وابستگی غیرمستقیم SqlClient؛ نسخه 9.0.11 آسیب‌پذیری امنیتی دارد (GHSA-846f-f764-76mx) -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.8.6" />
     <PackageVersion Include="MudBlazor" Version="9.11.0" />

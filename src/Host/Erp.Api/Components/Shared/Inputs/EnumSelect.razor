@@ -1,0 +1,20 @@
+@* انتخاب از یک enum با عنوان فارسی (Titles.Of). *@
+@typeparam TEnum where TEnum : struct, Enum
+
+<MudSelect T="TEnum?" Value="Value" ValueChanged="ValueChanged" Label="@Label" Clearable="!Required" Required="Required"
+           RequiredError="@($"{Label} الزامی است.")" Disabled="Disabled"
+           Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+    @foreach (var v in Items ?? Enum.GetValues<TEnum>())
+    {
+        <MudSelectItem T="TEnum?" Value="v">@Titles.Of(v)</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter] public TEnum? Value { get; set; }
+    [Parameter] public EventCallback<TEnum?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public IEnumerable<TEnum>? Items { get; set; }
+}

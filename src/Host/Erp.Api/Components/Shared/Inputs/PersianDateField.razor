@@ -1,0 +1,47 @@
+@* تاریخ شمسی با تقویم و ورود دستی (مثل 1405/01/15). مقدار به شکل متن شمسی بیرون می‌آید.
+   تاریخ نامعتبر یا خارج از بازه مجاز قبل از ذخیره خطا می‌دهد. *@
+@using System.Globalization
+
+<MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="@Label" Culture="PersianCulture.Instance"
+               DateFormat="yyyy/MM/dd" TitleDateFormat="dddd d MMMM yyyy" FirstDayOfWeek="DayOfWeek.Saturday"
+               Editable="true" Clearable="true" Placeholder="1405/01/01" Required="Required"
+               RequiredError="@($"{Label} الزامی است.")" MinDate="MinDate" MaxDate="MaxDate"
+               Validation="@(new Func<DateTime?, string?>(Validate))" Disabled="Disabled" HelperText="@HelperText"
+               Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" AutoClose="true" />
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "تاریخ";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    /// <summary>مثلاً برای تاریخ تولد: امروز.</summary>
+    [Parameter] public DateTime? MaxDate { get; set; }
+    [Parameter] public DateTime? MinDate { get; set; }
+
+    private DateTime? _date;
+    private string? _lastValue;
+
+    protected override void OnParametersSet()
+    {
+        if (Value == _lastValue) return;
+        _lastValue = Value;
+        _date = PersianDate.TryParse(Value, out var d) ? d.ToDateTime(TimeOnly.MinValue) : null;
+    }
+
+    private string? Validate(DateTime? date) =>
+        date is null ? null
+        : MaxDate is { } max && date > max ? $"{Label} نمی‌تواند بعد از {ToPersian(max)} باشد."
+        : MinDate is { } min && date < min ? $"{Label} نمی‌تواند قبل از {ToPersian(min)} باشد."
+        : null;
+
+    private async Task OnDateChanged(DateTime? date)
+    {
+        _date = date;
+        _lastValue = date is { } d ? ToPersian(d) : null;
+        await ValueChanged.InvokeAsync(_lastValue);
+    }
+
+    private static string ToPersian(DateTime d) => PersianDate.ToPersian(DateOnly.FromDateTime(d));
+}

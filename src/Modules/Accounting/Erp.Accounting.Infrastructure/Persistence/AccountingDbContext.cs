@@ -19,6 +19,7 @@ public class AccountingDbContext(DbContextOptions<AccountingDbContext> options)
     public DbSet<DetailType> DetailTypes => Set<DetailType>();
     public DbSet<DetailAccount> DetailAccounts => Set<DetailAccount>();
     public DbSet<Person> Persons => Set<Person>();
+    public DbSet<PersonRoleType> PersonRoleTypes => Set<PersonRoleType>();
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<Unit> Units => Set<Unit>();
     public DbSet<FiscalYear> FiscalYears => Set<FiscalYear>();

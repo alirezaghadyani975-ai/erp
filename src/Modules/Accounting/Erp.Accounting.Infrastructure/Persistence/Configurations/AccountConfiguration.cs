@@ -1,3 +1,4 @@
+using Erp.Accounting.Domain.BaseData;
 using Erp.Accounting.Domain.ChartOfAccounts;
 using Erp.Accounting.Domain.Details;
 using Microsoft.EntityFrameworkCore;
@@ -31,6 +32,9 @@ internal class AccountDetailLevelConfiguration : IEntityTypeConfiguration<Accoun
         b.HasMany(l => l.AllowedTypes).WithOne()
             .HasForeignKey(t => new { t.AccountId, t.LevelNo }).OnDelete(DeleteBehavior.Cascade);
         b.Navigation(l => l.AllowedTypes).UsePropertyAccessMode(PropertyAccessMode.Field);
+        b.HasMany(l => l.AllowedRoles).WithOne()
+            .HasForeignKey(r => new { r.AccountId, r.LevelNo }).OnDelete(DeleteBehavior.Cascade);
+        b.Navigation(l => l.AllowedRoles).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }
 
@@ -41,5 +45,15 @@ internal class AccountDetailLevelTypeConfiguration : IEntityTypeConfiguration<Ac
         b.ToTable("AccountDetailLevelTypes", "fin");
         b.HasKey(t => new { t.AccountId, t.LevelNo, t.DetailTypeId });
         b.HasOne<DetailType>().WithMany().HasForeignKey(t => t.DetailTypeId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal class AccountDetailLevelRoleConfiguration : IEntityTypeConfiguration<AccountDetailLevelRole>
+{
+    public void Configure(EntityTypeBuilder<AccountDetailLevelRole> b)
+    {
+        b.ToTable("AccountDetailLevelRoles", "fin");
+        b.HasKey(r => new { r.AccountId, r.LevelNo, r.RoleId });
+        b.HasOne<PersonRoleType>().WithMany().HasForeignKey(r => r.RoleId).OnDelete(DeleteBehavior.Restrict);
     }
 }

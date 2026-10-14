@@ -1,0 +1,328 @@
+@page "/persons/new"
+@page "/persons/{Id:int}"
+@inject Backend Backend
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>@(IsNew ? "شخص جدید" : _model.DisplayName)</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Href="/persons" aria-label="بازگشت" />
+    <MudText Typo="Typo.h5">@(IsNew ? "شخص جدید" : _model.DisplayName)</MudText>
+    @foreach (var d in _model.Details)
+    {
+        <MudTooltip Text="@TypeTitle(d.DetailTypeId)">
+            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Tag">
+                <span class="code">@d.Code</span>
+            </MudChip>
+        </MudTooltip>
+    }
+    <MudSpacer />
+    <MudSwitch T="bool" @bind-Value="_model.IsActive" Color="Color.Success" Label="@(_model.IsActive ? "فعال" : "غیرفعال")" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_saving">
+        ذخیره
+    </MudButton>
+</MudStack>
+
+<MudForm @ref="_form" Spacing="0">
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <MudGrid Spacing="2" Class="align-center">
+            <MudItem xs="12" md="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">نوع شخص</MudText>
+                <MudRadioGroup T="PersonKind" Value="_model.Kind" ValueChanged="KindChanged" Disabled="!IsNew">
+                    <MudRadio T="PersonKind" Value="PersonKind.Natural" Color="Color.Primary" Dense="true">حقیقی</MudRadio>
+                    <MudRadio T="PersonKind" Value="PersonKind.Legal" Color="Color.Primary" Dense="true">حقوقی</MudRadio>
+                </MudRadioGroup>
+            </MudItem>
+            <MudItem xs="12" md="9">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    نقش‌ها — همه نقش‌های طرف‌حسابی یک کد تفصیلی مشترک دارند؛ «کارمند» کد جدای کارکنان می‌گیرد.
+                </MudText>
+                <MudChipSet T="short" SelectedValues="_model.RoleIds" SelectedValuesChanged="RolesChanged"
+                            SelectionMode="SelectionMode.MultiSelection" CheckMark="true" Variant="Variant.Outlined"
+                            Color="Color.Primary" Size="Size.Small">
+                    @foreach (var r in _roles.Where(r => r.IsActive || _model.RoleIds.Contains(r.Id)))
+                    {
+                        var disabled = r.Code == RoleCodes.Employee && _model.Kind == PersonKind.Legal;
+                        <MudChip T="short" Value="r.Id" Text="@r.Title" Disabled="disabled" />
+                    }
+                </MudChipSet>
+                @if (_model.RoleIds.Count == 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error">حداقل یک نقش انتخاب کنید.</MudText>
+                }
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudTabs Elevation="1" Rounded="true" KeepPanelsAlive="true" TabPanelsClass="pa-4" ApplyEffectsToContainer="true">
+        @* ---------------- هویتی ---------------- *@
+        <MudTabPanel Text="@(_model.Kind == PersonKind.Natural ? "اطلاعات هویتی" : "اطلاعات ثبتی")" Icon="@Icons.Material.Outlined.Badge">
+            @if (_model.Kind == PersonKind.Natural)
+            {
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.FirstName" Label="نام" Required="true" RequiredError="نام الزامی است." Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.LastName" Label="نام خانوادگی" Required="true" RequiredError="نام خانوادگی الزامی است." Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.FatherName" Label="نام پدر" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><EnumSelect TEnum="Gender" @bind-Value="_model.Gender" Label="جنسیت" /></MudItem>
+
+                    <MudItem xs="12" md="3" Class="d-flex align-center">
+                        <MudSwitch T="bool" @bind-Value="_model.IsForeign" Color="Color.Primary" Label="تبعه خارجی" />
+                    </MudItem>
+                    @if (_model.IsForeign)
+                    {
+                        <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.Nationality" Label="تابعیت" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                        <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.ForeignNationalCode" @bind-Value="_model.ForeignNationalCode" Label="کد فراگیر اتباع" /></MudItem>
+                        <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.PassportNo" Label="شماره گذرنامه" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
+                    }
+                    else
+                    {
+                        <MudItem xs="12" sm="6" md="3">
+                            <IdField Kind="IdKind.NationalCode" @bind-Value="_model.NationalId" Label="کد ملی" Required="IsEmployee"
+                                     HelperText="@(IsEmployee ? "برای کارمند الزامی است" : null)" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.IdNumber" Label="شماره شناسنامه" MaxLength="10" InputMode="InputMode.numeric" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
+                        <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.IdIssuePlace" Label="محل صدور" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    }
+
+                    <MudItem xs="12" sm="6" md="3"><PersianDateField @bind-Value="_model.BirthDate" Label="تاریخ تولد" MaxDate="DateTime.Today" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.BirthPlace" Label="محل تولد" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><EnumSelect TEnum="MaritalStatus" @bind-Value="_model.MaritalStatus" Label="وضعیت تأهل" /></MudItem>
+                </MudGrid>
+            }
+            else
+            {
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" md="6"><MudTextField @bind-Value="_model.LegalName" Label="نام شخص حقوقی" Required="true" RequiredError="نام شخص حقوقی الزامی است." Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.LegalNationalId" @bind-Value="_model.NationalId" Label="شناسه ملی" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><EnumSelect TEnum="LegalType" @bind-Value="_model.LegalType" Label="نوع شخص حقوقی" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.RegistrationNo" Label="شماره ثبت" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><PersianDateField @bind-Value="_model.RegistrationDate" Label="تاریخ ثبت" MaxDate="DateTime.Today" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.RegistrationPlace" Label="محل ثبت" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                </MudGrid>
+            }
+            <MudTextField @bind-Value="_model.Notes" Label="توضیحات" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-3" MaxLength="500" />
+        </MudTabPanel>
+
+        @* ---------------- مالیات و مودیان ---------------- *@
+        <MudTabPanel Text="مالیات و سامانه مودیان" Icon="@Icons.Material.Outlined.ReceiptLong">
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6" md="3"><EnumSelect TEnum="TaxPayerType" @bind-Value="_model.TaxPayerType" Label="نوع شخص در سامانه مودیان" /></MudItem>
+                <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.EconomicCode" @bind-Value="_model.EconomicCode" Label="کد اقتصادی" /></MudItem>
+                <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.BranchCode" @bind-Value="_model.BranchCode" Label="کد شعبه" HelperText="شعبه خریدار در صورتحساب" /></MudItem>
+            </MudGrid>
+            <MudAlert Severity="Severity.Normal" Dense="true" Class="mt-3">
+                برای صورتحساب الکترونیکی: حقیقی ← کد ملی (اتباع: کد فراگیر)، حقوقی ← شناسه ملی، و کد پستی نشانی پیش‌فرض لازم است.
+                کد اقتصادی حقوقی‌ها همان شناسه ملی ۱۱ رقمی است.
+            </MudAlert>
+        </MudTabPanel>
+
+        @* ---------------- تماس و نشانی ---------------- *@
+        <MudTabPanel Text="@Counted("تماس و نشانی", _model.Addresses.Count)" Icon="@Icons.Material.Outlined.Place">
+            <MudGrid Spacing="2" Class="mb-2">
+                <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.Mobile" @bind-Value="_model.Mobile" Label="موبایل" /></MudItem>
+                <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.Phone" @bind-Value="_model.Phone" Label="تلفن" /></MudItem>
+                <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.Email" @bind-Value="_model.Email" Label="ایمیل" /></MudItem>
+                <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_model.Website" Label="وب‌سایت" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
+            </MudGrid>
+
+            @for (var i = 0; i < _model.Addresses.Count; i++)
+            {
+                var a = _model.Addresses[i];
+                var index = i;
+                <MudPaper Outlined="true" Class="pa-3 mb-2">
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12" sm="6" md="2"><MudTextField @bind-Value="a.Title" Label="عنوان" Placeholder="دفتر مرکزی" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                        <MudItem xs="6" md="2"><MudTextField @bind-Value="a.Province" Label="استان" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                        <MudItem xs="6" md="2"><MudTextField @bind-Value="a.City" Label="شهر" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                        <MudItem xs="12" md="6"><MudTextField @bind-Value="a.Address" Label="نشانی" Required="true" RequiredError="متن نشانی الزامی است." Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                        <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.PostalCode" @bind-Value="a.PostalCode" Label="کد پستی" /></MudItem>
+                        <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.Phone" @bind-Value="a.Phone" Label="تلفن" /></MudItem>
+                        <MudItem xs="12" md="6" Class="d-flex align-center">
+                            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Warning"
+                                       StartIcon="@(a.IsDefault ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)"
+                                       OnClick="() => SetDefaultAddress(index)">
+                                @(a.IsDefault ? "نشانی پیش‌فرض" : "پیش‌فرض شود")
+                            </MudButton>
+                            <MudSpacer />
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small"
+                                           OnClick="() => _model.Addresses.RemoveAt(index)" aria-label="حذف نشانی" />
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAddress">افزودن نشانی</MudButton>
+        </MudTabPanel>
+
+        @* ---------------- حساب بانکی ---------------- *@
+        <MudTabPanel Text="@Counted("حساب‌های بانکی", _model.BankAccounts.Count)" Icon="@Icons.Material.Outlined.AccountBalance">
+            @for (var i = 0; i < _model.BankAccounts.Count; i++)
+            {
+                var b = _model.BankAccounts[i];
+                var index = i;
+                <MudPaper Outlined="true" Class="pa-3 mb-2">
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12" md="4"><IdField Kind="IdKind.Iban" @bind-Value="b.Iban" Label="شماره شبا" /></MudItem>
+                        <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.CardNumber" @bind-Value="b.CardNo" Label="شماره کارت" /></MudItem>
+                        <MudItem xs="12" sm="6" md="2"><MudTextField @bind-Value="b.AccountNo" Label="شماره حساب" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
+                        <MudItem xs="12" sm="6" md="2">
+                            <MudTextField @bind-Value="b.BankName" Label="بانک"
+                                          Placeholder="@(IranianIds.BankFromIban(b.Iban) ?? IranianIds.BankFromCard(b.CardNo) ?? "از شبا تشخیص داده می‌شود")"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="1" Class="d-flex align-center">
+                            <MudTooltip Text="@(b.IsDefault ? "حساب پیش‌فرض" : "پیش‌فرض شود")">
+                                <MudIconButton Icon="@(b.IsDefault ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)" Color="Color.Warning"
+                                               OnClick="() => SetDefaultBank(index)" aria-label="پیش‌فرض" />
+                            </MudTooltip>
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small"
+                                           OnClick="() => _model.BankAccounts.RemoveAt(index)" aria-label="حذف حساب" />
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="AddBank">افزودن حساب بانکی</MudButton>
+        </MudTabPanel>
+
+        @* ---------------- پرسنلی ---------------- *@
+        <MudTabPanel Text="اطلاعات پرسنلی" Icon="@Icons.Material.Outlined.Work" Visible="IsEmployee">
+            @if (_model.Employee is { } e)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">استخدام</MudText>
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="e.EmployeeNo" Label="شماره پرسنلی" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><PersianDateField @bind-Value="e.HireDate" Label="تاریخ استخدام" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><PersianDateField @bind-Value="e.EndDate" Label="تاریخ ترک کار" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><EnumSelect TEnum="ContractType" @bind-Value="e.ContractType" Label="نوع قرارداد" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="e.JobTitle" Label="سمت / عنوان شغل" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><EnumSelect TEnum="EducationLevel" @bind-Value="e.EducationLevel" Label="مدرک تحصیلی" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="e.EducationField" Label="رشته تحصیلی" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    @if (_model.Gender != Gender.Female)
+                    {
+                        <MudItem xs="12" sm="6" md="3"><EnumSelect TEnum="MilitaryStatus" @bind-Value="e.MilitaryStatus" Label="وضعیت نظام وظیفه" /></MudItem>
+                    }
+                </MudGrid>
+
+                <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">بیمه</MudText>
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" sm="6" md="3"><EnumSelect TEnum="InsuranceType" @bind-Value="e.InsuranceType" Label="نوع بیمه" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><IdField Kind="IdKind.InsuranceNo" @bind-Value="e.InsuranceNo" Label="شماره بیمه" Disabled="e.InsuranceType == InsuranceType.None" /></MudItem>
+                    <MudItem xs="12" sm="6" md="2"><PersianDateField @bind-Value="e.InsuranceStartDate" Label="شروع بیمه" /></MudItem>
+                    <MudItem xs="12" sm="6" md="2"><MudTextField @bind-Value="e.InsuranceJobCode" Label="کد شغل بیمه" MaxLength="10" InputMode="InputMode.numeric" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
+                    <MudItem xs="12" sm="6" md="2"><MudTextField @bind-Value="e.WorkshopCode" Label="کد کارگاه" MaxLength="10" InputMode="InputMode.numeric" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
+                </MudGrid>
+
+                <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">مالیات حقوق و خانواده</MudText>
+                <MudGrid Spacing="2">
+                    <MudItem xs="6" md="2"><MudNumericField T="byte" @bind-Value="e.ChildrenCount" Label="تعداد فرزند" Min="0" Max="30" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="6" md="2"><MudNumericField T="byte" @bind-Value="e.DependentsCount" Label="افراد تحت تکفل" Min="0" Max="30" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="12" sm="6" md="3"><EnumSelect TEnum="TaxExemptionType" @bind-Value="e.TaxExemptionType" Label="معافیت مالیاتی" /></MudItem>
+                </MudGrid>
+            }
+        </MudTabPanel>
+    </MudTabs>
+</MudForm>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private bool IsNew => Id is null;
+    private PersonDetailsDto _model = new();
+    private List<PersonRoleTypeDto> _roles = [];
+    private List<DetailTypeDto> _types = [];
+    private MudForm _form = null!;
+    private bool _loading = true;
+    private bool _saving;
+
+    private short EmployeeRoleId => _roles.FirstOrDefault(r => r.Code == RoleCodes.Employee)?.Id ?? -1;
+    private bool IsEmployee => _model.RoleIds.Contains(EmployeeRoleId);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _roles = (await Backend.Run<PersonService, List<PersonRoleTypeDto>>(s => s.GetRoleTypesAsync(true, default))).Value ?? [];
+        _types = (await Backend.Run<DetailService, List<DetailTypeDto>>(s => s.GetTypesAsync(default))).Value ?? [];
+
+        if (Id is int id)
+        {
+            var r = await Backend.Run<PersonService, PersonDetailsDto>(s => s.GetAsync(id, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); Nav.NavigateTo("/persons"); return; }
+            _model = r.Value!;
+        }
+        else
+        {
+            _model = new PersonDetailsDto();
+            if (_roles.FirstOrDefault(x => x.Code == RoleCodes.Customer) is { } customer)
+                _model.RoleIds.Add(customer.Id);
+        }
+        _loading = false;
+    }
+
+    private static string Counted(string title, int count) => count == 0 ? title : $"{title} ({count})";
+
+    private string TypeTitle(short id) => _types.FirstOrDefault(t => t.Id == id)?.Title ?? "";
+
+    private void KindChanged(PersonKind kind)
+    {
+        _model.Kind = kind;
+        if (kind == PersonKind.Legal) _model.RoleIds.Remove(EmployeeRoleId);
+        _model.NationalId = null; // کد ملی و شناسه ملی قالب متفاوت دارند
+    }
+
+    private void RolesChanged(IReadOnlyCollection<short>? roles)
+    {
+        _model.RoleIds = roles?.ToList() ?? [];
+        if (IsEmployee) _model.Employee ??= new EmployeeDto();
+    }
+
+    private void AddAddress() =>
+        _model.Addresses.Add(new AddressDto { IsDefault = _model.Addresses.Count == 0 });
+
+    private void SetDefaultAddress(int index)
+    {
+        for (var i = 0; i < _model.Addresses.Count; i++) _model.Addresses[i].IsDefault = i == index;
+    }
+
+    private void AddBank() =>
+        _model.BankAccounts.Add(new BankAccountDto { IsDefault = _model.BankAccounts.Count == 0 });
+
+    private void SetDefaultBank(int index)
+    {
+        for (var i = 0; i < _model.BankAccounts.Count; i++) _model.BankAccounts[i].IsDefault = i == index;
+    }
+
+    private async Task SaveAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid || _model.RoleIds.Count == 0)
+        {
+            Snackbar.Add("چند فیلد خطا دارد؛ زبانه‌ها را بررسی و اصلاح کنید.", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        if (!IsEmployee) _model.Employee = null;
+        if (IsNew)
+        {
+            var r = await Backend.Run<PersonService, int>(s => s.CreateAsync(_model, default));
+            _saving = false;
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            Snackbar.Add("شخص ثبت شد و تفصیلی آن ساخته شد.", Severity.Success);
+            Nav.NavigateTo($"/persons/{r.Value}");
+        }
+        else
+        {
+            var r = await Backend.Run<PersonService>(s => s.UpdateAsync(Id!.Value, _model, default));
+            _saving = false;
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            Snackbar.Add("تغییرات ذخیره شد.", Severity.Success);
+            await OnParametersSetAsync();
+        }
+    }
+}

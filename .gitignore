@@ -483,3 +483,6 @@ $RECYCLE.BIN/
 
 # test logs
 tools/*.txt
+
+# VS Code workspace (machine-specific paths)
+*.code-workspace

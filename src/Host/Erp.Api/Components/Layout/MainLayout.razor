@@ -7,7 +7,7 @@
     <MudSnackbarProvider />
 
     <MudLayout>
-        <MudAppBar Elevation="0" Dense="true" Color="Color.Primary">
+        <MudAppBar Elevation="0" Class="no-print" Dense="true" Color="Color.Primary">
             <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
                            OnClick="() => _drawerOpen = !_drawerOpen" aria-label="منو" />
             <MudText Typo="Typo.h6" Class="mr-2">Erp</MudText>
@@ -16,13 +16,18 @@
             <MudLink Href="/scalar" Target="_blank" Color="Color.Inherit" Typo="Typo.body2">API</MudLink>
         </MudAppBar>
 
-        <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="1" Variant="DrawerVariant.Responsive">
+        <MudDrawer Class="no-print" @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="1" Variant="DrawerVariant.Responsive">
             <MudNavMenu>
                 <MudNavLink Href="/vouchers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.ReceiptLong">اسناد حسابداری</MudNavLink>
                 <MudNavLink Href="/vouchers/new" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.NoteAdd">سند جدید</MudNavLink>
+                <MudNavGroup Title="گزارش‌ها" Icon="@Icons.Material.Outlined.Assessment" Expanded="true">
+                    <MudNavLink Href="/reports/trial-balance" Icon="@Icons.Material.Outlined.TableChart">تراز آزمایشی</MudNavLink>
+                    <MudNavLink Href="/reports/ledger" Icon="@Icons.Material.Outlined.MenuBook">دفتر معین و تفصیلی</MudNavLink>
+                </MudNavGroup>
                 <MudDivider Class="my-2" />
                 <MudNavLink Href="/accounts" Icon="@Icons.Material.Outlined.AccountTree">کدینگ حساب‌ها</MudNavLink>
-                <MudNavLink Href="/persons" Icon="@Icons.Material.Outlined.People">اشخاص</MudNavLink>
+                <MudNavLink Href="/persons" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.People">اشخاص</MudNavLink>
+                <MudNavLink Href="/detail-types" Icon="@Icons.Material.Outlined.Category">گروه‌های تفصیلی</MudNavLink>
                 <MudNavLink Href="/fiscal-years" Icon="@Icons.Material.Outlined.CalendarMonth">سال و دوره مالی</MudNavLink>
             </MudNavMenu>
         </MudDrawer>

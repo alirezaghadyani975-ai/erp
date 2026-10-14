@@ -1,0 +1,48 @@
+@* فیلترهای مشترک گزارش‌ها: سال، بازه تاریخ، بازه شماره سند و وضعیت اسناد *@
+
+<MudPaper Class="pa-3 mb-3 no-print" Elevation="1">
+    <MudGrid Spacing="2" Class="align-center">
+        <MudItem xs="12" sm="4" md="2">
+            <MudSelect T="short?" Label="سال مالی" Value="Model.YearId" ValueChanged="YearChanged"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                @foreach (var y in Years)
+                {
+                    <MudSelectItem T="short?" Value="y.Id">@y.Title</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <MudTextField @bind-Value="Model.FromDate" Label="از تاریخ" Placeholder="1405/01/01" Class="code"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="6" sm="4" md="2">
+            <MudTextField @bind-Value="Model.ToDate" Label="تا تاریخ" Placeholder="1405/12/29" Class="code"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="6" sm="3" md="1">
+            <MudNumericField T="int?" @bind-Value="Model.FromVoucherNo" Label="از سند" HideSpinButtons="true" Min="1"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
+        </MudItem>
+        <MudItem xs="6" sm="3" md="1">
+            <MudNumericField T="int?" @bind-Value="Model.ToVoucherNo" Label="تا سند" HideSpinButtons="true" Min="1"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudCheckBox @bind-Value="Model.IncludeTemporary" Label="اسناد موقت هم بیاید" Dense="true" Color="Color.Primary" />
+            <MudCheckBox @bind-Value="Model.ExcludeClosing" Label="بدون اسناد بستن و اختتامیه" Dense="true" Color="Color.Primary" />
+        </MudItem>
+        @ChildContent
+    </MudGrid>
+    @if (Model.FromVoucherNo is not null || Model.ToVoucherNo is not null)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary">بازه شماره سند روی شماره قطعی است؛ با آن فقط اسناد دائم در گزارش می‌آیند.</MudText>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public ReportFilterModel Model { get; set; } = null!;
+    [Parameter] public IReadOnlyList<FiscalYearDto> Years { get; set; } = [];
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private void YearChanged(short? id) => Model.SetYear(Years.FirstOrDefault(y => y.Id == id));
+}

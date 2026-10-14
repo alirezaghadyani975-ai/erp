@@ -1,0 +1,300 @@
+@page "/detail-types"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+
+<PageTitle>گروه‌های تفصیلی</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+    <MudText Typo="Typo.h5">گروه‌های تفصیلی</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">گروه جدید</MudButton>
+</MudStack>
+
+<MudGrid Spacing="3">
+    @if (_edit is not null)
+    {
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.h6">@(_edit.Id is null ? "گروه تفصیلی جدید" : $"ویرایش «{_edit.OriginalTitle}»")</MudText>
+                    <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => _edit = null" aria-label="بستن" />
+                </MudStack>
+
+                <MudGrid Spacing="4">
+                <MudItem xs="12" md="7">
+                <MudGrid Spacing="2">
+                    <MudItem xs="12"><MudTextField @bind-Value="_edit.Title" Immediate="true" Label="عنوان گروه" Placeholder="مثلاً مراکز هزینه" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                    <MudItem xs="12" sm="7">
+                        <MudSelect T="string" @bind-Value="_edit.OwnerModule" Label="ماژول مالک" Disabled="_edit.UsedCount > 0"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                            @foreach (var o in OwnerModules.All.OrderBy(x => x))
+                            {
+                                <MudSelectItem T="string" Value="o">@Titles.Owner(o)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="5">
+                        <MudSelect T="PersonKind?" @bind-Value="_edit.PersonKind" Label="نوع شخص" Clearable="true"
+                                   Disabled="@(_edit.UsedCount > 0 || _edit.OwnerModule is not (OwnerModules.Persons or OwnerModules.Payroll))"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                            <MudSelectItem T="PersonKind?" Value="PersonKind.Natural">حقیقی</MudSelectItem>
+                            @if (_edit.OwnerModule != OwnerModules.Payroll)
+                            {
+                                <MudSelectItem T="PersonKind?" Value="PersonKind.Legal">حقوقی</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@Titles.OwnerHint(_edit.OwnerModule)</MudText>
+                    </MudItem>
+
+                    <MudItem xs="4">
+                        <MudNumericField T="int" Value="_edit.Length" ValueChanged="LengthChanged" Label="طول کد (رقم)"
+                                         Min="DetailType.MinCodeLength" Max="DetailType.MaxCodeLength" Disabled="_edit.UsedCount > 0"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="4">
+                        <MudTextField T="string" Value="_edit.From" ValueChanged="v => _edit.From = Pad(v)" Label="از کد" Class="code"
+                                      MaxLength="_edit.Length" InputMode="InputMode.numeric" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="4">
+                        <MudTextField T="string" Value="_edit.To" ValueChanged="v => _edit.To = Pad(v)" Label="تا کد" Class="code"
+                                      MaxLength="_edit.Length" InputMode="InputMode.numeric" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </MudItem>
+                    @if (_edit.Id is not null)
+                    {
+                        <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_edit.IsActive" Color="Color.Primary" Label="فعال" /></MudItem>
+                    }
+                </MudGrid>
+
+                </MudItem>
+                <MudItem xs="12" md="5">
+                @* پیش‌نمایش *@
+                @if (Problem() is { } problem)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true">@problem</MudAlert>
+                }
+                else
+                {
+                    <MudPaper Outlined="true" Class="pa-3 preview-box">
+                        <MudSimpleTable Dense="true" Elevation="0">
+                            <tbody>
+                                <tr><td>اولین کد</td><td><span class="code">@_edit.From</span></td></tr>
+                                <tr><td>آخرین کد</td><td><span class="code">@_edit.To</span></td></tr>
+                                <tr><td>ظرفیت</td><td>@($"{Capacity():#,0}") کد</td></tr>
+                                @if (_edit.UsedCount > 0)
+                                {
+                                    <tr><td>کدهای استفاده‌شده</td><td><span class="code">@_edit.MinUsed</span> تا <span class="code">@_edit.MaxUsed</span> (@_edit.UsedCount)</td></tr>
+                                }
+                                <tr><td>نمونه کد تفصیلی بعدی</td><td><b class="code">@NextPreview()</b></td></tr>
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudPaper>
+                }
+
+                @* بازه‌های آزاد *@
+                <MudText Typo="Typo.subtitle2" Class="mt-4">بازه‌های آزاد کدهای @_edit.Length رقمی</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">روی یک بازه بزنید تا در فرم بنشیند (برای گروه جدید).</MudText>
+                <div class="d-flex flex-wrap gap-1 mt-1">
+                    @foreach (var (from, to) in FreeRanges().Take(12))
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Success"
+                                 OnClick="() => { _edit.From = from; _edit.To = to; }" Disabled="_edit.UsedCount > 0">
+                            <span class="code">@from</span>&nbsp;تا&nbsp;<span class="code">@to</span>
+                        </MudChip>
+                    }
+                </div>
+
+                </MudItem>
+                </MudGrid>
+                <MudStack Row="true" Class="mt-4" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                               OnClick="SaveAsync" Disabled="@(Problem() is not null || string.IsNullOrWhiteSpace(_edit.Title))">ذخیره</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="() => _edit = null">انصراف</MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    }
+
+    <MudItem xs="12">
+        <MudTable T="DetailTypeDto" Items="_types" Dense="true" Hover="true" Elevation="1" Loading="_loading"
+                  OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer"
+                  RowClassFunc="@((t, _) => t.Id == _edit?.Id ? "selected-row" : t.IsActive ? "" : "tree-inactive")">
+            <HeaderContent>
+                <MudTh>عنوان</MudTh>
+                <MudTh>مالک</MudTh>
+                <MudTh>نوع شخص</MudTh>
+                <MudTh>طول کد</MudTh>
+                <MudTh>بازه کد</MudTh>
+                <MudTh>استفاده</MudTh>
+                <MudTh>کد بعدی</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Title</MudTd>
+                <MudTd><MudText Typo="Typo.caption">@Titles.Owner(context.OwnerModule)</MudText></MudTd>
+                <MudTd>@(context.PersonKind is { } k ? Titles.Of(k) : "—")</MudTd>
+                <MudTd><span class="code">@context.CodeLength</span></MudTd>
+                <MudTd><span class="code">@context.CodeFrom</span> تا <span class="code">@context.CodeTo</span></MudTd>
+                <MudTd>
+                    <MudTooltip Text="@($"{context.UsedCount:#,0} از {context.Capacity:#,0} کد")">
+                        <MudProgressLinear Value="@Usage(context)" Color="@(Usage(context) > 85 ? Color.Error : Color.Primary)"
+                                           Style="min-width:70px" Rounded="true" Size="Size.Medium" />
+                    </MudTooltip>
+                </MudTd>
+                <MudTd><span class="code">@(context.NextCode ?? "پر شده")</span></MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudItem>
+
+    <MudItem xs="12">
+        <MudExpansionPanels Elevation="1">
+            <MudExpansionPanel Text="الگوی پیشنهادی تعریف گروه‌های تفصیلی" Expanded="_types.Count == 0">
+                <MudText Typo="Typo.body2" Class="mb-2">
+                    کد تفصیلی رشته‌ای هم‌طول با صفرهای ابتدایی است؛ هر گروه یک بازه از کدها را دارد و کد بعدی خودکار داده می‌شود.
+                </MudText>
+                <ul class="guide-list">
+                    <li><b>یک طول کد برای همه گروه‌ها</b> (مثلاً ۵ رقم) تا فهرست‌ها مرتب و قابل حدس بمانند.</li>
+                    <li><b>رقم‌های اول = پیشوند گروه</b>: مثلاً <span class="code">001xx</span> صندوق و بانک، <span class="code">002xx–004xx</span> کارکنان،
+                        <span class="code">009xx</span> مراکز هزینه، <span class="code">01001–03999</span> اشخاص حقیقی، <span class="code">04001–06999</span> اشخاص حقوقی،
+                        <span class="code">075xx</span> پروژه‌ها.</li>
+                    <li><b>ظرفیت آینده را در نظر بگیرید</b>: بزرگ کردن بازه بعداً ممکن است، ولی کوچک کردن فقط تا آخرین کد استفاده‌شده،
+                        و طول کد گروهی که تفصیلی دارد عوض نمی‌شود.</li>
+                    <li><b>اشخاص</b>: برای هر نوع شخص فقط یک گروه فعال «اشخاص»؛ همه نقش‌ها (مشتری، تأمین‌کننده، ...) همین یک کد را دارند.
+                        تفکیک نقش‌ها با «نقش‌های مجاز» در قواعد تفصیلی هر معین انجام می‌شود، نه با بازه کد.</li>
+                    <li><b>کارکنان</b>: یک گروه فعال با مالک «کارکنان»؛ تفصیلی کارمند جدا از تفصیلی طرف‌حسابی است.</li>
+                </ul>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private sealed class EditModel
+    {
+        public short? Id { get; init; }
+        public string OriginalTitle { get; init; } = "";
+        public string Title { get; set; } = "";
+        public string OwnerModule { get; set; } = OwnerModules.Manual;
+        public PersonKind? PersonKind { get; set; }
+        public int Length { get; set; } = 5;
+        public string From { get; set; } = "";
+        public string To { get; set; } = "";
+        public bool IsActive { get; set; } = true;
+        public int UsedCount { get; init; }
+        public string? MinUsed { get; init; }
+        public string? MaxUsed { get; init; }
+    }
+
+    private List<DetailTypeDto> _types = [];
+    private EditModel? _edit;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<DetailService, List<DetailTypeDto>>(s => s.GetTypesAsync(default));
+        if (r.Success) _types = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private static double Usage(DetailTypeDto t) => t.Capacity == 0 ? 0 : Math.Min(100, t.UsedCount * 100.0 / t.Capacity);
+
+    private void New()
+    {
+        var length = _types.GroupBy(t => t.CodeLength).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key ?? 5;
+        _edit = new EditModel { Length = length };
+        var free = FreeRanges().FirstOrDefault();
+        if (free != default) { _edit.From = free.From; _edit.To = Cap(free.From, free.To, 99); }
+    }
+
+    private void Edit(DetailTypeDto t) => _edit = new EditModel
+    {
+        Id = t.Id, OriginalTitle = t.Title, Title = t.Title, OwnerModule = t.OwnerModule, PersonKind = t.PersonKind,
+        Length = t.CodeLength, From = t.CodeFrom, To = t.CodeTo, IsActive = t.IsActive,
+        UsedCount = t.UsedCount, MinUsed = t.MinUsedCode, MaxUsed = t.MaxUsedCode
+    };
+
+    private void LengthChanged(int length)
+    {
+        _edit!.Length = Math.Clamp(length, DetailType.MinCodeLength, DetailType.MaxCodeLength);
+        var free = FreeRanges().FirstOrDefault();
+        (_edit.From, _edit.To) = free == default ? ("", "") : (free.From, Cap(free.From, free.To, 99));
+    }
+
+    /// <summary>صفرهای ابتدایی تا طول کد.</summary>
+    private string Pad(string? value)
+    {
+        var digits = IranianIds.Digits(value);
+        return digits.Length == 0 || digits.Length >= _edit!.Length ? digits : digits.PadLeft(_edit.Length, '0');
+    }
+
+    private long Capacity() => long.Parse(_edit!.To) - long.Parse(_edit.From) + 1;
+
+    private string NextPreview()
+    {
+        var next = _edit!.MaxUsed is null ? long.Parse(_edit.From) : long.Parse(_edit.MaxUsed) + 1;
+        var code = next.ToString().PadLeft(_edit.Length, '0');
+        return string.CompareOrdinal(code, _edit.To) > 0 ? "بازه پر است" : code;
+    }
+
+    /// <summary>خطای فعلی فرم (همان قواعد سرور) یا null.</summary>
+    private string? Problem()
+    {
+        var e = _edit!;
+        if (e.From.Length == 0 || e.To.Length == 0) return "از کد و تا کد را وارد کنید.";
+        if (!e.From.All(char.IsAsciiDigit) || !e.To.All(char.IsAsciiDigit)) return "کد فقط رقم است.";
+        if (e.From.Length != e.Length || e.To.Length != e.Length) return $"هر دو کد باید {e.Length} رقمی باشند.";
+        if (string.CompareOrdinal(e.From, e.To) > 0) return "«از کد» بزرگ‌تر از «تا کد» است.";
+        if (e.MinUsed is not null && (string.CompareOrdinal(e.MinUsed, e.From) < 0 || string.CompareOrdinal(e.MaxUsed, e.To) > 0))
+            return $"کدهای استفاده‌شده ({e.MinUsed} تا {e.MaxUsed}) باید داخل بازه بمانند.";
+        var overlap = _types.FirstOrDefault(t => t.Id != e.Id && t.CodeLength == e.Length
+            && string.CompareOrdinal(t.CodeFrom, e.To) <= 0 && string.CompareOrdinal(e.From, t.CodeTo) <= 0);
+        if (overlap is not null) return $"با گروه «{overlap.Title}» ({overlap.CodeFrom} تا {overlap.CodeTo}) هم‌پوشانی دارد.";
+        if (e.IsActive && e.OwnerModule is OwnerModules.Persons or OwnerModules.Payroll
+            && _types.FirstOrDefault(t => t.Id != e.Id && t.IsActive && t.OwnerModule == e.OwnerModule && t.PersonKind == e.PersonKind) is { } twin)
+            return $"گروه فعال «{twin.Title}» همین نقش را دارد؛ برای هر نوع شخص یک گروه فعال کافی است.";
+        return null;
+    }
+
+    /// <summary>فاصله‌های خالی بین بازه‌های گروه‌های هم‌طول.</summary>
+    private IEnumerable<(string From, string To)> FreeRanges()
+    {
+        var length = _edit?.Length ?? 5;
+        var max = long.Parse(new string('9', length));
+        var used = _types.Where(t => t.CodeLength == length && t.Id != _edit?.Id)
+            .Select(t => (From: long.Parse(t.CodeFrom), To: long.Parse(t.CodeTo))).OrderBy(r => r.From).ToList();
+        long cursor = 1;
+        foreach (var (from, to) in used)
+        {
+            if (from > cursor) yield return (Code(cursor, length), Code(from - 1, length));
+            cursor = Math.Max(cursor, to + 1);
+        }
+        if (cursor <= max) yield return (Code(cursor, length), Code(max, length));
+    }
+
+    private static string Code(long n, int length) => n.ToString().PadLeft(length, '0');
+
+    /// <summary>پیشنهاد اولیه: حداکثر n کد از ابتدای بازه آزاد.</summary>
+    private static string Cap(string from, string to, long n)
+    {
+        var end = Math.Min(long.Parse(to), long.Parse(from) + n - 1);
+        return Code(end, from.Length);
+    }
+
+    private async Task SaveAsync()
+    {
+        var e = _edit!;
+        var kind = e.OwnerModule is OwnerModules.Persons or OwnerModules.Payroll ? e.PersonKind : null;
+        var r = e.Id is short id
+            ? await Backend.Run<DetailService>(s => s.UpdateTypeAsync(id, new UpdateDetailTypeRequest(e.Title, e.OwnerModule, kind, e.From, e.To, e.IsActive), default))
+            : (await Backend.Run<DetailService, short>(s => s.CreateTypeAsync(new CreateDetailTypeRequest(e.Title, e.OwnerModule, e.From, e.To, kind), default)) is var c && c.Success
+                ? Result<bool>.Ok(true) : Result<bool>.Fail(c.Error!));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Snackbar.Add("گروه تفصیلی ذخیره شد.", Severity.Success);
+        _edit = null;
+        await LoadAsync();
+    }
+}

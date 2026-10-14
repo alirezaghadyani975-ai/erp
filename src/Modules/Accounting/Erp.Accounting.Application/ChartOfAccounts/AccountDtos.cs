@@ -6,7 +6,8 @@ public sealed record AccountNodeDto(
     int Id, string Code, string Title, AccountLevel Level, int? ParentId,
     AccountNature? Nature, AccountType? Type, bool IsStandard, bool IsActive, List<AccountNodeDto> Children);
 
-public sealed record DetailLevelDto(int LevelNo, bool IsRequired, List<short> DetailTypeIds);
+/// <param name="RoleIds">نقش‌هایی که فهرست اشخاص این سطح را فیلتر می‌کنند (فیلتر نرم)؛ خالی = همه.</param>
+public sealed record DetailLevelDto(int LevelNo, bool IsRequired, List<short> DetailTypeIds, List<short> RoleIds);
 
 public sealed record AccountDto(
     int Id, string Code, string Title, AccountLevel Level, int? ParentId,
@@ -17,4 +18,4 @@ public sealed record CreateAccountRequest(int ParentId, string Code, string Titl
 
 public sealed record UpdateAccountRequest(string Title, bool IsActive);
 
-public sealed record SetDetailLevelRequest(bool IsRequired, List<short> DetailTypeIds);
+public sealed record SetDetailLevelRequest(bool IsRequired, List<short> DetailTypeIds, List<short>? RoleIds = null);

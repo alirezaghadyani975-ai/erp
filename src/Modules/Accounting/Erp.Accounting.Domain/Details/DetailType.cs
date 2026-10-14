@@ -31,18 +31,52 @@ public class DetailType : AggregateRoot<short>
             throw new DomainException("عنوان نوع تفصیلی الزامی است.");
         if (!OwnerModules.All.Contains(ownerModule))
             throw new DomainException($"ماژول مالک «{ownerModule}» معتبر نیست.");
-        codeFrom = codeFrom.Trim();
-        codeTo = codeTo.Trim();
+        if (personKind is not null && ownerModule is not (OwnerModules.Persons or OwnerModules.Payroll))
+            throw new DomainException("نوع شخص (حقیقی/حقوقی) فقط برای گروه‌های اشخاص و کارکنان معنا دارد.");
+        if (ownerModule == OwnerModules.Payroll && personKind == BaseData.PersonKind.Legal)
+            throw new DomainException("کارکنان فقط شخص حقیقی‌اند.");
+        (CodeFrom, CodeTo) = CheckRange(codeFrom, codeTo);
+
+        Title = PersianText.Normalize(title);
+        OwnerModule = ownerModule;
+        PersonKind = personKind;
+    }
+
+    /// <summary>طول کد مجاز: ۲ تا ۱۰ رقم (ستون Code در دیتابیس ۱۰ نویسه است).</summary>
+    public const int MinCodeLength = 2;
+    public const int MaxCodeLength = 10;
+
+    private static (string From, string To) CheckRange(string codeFrom, string codeTo)
+    {
+        codeFrom = PersianText.Normalize(codeFrom ?? "");
+        codeTo = PersianText.Normalize(codeTo ?? "");
         if (codeFrom.Length == 0 || codeFrom.Length != codeTo.Length
             || !codeFrom.All(char.IsAsciiDigit) || !codeTo.All(char.IsAsciiDigit)
             || string.CompareOrdinal(codeFrom, codeTo) > 0)
             throw new DomainException("بازه کد باید عددی، هم‌طول و از کوچک به بزرگ باشد (مثل 01001 تا 02999).");
+        if (codeFrom.Length is < MinCodeLength or > MaxCodeLength)
+            throw new DomainException($"طول کد تفصیلی باید بین {MinCodeLength} تا {MaxCodeLength} رقم باشد.");
+        return (codeFrom, codeTo);
+    }
 
-        Title = PersianText.Normalize(title);
-        OwnerModule = ownerModule;
-        CodeFrom = codeFrom;
-        CodeTo = codeTo;
-        PersonKind = personKind;
+    /// <summary>ظرفیت بازه (تعداد کدهای ممکن).</summary>
+    public long Capacity => long.Parse(CodeTo) - long.Parse(CodeFrom) + 1;
+
+    /// <summary>
+    /// تغییر بازه. اگر تفصیلی دارد، طول کد ثابت می‌ماند و کوچک‌ترین/بزرگ‌ترین کد موجود باید داخل بازه جدید باشد.
+    /// </summary>
+    public void ChangeRange(string codeFrom, string codeTo, string? minUsed, string? maxUsed)
+    {
+        var (from, to) = CheckRange(codeFrom, codeTo);
+        if (minUsed is not null)
+        {
+            if (from.Length != CodeLength)
+                throw new DomainException("این گروه تفصیلی دارد؛ طول کد را نمی‌توان عوض کرد.");
+            if (string.CompareOrdinal(minUsed, from) < 0 || string.CompareOrdinal(maxUsed, to) > 0)
+                throw new DomainException($"کدهای موجود ({minUsed} تا {maxUsed}) باید داخل بازه جدید بمانند.");
+        }
+        CodeFrom = from;
+        CodeTo = to;
     }
 
     public string Title { get; private set; } = null!;
@@ -68,6 +102,20 @@ public class DetailType : AggregateRoot<short>
         if (!IsInRange(code))
             throw new DomainException($"بازه کد «{Title}» ({CodeFrom} تا {CodeTo}) پر شده است.");
         return code;
+    }
+
+    /// <summary>تغییر ماژول مالک یا نوع شخص؛ فقط وقتی گروه هنوز تفصیلی ندارد.</summary>
+    public void ChangeOwner(string ownerModule, PersonKind? personKind, bool hasDetails)
+    {
+        if (ownerModule == OwnerModule && personKind == PersonKind) return;
+        if (hasDetails)
+            throw new DomainException("این گروه تفصیلی دارد؛ مالک و نوع شخص آن عوض نمی‌شود.");
+        if (!OwnerModules.All.Contains(ownerModule))
+            throw new DomainException($"ماژول مالک «{ownerModule}» معتبر نیست.");
+        if (personKind is not null && ownerModule is not (OwnerModules.Persons or OwnerModules.Payroll))
+            throw new DomainException("نوع شخص (حقیقی/حقوقی) فقط برای گروه‌های اشخاص و کارکنان معنا دارد.");
+        OwnerModule = ownerModule;
+        PersonKind = personKind;
     }
 
     public void Rename(string title) =>

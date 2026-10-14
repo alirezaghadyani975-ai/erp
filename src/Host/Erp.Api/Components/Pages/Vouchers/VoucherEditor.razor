@@ -82,7 +82,7 @@ else
                                     {
                                         var idx = level.LevelNo - 1;
                                         <DetailPicker Value="line.Details[idx]" ValueChanged="d => line.Details[idx] = d"
-                                                      AllowedTypeIds="level.DetailTypeIds"
+                                                      AllowedTypeIds="level.DetailTypeIds" RoleIds="level.RoleIds"
                                                       Label="@($"تفصیلی {level.LevelNo}")"
                                                       Required="level.IsRequired" Disabled="ReadOnly" />
                                     }

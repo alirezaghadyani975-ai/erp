@@ -11,7 +11,8 @@ public class DatabaseScriptTests
         var assembly = typeof(Erp.Database.DatabaseMigrator).Assembly;
         var names = assembly.GetManifestResourceNames().Where(n => n.EndsWith(".sql")).Order().ToList();
         Assert.Equal(
-            ["Erp.Database.Migrations.01_schema.sql", "Erp.Database.Migrations.02_seed_coding.sql", "Erp.Database.Migrations.03_seed_calendar.sql"],
+            ["Erp.Database.Migrations.01_schema.sql", "Erp.Database.Migrations.02_seed_coding.sql", "Erp.Database.Migrations.03_seed_calendar.sql",
+             "Erp.Database.Migrations.05_persons_roles.sql"],
             names);
     }
 }

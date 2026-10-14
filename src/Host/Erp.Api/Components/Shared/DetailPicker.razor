@@ -1,28 +1,54 @@
-@* انتخاب تفصیلی از میان انواع مجاز یک سطح *@
+@* انتخاب تفصیلی از میان گروه‌های مجاز یک سطح.
+   فیلتر نرم نقش: اگر نقش‌های مجاز داده شود، اشخاص فقط با همان نقش‌ها می‌آیند؛
+   با زدن آیکون قیف، همه اشخاص نمایش داده می‌شوند (ثبت شخص بدون آن نقش ممنوع نیست). *@
 @inject Backend Backend
 
 <MudAutocomplete T="DetailAccountDto" Value="Value" ValueChanged="OnChanged" SearchFunc="Search"
                  ToStringFunc="@(d => d is null ? null : $"{d.Code} - {d.Title}")"
                  Label="@Label" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
                  MaxItems="30" DebounceInterval="250" ResetValueOnEmptyText="true" SelectOnActivation="true"
-                 Disabled="Disabled" Required="Required">
+                 Disabled="Disabled" Required="Required"
+                 Adornment="@(HasRoleFilter ? Adornment.End : Adornment.None)"
+                 AdornmentIcon="@(_showAll ? Icons.Material.Outlined.FilterAltOff : Icons.Material.Filled.FilterAlt)"
+                 AdornmentColor="@(_showAll ? Color.Default : Color.Primary)"
+                 AdornmentAriaLabel="@(_showAll ? "فقط نقش‌های مجاز" : "همه اشخاص")"
+                 OnAdornmentClick="ToggleFilter"
+                 HelperText="@(HasRoleFilter && _showAll ? "همه اشخاص نمایش داده می‌شوند" : null)">
     <ItemTemplate Context="d">
         <span class="code ml-2">@d.Code</span> @d.Title
     </ItemTemplate>
-    <NoItemsTemplate><MudText Typo="Typo.body2" Class="pa-2">تفصیلی پیدا نشد.</MudText></NoItemsTemplate>
+    <NoItemsTemplate>
+        <MudText Typo="Typo.body2" Class="pa-2">
+            تفصیلی پیدا نشد.
+            @if (HasRoleFilter && !_showAll)
+            {
+                <span> برای دیدن همه اشخاص روی آیکون قیف بزنید.</span>
+            }
+        </MudText>
+    </NoItemsTemplate>
 </MudAutocomplete>
 
 @code {
     [Parameter] public DetailAccountDto? Value { get; set; }
     [Parameter] public EventCallback<DetailAccountDto?> ValueChanged { get; set; }
-    [Parameter] public IReadOnlyCollection<short> AllowedTypeIds { get; set; } = [];
+    /// <summary>گروه‌های مجاز؛ null یعنی همه گروه‌ها (برای گزارش‌ها).</summary>
+    [Parameter] public IReadOnlyCollection<short>? AllowedTypeIds { get; set; } = [];
+    /// <summary>نقش‌های مجاز (فیلتر نرم)؛ خالی یعنی بدون فیلتر.</summary>
+    [Parameter] public IReadOnlyCollection<short>? RoleIds { get; set; }
     [Parameter] public string Label { get; set; } = "تفصیلی";
     [Parameter] public bool Required { get; set; }
     [Parameter] public bool Disabled { get; set; }
 
+    private bool _showAll;
+
+    private bool HasRoleFilter => RoleIds is { Count: > 0 };
+
+    private void ToggleFilter() => _showAll = !_showAll;
+
     private async Task<IEnumerable<DetailAccountDto>> Search(string? term, CancellationToken ct)
     {
-        var result = await Backend.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(AllowedTypeIds, term, ct));
+        var roles = HasRoleFilter && !_showAll ? RoleIds : null;
+        var result = await Backend.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(AllowedTypeIds, roles, term, ct));
         return result.Value ?? [];
     }
 

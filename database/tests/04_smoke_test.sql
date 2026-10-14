@@ -18,7 +18,17 @@ SELECT @Y0 = MIN([Date]), @Y1 = MAX([Date]) FROM base.Calendar WHERE PersianYear
 SELECT @AR = Id FROM fin.Accounts WHERE Code = '2305';     -- دریافتنی تجاری اشخاص حقیقی
 SELECT @Sales = Id FROM fin.Accounts WHERE Code = '6101';  -- فروش
 SELECT @Kol23 = Id FROM fin.Accounts WHERE Code = '23';    -- یک حساب کل (غیرمعین)
-SELECT @CustType = Id FROM fin.DetailTypes WHERE OwnerModule = 'persons' AND PersonKind = 1 AND CodeFrom = '01001';
+SELECT TOP (1) @CustType = Id FROM fin.DetailTypes WHERE OwnerModule = 'persons' AND PersonKind = 1 AND IsActive = 1;
+
+-- کد آزاد بعدی در گروه اشخاص حقیقی (دیتابیس ممکن است اشخاص واقعی هم داشته باشد)
+DECLARE @CustCode VARCHAR(10), @OutCode VARCHAR(10);
+SELECT @CustCode = RIGHT(REPLICATE('0', LEN(t.CodeFrom))
+                         + CAST(ISNULL(MAX(CAST(d.Code AS BIGINT)), CAST(t.CodeFrom AS BIGINT) - 1) + 1 AS VARCHAR(20)),
+                         LEN(t.CodeFrom)),
+       @OutCode = RIGHT(REPLICATE('0', LEN(t.CodeFrom)) + CAST(CAST(t.CodeTo AS BIGINT) + 1 AS VARCHAR(20)), LEN(t.CodeFrom))
+FROM fin.DetailTypes t LEFT JOIN fin.DetailAccounts d ON d.DetailTypeId = t.Id
+WHERE t.Id = @CustType
+GROUP BY t.CodeFrom, t.CodeTo;
 
 -- 1) ساخت سال مالی با ۱۲ دوره
 EXEC fin.usp_CreateFiscalYear @PersianYear = 1419;
@@ -31,11 +41,11 @@ INSERT @R VALUES (N'سال مالی ۱۴۱۹ با ۱۲ دوره و تاریخ ش
 -- 2) شخص و تفصیلی مشتری
 INSERT base.Persons (PersonKind, DisplayName) VALUES (1, N'مشتری تست');
 SET @PersonId = SCOPE_IDENTITY();
-INSERT fin.DetailAccounts (DetailTypeId, Code, Title, PersonId, SourceModule) VALUES (@CustType, '01001', N'مشتری تست', @PersonId, 'persons');
+INSERT fin.DetailAccounts (DetailTypeId, Code, Title, PersonId, SourceModule) VALUES (@CustType, @CustCode, N'مشتری تست', @PersonId, 'persons');
 SET @Cust = SCOPE_IDENTITY();
 
 BEGIN TRY
-    INSERT fin.DetailAccounts (DetailTypeId, Code, Title) VALUES (@CustType, '09999', N'خارج از بازه');
+    INSERT fin.DetailAccounts (DetailTypeId, Code, Title) VALUES (@CustType, @OutCode, N'خارج از بازه');
     SET @err = 0;
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد کد تفصیلی خارج از بازه نوع', N'50002', CAST(@err AS NVARCHAR(50)));

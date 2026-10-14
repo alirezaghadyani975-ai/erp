@@ -18,8 +18,10 @@ sqlcmd -S .\ERP -E -C -I -h -1 -W -Q "SET NOCOUNT ON; SELECT @@SERVERNAME + ' | 
 echo ----- [3] build >> "%LOG%"
 dotnet build -nologo -v q >> "%LOG%" 2>&1
 
-echo ----- [4] unit tests >> "%LOG%"
+echo ----- [4] tests (domain + SQL tests on ErpCompany_Test) >> "%LOG%"
+set "ERP_TEST_SQL=Server=.\ERP;Database=ErpCompany_Test;Trusted_Connection=True;TrustServerCertificate=True"
 dotnet test -nologo -v q --no-build >> "%LOG%" 2>&1
+set "ERP_TEST_SQL="
 
 echo ----- [5] start API (creates/updates database) >> "%LOG%"
 start "Erp API" cmd /k "dotnet run --no-build --project src\Host\Erp.Api --launch-profile http > %APILOG% 2>&1"
@@ -45,6 +47,10 @@ curl -s %API%/accounting/accounts/by-code/2305 >> "%LOG%" 2>&1
 echo. >> "%LOG%"
 echo GET detail types: >> "%LOG%"
 curl -s %API%/accounting/details/types >> "%LOG%" 2>&1
+echo. >> "%LOG%"
+
+echo POST trial balance (group level): >> "%LOG%"
+curl -s -X POST %API%/accounting/reports/trial-balance -H "Content-Type: application/json" -d "{\"filter\":{\"fiscalYearId\":1},\"level\":1}" >> "%LOG%" 2>&1
 echo. >> "%LOG%"
 
 echo ----- [7] database contents >> "%LOG%"
