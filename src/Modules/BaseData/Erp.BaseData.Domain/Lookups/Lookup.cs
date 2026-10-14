@@ -12,6 +12,7 @@ public static class LookupCodes
     public const string AddressType = "address_type";
     public const string PersonGroup = "person_group";
     public const string ContactRole = "contact_role";
+    public const string CostBase = "cost_base";
 }
 
 /// <summary>

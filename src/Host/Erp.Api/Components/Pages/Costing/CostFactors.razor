@@ -1,0 +1,201 @@
+@page "/costing/factors"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>عوامل هزینه</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">عوامل هزینه</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">عامل جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    عامل هزینه تفصیلی سطح ۱ معین‌های هزینه است و کد تفصیلی‌اش خودکار ساخته می‌شود. فقط در کلِ گروه نوع هزینه‌اش ثبت می‌شود
+    (مثلاً «اضافه‌کاری» فقط در معین‌های حقوق و دستمزد). رفتار هزینه برای تحلیل هزینه-حجم-سود و بودجه انعطاف‌پذیر است.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudTextField T="string" @bind-Value="_term" Immediate="true" Placeholder="عنوان یا کد" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:220px" />
+        <div style="min-width:220px"><EnumSelect TEnum="CostNature" @bind-Value="_nature" Label="گروه هزینه" /></div>
+        <MudSelect T="short?" @bind-Value="_typeFilter" Label="نوع هزینه" Clearable="true" Dense="true"
+                   Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:220px">
+            @foreach (var t in _types.Where(t => _nature is null || t.Nature == _nature))
+            {
+                <MudSelectItem T="short?" Value="t.Id">@t.Title</MudSelectItem>
+            }
+        </MudSelect>
+        <div style="min-width:160px"><EnumSelect TEnum="CostBehavior" @bind-Value="_behavior" Label="رفتار" /></div>
+        <MudCheckBox T="bool" @bind-Value="_showInactive" Label="غیرفعال‌ها هم" Dense="true" />
+    </MudStack>
+
+    <MudTable T="CostFactorDto" Items="Visible" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>کد تفصیلی</MudTh>
+            <MudTh>عامل هزینه</MudTh>
+            <MudTh>نوع هزینه</MudTh>
+            <MudTh>گروه</MudTh>
+            <MudTh>رفتار</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Code</span></MudTd>
+            <MudTd>
+                @context.Title
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd>@context.ExpenseTypeTitle</MudTd>
+            <MudTd><MudText Typo="Typo.caption">@Titles.Of(context.Nature)</MudText></MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@BehaviorColor(context.Behavior)">
+                    @Titles.Of(context.Behavior)@(context.VariablePercent is { } p ? $" ({p:0.##}٪ متغیر)" : "")
+                </MudChip>
+            </MudTd>
+            <MudTd Style="text-align:left">
+                <span @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" aria-label="حذف"
+                                   OnClick="() => DeleteAsync(context)" />
+                </span>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">عاملی پیدا نشد.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_editId is null ? "عامل هزینه جدید" : "ویرایش عامل هزینه")
+            @if (_editCode is not null) { <span class="code mr-2">@_editCode</span> }
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12"><MudTextField @bind-Value="_title" Immediate="true" Label="عنوان" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
+            <MudItem xs="12">
+                <MudSelect T="short?" @bind-Value="_typeId" Label="نوع هزینه" Required="true" Dense="true"
+                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                           HelperText="@(SelectedType is { } st ? $"در معین‌های «{Titles.Of(st.Nature)}» ثبت می‌شود" : null)">
+                    @foreach (var group in _types.Where(t => t.IsActive || t.Id == _typeId).GroupBy(t => t.Nature))
+                    {
+                        <MudListSubheader>@Titles.Of(group.Key)</MudListSubheader>
+                        @foreach (var t in group)
+                        {
+                            <MudSelectItem T="short?" Value="t.Id">@t.Title</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">رفتار هزینه</MudText>
+                <MudRadioGroup T="CostBehavior" @bind-Value="_behaviorEdit">
+                    <MudRadio T="CostBehavior" Value="CostBehavior.Fixed" Color="Color.Primary" Dense="true">ثابت</MudRadio>
+                    <MudRadio T="CostBehavior" Value="CostBehavior.Variable" Color="Color.Primary" Dense="true">متغیر</MudRadio>
+                    <MudRadio T="CostBehavior" Value="CostBehavior.Mixed" Color="Color.Primary" Dense="true">نیمه‌متغیر</MudRadio>
+                </MudRadioGroup>
+            </MudItem>
+            @if (_behaviorEdit == CostBehavior.Mixed)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal?" @bind-Value="_percent" Label="درصد جزء متغیر" Min="1" Max="99"
+                                     HelperText="مثلاً برق: ۷۰٪ متغیر با تولید، ۳۰٪ ثابت" Adornment="Adornment.End" AdornmentText="٪"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+            }
+            <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="توضیحات" Lines="2" MaxLength="500" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="@(string.IsNullOrWhiteSpace(_title) || _typeId is null)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<CostFactorDto> _factors = [];
+    private List<ExpenseTypeDto> _types = [];
+    private bool _loading = true;
+    private string? _term;
+    private CostNature? _nature;
+    private short? _typeFilter;
+    private CostBehavior? _behavior;
+    private bool _showInactive;
+
+    private bool _editOpen;
+    private int? _editId;
+    private string? _editCode;
+    private string? _title;
+    private short? _typeId;
+    private CostBehavior _behaviorEdit = CostBehavior.Fixed;
+    private decimal? _percent;
+    private string? _notes;
+    private bool _active = true;
+
+    private ExpenseTypeDto? SelectedType => _types.FirstOrDefault(t => t.Id == _typeId);
+
+    private IEnumerable<CostFactorDto> Visible => _factors
+        .Where(f => _showInactive || f.IsActive)
+        .Where(f => _nature is null || f.Nature == _nature)
+        .Where(f => _typeFilter is null || f.ExpenseTypeId == _typeFilter)
+        .Where(f => _behavior is null || f.Behavior == _behavior)
+        .Where(f => string.IsNullOrWhiteSpace(_term) || f.Title.Contains(PersianText.Normalize(_term)) || (f.Code?.StartsWith(_term.Trim()) ?? false));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _types = (await Backend.Run<CostSetupService, List<ExpenseTypeDto>>(s => s.GetExpenseTypesAsync(true, default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private static Color BehaviorColor(CostBehavior b) => b switch
+    {
+        CostBehavior.Fixed => Color.Default, CostBehavior.Variable => Color.Success, _ => Color.Warning
+    };
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<CostFactorService, List<CostFactorDto>>(s => s.SearchAsync(null, null, null, true, default));
+        if (r.Success) _factors = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private void New()
+    {
+        (_editId, _editCode, _title, _typeId, _behaviorEdit, _percent, _notes, _active) =
+            (null, null, null, _typeFilter, CostBehavior.Fixed, null, null, true);
+        _editOpen = true;
+    }
+
+    private void Edit(CostFactorDto f)
+    {
+        (_editId, _editCode, _title, _typeId, _behaviorEdit, _percent, _notes, _active) =
+            (f.Id, f.Code, f.Title, f.ExpenseTypeId, f.Behavior, f.VariablePercent, f.Notes, f.IsActive);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveCostFactorRequest(_title!, _typeId!.Value, _behaviorEdit,
+            _behaviorEdit == CostBehavior.Mixed ? _percent : null, _active, _notes);
+        var error = _editId is int id
+            ? (await Backend.Run<CostFactorService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<CostFactorService, int>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add(_editId is null ? "عامل ثبت شد و تفصیلی آن ساخته شد." : "تغییرات ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(CostFactorDto f)
+    {
+        if (!await Dialogs.DeleteAsync($"عامل «{f.Title}»", "تفصیلی آن هم حذف می‌شود؛ اگر در سند آمده باشد فقط غیرفعال‌کردن ممکن است.")) return;
+        var r = await Backend.Run<CostFactorService>(s => s.DeleteAsync(f.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

@@ -35,6 +35,9 @@
     [Parameter] public IReadOnlyCollection<short>? AllowedTypeIds { get; set; } = [];
     /// <summary>نقش‌های مجاز (فیلتر نرم)؛ خالی یعنی بدون فیلتر.</summary>
     [Parameter] public IReadOnlyCollection<short>? RoleIds { get; set; }
+    /// <summary>ماهیت و وظیفه معین هزینه؛ فقط عوامل و مراکز سازگار نمایش داده می‌شوند.</summary>
+    [Parameter] public CostNature? CostNature { get; set; }
+    [Parameter] public CostFunction? CostFunction { get; set; }
     [Parameter] public string Label { get; set; } = "تفصیلی";
     [Parameter] public bool Required { get; set; }
     [Parameter] public bool Disabled { get; set; }
@@ -48,7 +51,7 @@
     private async Task<IEnumerable<DetailAccountDto>> Search(string? term, CancellationToken ct)
     {
         var roles = HasRoleFilter && !_showAll ? RoleIds : null;
-        var result = await Backend.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(AllowedTypeIds, roles, term, ct));
+        var result = await Backend.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(AllowedTypeIds, roles, term, CostNature, CostFunction, ct));
         return result.Value ?? [];
     }
 

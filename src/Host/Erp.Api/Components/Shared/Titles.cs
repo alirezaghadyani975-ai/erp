@@ -1,6 +1,7 @@
 using Erp.Accounting.Domain.Details;
 using Erp.BaseData.Contracts;
 using Erp.BaseData.Domain.Persons;
+using Erp.Costing.Contracts;
 
 namespace Erp.Api.Components.Shared;
 
@@ -19,6 +20,11 @@ public static class Titles
         [TaxPayerType.Natural] = "حقیقی", [TaxPayerType.Legal] = "حقوقی",
         [TaxPayerType.CivilPartnership] = "مشارکت مدنی", [TaxPayerType.Foreign] = "اتباع غیرایرانی",
         [TaxPayerType.FinalConsumer] = "مصرف‌کننده نهایی",
+        [CostNature.Payroll] = "حقوق و دستمزد", [CostNature.Depreciation] = "استهلاک",
+        [CostNature.OtherOperating] = "سایر هزینه‌های عملیاتی", [CostNature.Finance] = "هزینه‌های مالی (تأمین مالی)",
+        [CostFunction.Production] = "تولیدی", [CostFunction.Service] = "خدماتی (پشتیبانی تولید)",
+        [CostFunction.Admin] = "اداری", [CostFunction.Selling] = "فروش و توزیع",
+        [CostBehavior.Fixed] = "ثابت", [CostBehavior.Variable] = "متغیر", [CostBehavior.Mixed] = "نیمه‌متغیر",
     };
 
     public static string Of<TEnum>(TEnum? value) where TEnum : struct, Enum =>
@@ -32,7 +38,9 @@ public static class Titles
         OwnerModules.Payroll => "کارکنان (حقوق و دستمزد)",
         OwnerModules.Treasury => "خزانه‌داری (صندوق، بانک، تسهیلات)",
         OwnerModules.Assets => "دارایی‌های ثابت",
-        OwnerModules.Manual => "دستی (مرکز هزینه، پروژه، ...)",
+        OwnerModules.Manual => "دستی (پروژه، قرارداد، ...)",
+        OwnerModules.CostFactors => "عوامل هزینه (بهای تمام‌شده)",
+        OwnerModules.CostCenters => "مراکز هزینه (بهای تمام‌شده)",
         _ => ownerModule
     };
 
@@ -42,6 +50,8 @@ public static class Titles
         OwnerModules.Payroll => "تفصیلی کارمند خودکار با افزودن نقش «کارمند» به شخص ساخته می‌شود.",
         OwnerModules.Treasury => "صندوق‌ها، حساب‌های بانکی، اعتبارات اسنادی و تسهیلات؛ بعداً از ماژول خزانه ساخته می‌شوند.",
         OwnerModules.Assets => "دارایی‌هایی که جداگانه پیگیری می‌شوند؛ بعداً از ماژول دارایی ثابت ساخته می‌شوند.",
-        _ => "تفصیلی‌ها دستی در همین برنامه تعریف می‌شوند (مرکز هزینه، پروژه، قرارداد، ...)."
+        OwnerModules.CostFactors => "تفصیلی خودکار از تعریف عامل هزینه ساخته می‌شود (بهای تمام‌شده ← عوامل هزینه).",
+        OwnerModules.CostCenters => "تفصیلی خودکار از تعریف مرکز هزینه ساخته می‌شود (بهای تمام‌شده ← مراکز هزینه).",
+        _ => "تفصیلی‌ها دستی در همین برنامه تعریف می‌شوند (پروژه، قرارداد، ...)."
     };
 }

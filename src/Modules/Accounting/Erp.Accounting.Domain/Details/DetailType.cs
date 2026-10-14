@@ -12,9 +12,18 @@ public static class OwnerModules
     public const string Payroll = "payroll";
     public const string Assets = "assets";
     public const string Manual = "manual";
+    public const string CostFactors = "cost_factors";
+    public const string CostCenters = "cost_centers";
 
     public static readonly IReadOnlySet<string> All =
-        new HashSet<string> { Persons, Treasury, Payroll, Assets, Manual };
+        new HashSet<string> { Persons, Treasury, Payroll, Assets, Manual, CostFactors, CostCenters };
+
+    /// <summary>تفصیلی این گروه‌ها فقط از ماژول مالک ساخته و مدیریت می‌شود، نه دستی.</summary>
+    public static bool IsManagedByModule(string ownerModule) =>
+        ownerModule is Persons or Payroll or CostFactors or CostCenters;
+
+    /// <summary>برای هر یک از این مالک‌ها (و هر نوع شخص) فقط یک گروه فعال مجاز است.</summary>
+    public static bool IsSingleActive(string ownerModule) => IsManagedByModule(ownerModule);
 }
 
 /// <summary>

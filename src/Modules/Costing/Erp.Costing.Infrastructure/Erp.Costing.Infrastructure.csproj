@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Erp.Costing.Application\Erp.Costing.Application.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\Erp.Database\Erp.Database.csproj" />
+  </ItemGroup>
+</Project>

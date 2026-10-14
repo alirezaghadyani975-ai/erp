@@ -42,7 +42,11 @@ internal class VoucherLineConfiguration : IEntityTypeConfiguration<VoucherLine>
 {
     public void Configure(EntityTypeBuilder<VoucherLine> b)
     {
-        b.ToTable("VoucherLines", "fin", t => t.HasTrigger("trg_VoucherLines_Validate"));
+        b.ToTable("VoucherLines", "fin", t =>
+        {
+            t.HasTrigger("trg_VoucherLines_Validate");
+            t.HasTrigger("trg_VoucherLines_CostDims");
+        });
         b.HasKey(l => l.Id);
         b.Property(l => l.Debit).HasPrecision(24, 4);
         b.Property(l => l.Credit).HasPrecision(24, 4);

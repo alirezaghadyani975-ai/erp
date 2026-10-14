@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using System.Text.Unicode;
 using Erp.Accounting.Infrastructure;
 using Erp.BaseData.Infrastructure;
+using Erp.Costing.Infrastructure;
 using Erp.Api.Components;
 using Erp.Api.Components.Shared;
 using Erp.Api.Infrastructure;
@@ -21,6 +22,7 @@ builder.Services.AddSingleton<DatabaseMigrator>();
 
 // ماژول‌ها — ماژول‌های بعدی (انبار، فروش، خرید، کارگزینی، ...) همین‌جا اضافه می‌شوند
 builder.Services.AddBaseDataModule();
+builder.Services.AddCostingModule();
 builder.Services.AddAccountingModule();
 
 builder.Services.AddControllers().AddJsonOptions(o =>

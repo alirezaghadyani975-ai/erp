@@ -1,3 +1,4 @@
+using Erp.Costing.Contracts;
 using Erp.SharedKernel.Text;
 using Erp.Accounting.Domain.ChartOfAccounts;
 using Erp.Accounting.Domain.Details;
@@ -221,6 +222,10 @@ public class Voucher : AggregateRoot<long>
                 throw new DomainException($"تفصیلی «{detail.Code} - {detail.Title}» غیرفعال است.");
             if (!account.AcceptsDetail(level, detail.DetailTypeId))
                 throw new DomainException($"حساب «{account.Title}» در سطح {level} تفصیلی «{detail.Title}» را نمی‌پذیرد.");
+            if (detail.CostNature is { } nature && account.CostNature != nature)
+                throw new DomainException($"عامل هزینه «{detail.Title}» از گروه «{CostTitles.Of(nature)}» است و در «{account.Title}» ثبت نمی‌شود.");
+            if (detail.CostFunction is { } function && account.CostFunction is { } accountFunction && function != accountFunction)
+                throw new DomainException($"مرکز «{detail.Title}» {CostTitles.Of(function)} است و در «{account.Title}» ({CostTitles.Of(accountFunction)}) ثبت نمی‌شود.");
 
             ids[i] = detail.Id;
         }

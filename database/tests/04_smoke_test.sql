@@ -125,6 +125,24 @@ INSERT @R VALUES (N'نمای دفتر: دو ردیف با تاریخ شمسی ۱
     CASE WHEN (SELECT COUNT(*) FROM fin.vLedger WHERE VoucherId = @V1 AND PersianDate = '1419/01/12') = 2
          THEN N'قبول' ELSE N'رد' END);
 
+-- 8) عامل هزینه فقط در کلِ ماهیت خودش (اسکریپت ۰۷)
+DECLARE @V3 BIGINT, @Salary INT, @PayFactor INT, @DepFactor INT;
+SELECT @Salary = Id FROM fin.Accounts WHERE Code = '7101';
+SELECT TOP (1) @PayFactor = Id FROM fin.DetailAccounts WHERE SourceModule = 'costing' AND CostNature = 1;
+SELECT TOP (1) @DepFactor = Id FROM fin.DetailAccounts WHERE SourceModule = 'costing' AND CostNature = 2;
+INSERT fin.Vouchers (FiscalYearId, TempNo, VoucherDate, CreatedBy, [Description]) VALUES (@YearId, 3, @D1, 1, N'تست عامل هزینه');
+SET @V3 = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT fin.VoucherLines (VoucherId, RowNo, AccountId, Detail1Id, Debit) VALUES (@V3, 1, @Salary, @PayFactor, 100);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'ثبت عامل حقوقی در معین حقوق تولیدی', N'0', CAST(@err AS NVARCHAR(50)));
+BEGIN TRY
+    INSERT fin.VoucherLines (VoucherId, RowNo, AccountId, Detail1Id, Debit) VALUES (@V3, 2, @Salary, @DepFactor, 100);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد عامل استهلاک در معین حقوق', N'50060', CAST(@err AS NVARCHAR(50)));
+
 -- نتیجه
 SELECT Seq, Test, Expected, Got, CASE WHEN Expected = Got THEN N'قبول' ELSE N'رد' END AS Result
 FROM @R ORDER BY Seq;

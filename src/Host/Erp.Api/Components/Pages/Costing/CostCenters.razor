@@ -1,0 +1,115 @@
+@page "/costing/centers"
+@inject Backend Backend
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>مراکز هزینه</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">مراکز هزینه</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.Lan" Href="/costing/center-types">انواع مرکز</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/costing/centers/new">مرکز جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    مرکز هزینه تفصیلی سطح ۲ معین‌های هزینه است و فقط در معینِ وظیفه نوعش ثبت می‌شود (مرکز خدماتی در «... خدماتی»).
+    ترتیب و مبنای تسهیم مراکز خدماتی و مبنای جذب سربار مراکز تولیدی برای محاسبه بهای تمام‌شده نگه داشته می‌شود.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudTextField T="string" @bind-Value="_term" Immediate="true" Placeholder="عنوان یا کد" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:220px" />
+        <div style="min-width:220px"><EnumSelect TEnum="CostFunction" @bind-Value="_function" Label="وظیفه" /></div>
+        <MudCheckBox T="bool" @bind-Value="_showInactive" Label="غیرفعال‌ها هم" Dense="true" />
+    </MudStack>
+
+    <MudTable T="CostCenterListItemDto" Items="Visible" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Nav.NavigateTo($"/costing/centers/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>کد تفصیلی</MudTh>
+            <MudTh>مرکز</MudTh>
+            <MudTh>نوع</MudTh>
+            <MudTh>بالادست</MudTh>
+            <MudTh>مسئول</MudTh>
+            <MudTh>تسهیم / جذب</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Code</span></MudTd>
+            <MudTd>
+                @context.Title
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@FunctionColor(context.Function)">@context.TypeTitle</MudChip>
+            </MudTd>
+            <MudTd>@context.ParentTitle</MudTd>
+            <MudTd>@context.ManagerName</MudTd>
+            <MudTd>
+                @if (context.Function == CostFunction.Production)
+                {
+                    <MudText Typo="Typo.caption">@(context.AbsorptionBaseTitle is { } ab ? $"جذب: {ab}" : "مبنای جذب تعیین نشده")</MudText>
+                }
+                else if (context.TargetCount > 0)
+                {
+                    <MudText Typo="Typo.caption">
+                        @(context.AllocationOrder is { } o ? $"مرحله {o}، " : "")@context.AllocationBaseTitle ← @context.TargetCount مرکز
+                    </MudText>
+                }
+                else if (context.Function != CostFunction.Selling)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Warning">تسهیم تعیین نشده</MudText>
+                }
+            </MudTd>
+            <MudTd Style="text-align:left">
+                <span @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" aria-label="حذف"
+                                   OnClick="() => DeleteAsync(context)" />
+                </span>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4">مرکزی تعریف نشده است. ثبت سند در معین‌های هزینه به مرکز هزینه نیاز دارد.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<CostCenterListItemDto> _centers = [];
+    private bool _loading = true;
+    private string? _term;
+    private CostFunction? _function;
+    private bool _showInactive;
+
+    private IEnumerable<CostCenterListItemDto> Visible => _centers
+        .Where(c => _showInactive || c.IsActive)
+        .Where(c => _function is null || c.Function == _function)
+        .Where(c => string.IsNullOrWhiteSpace(_term) || c.Title.Contains(PersianText.Normalize(_term)) || (c.Code?.StartsWith(_term.Trim()) ?? false));
+
+    internal static Color FunctionColor(CostFunction f) => f switch
+    {
+        CostFunction.Production => Color.Primary, CostFunction.Service => Color.Secondary,
+        CostFunction.Admin => Color.Default, _ => Color.Warning
+    };
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<CostCenterService, List<CostCenterListItemDto>>(s => s.GetAllAsync(true, default));
+        if (r.Success) _centers = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private async Task DeleteAsync(CostCenterListItemDto c)
+    {
+        if (!await Dialogs.DeleteAsync($"مرکز «{c.Title}»", "تفصیلی آن هم حذف می‌شود؛ اگر در سند آمده باشد فقط غیرفعال‌کردن ممکن است.")) return;
+        var r = await Backend.Run<CostCenterService>(s => s.DeleteAsync(c.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

@@ -157,5 +157,6 @@ public class AccountService(IAccountingDbContext db)
         a.DetailLevels.OrderBy(l => l.LevelNo)
             .Select(l => new DetailLevelDto(l.LevelNo, l.IsRequired, l.AllowedTypes.Select(t => t.DetailTypeId).ToList(),
                 l.AllowedRoles.Select(r => r.RoleId).ToList()))
-            .ToList());
+            .ToList(),
+        a.CostNature, a.CostFunction);
 }

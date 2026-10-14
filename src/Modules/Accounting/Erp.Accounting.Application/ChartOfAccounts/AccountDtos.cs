@@ -1,3 +1,4 @@
+using Erp.Costing.Contracts;
 using Erp.Accounting.Domain.ChartOfAccounts;
 
 namespace Erp.Accounting.Application.ChartOfAccounts;
@@ -11,7 +12,8 @@ public sealed record DetailLevelDto(int LevelNo, bool IsRequired, List<short> De
 
 public sealed record AccountDto(
     int Id, string Code, string Title, AccountLevel Level, int? ParentId,
-    AccountNature? Nature, AccountType? Type, bool IsStandard, bool IsActive, List<DetailLevelDto> DetailLevels);
+    AccountNature? Nature, AccountType? Type, bool IsStandard, bool IsActive, List<DetailLevelDto> DetailLevels,
+    CostNature? CostNature = null, CostFunction? CostFunction = null);
 
 /// <summary>حساب اختصاصی شرکت (کل یا معین). برای معین، ماهیت لازم است و نوع اگر خالی باشد از گروه گرفته می‌شود.</summary>
 public sealed record CreateAccountRequest(int ParentId, string Code, string Title, AccountNature? Nature, AccountType? Type);

@@ -5,6 +5,12 @@
     <Project Path="src/Modules/BaseData/Erp.BaseData.Domain/Erp.BaseData.Domain.csproj" />
     <Project Path="src/Modules/BaseData/Erp.BaseData.Infrastructure/Erp.BaseData.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Costing/">
+    <Project Path="src/Modules/Costing/Erp.Costing.Application/Erp.Costing.Application.csproj" />
+    <Project Path="src/Modules/Costing/Erp.Costing.Contracts/Erp.Costing.Contracts.csproj" />
+    <Project Path="src/Modules/Costing/Erp.Costing.Domain/Erp.Costing.Domain.csproj" />
+    <Project Path="src/Modules/Costing/Erp.Costing.Infrastructure/Erp.Costing.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/BuildingBlocks/">
     <Project Path="src/BuildingBlocks/Erp.Database/Erp.Database.csproj" />

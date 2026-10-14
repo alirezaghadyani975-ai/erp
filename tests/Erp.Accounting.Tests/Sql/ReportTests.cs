@@ -49,14 +49,17 @@ public class ReportTests(SqlFixture db)
             var p1 = await db.Run<PersonService, int>(s => s.CreateAsync(Customer("مشتری", "یک", customerRole), default));
             var p2 = await db.Run<PersonService, int>(s => s.CreateAsync(Customer("مشتری", "دو", customerRole), default));
             var details = await db.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(customerType, null, default));
+            // صندوق تفصیلی صندوق می‌خواهد (قاعده پیش‌فرض معین 2603)
+            var cashType = types.Single(t => t.CodeFrom == "00101").Id;
+            await db.Run<DetailService, int>(s => s.CreateAccountAsync(new CreateDetailAccountRequest(cashType, "صندوق مرکزی", null), default));
             var (c1, code1) = details.Where(d => d.PersonId == p1).Select(d => (d.Id, d.Code)).Single();
             var (c2, code2) = details.Where(d => d.PersonId == p2).Select(d => (d.Id, d.Code)).Single();
 
             var opening = await Voucher(yearId, "1405/01/01", VoucherType.Opening,
-                Line("2603", null, 5000, 0), Line("2305", code1, 500, 0), Line("3001", null, 0, 5500));
+                Line("2603", "00101", 5000, 0), Line("2305", code1, 500, 0), Line("3001", null, 0, 5500));
             var sale1 = await Voucher(yearId, "1405/02/10", VoucherType.Normal, Line("2305", code1, 1000, 0), Line("6101", null, 0, 1000));
             var sale2 = await Voucher(yearId, "1405/03/05", VoucherType.Normal, Line("2305", code2, 300, 0), Line("6101", null, 0, 300));
-            var receipt = await Voucher(yearId, "1405/03/20", VoucherType.Normal, Line("2603", null, 400, 0), Line("2305", code1, 0, 400));
+            var receipt = await Voucher(yearId, "1405/03/20", VoucherType.Normal, Line("2603", "00101", 400, 0), Line("2305", code1, 0, 400));
             await Voucher(yearId, "1405/04/01", VoucherType.Normal, Line("2305", code1, 99, 0), Line("6101", null, 0, 99));
 
             foreach (var id in new[] { opening, sale1, sale2, receipt })

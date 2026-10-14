@@ -1,0 +1,273 @@
+@page "/costing/centers/new"
+@page "/costing/centers/{Id:int}"
+@inject Backend Backend
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>@(IsNew ? "مرکز هزینه جدید" : _model.Title)</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Href="/costing/centers" aria-label="بازگشت" />
+    <MudText Typo="Typo.h5">@(IsNew ? "مرکز هزینه جدید" : _model.Title)</MudText>
+    @if (_model.Code is not null)
+    {
+        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Tag">
+            <span class="code">@_model.Code</span>
+        </MudChip>
+    }
+    <MudSpacer />
+    <MudSwitch T="bool" @bind-Value="_model.IsActive" Color="Color.Success" Label="@(_model.IsActive ? "فعال" : "غیرفعال")" />
+    @if (!IsNew)
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="DeleteAsync" Disabled="_saving">حذف</MudButton>
+    }
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_saving">ذخیره</MudButton>
+</MudStack>
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.subtitle1" Class="mb-2"><b>مشخصات</b></MudText>
+            <MudGrid Spacing="2">
+                <MudItem xs="12"><MudTextField @bind-Value="_model.Title" Immediate="true" Label="عنوان مرکز" Required="true" Placeholder="مثلاً خط تولید یک" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12">
+                    <MudSelect T="short?" Value="_model.CenterTypeId" ValueChanged="TypeChanged" Label="نوع مرکز" Required="true" Dense="true"
+                               Variant="Variant.Outlined" Margin="Margin.Dense"
+                               HelperText="@(Function is { } f ? $"در معین‌های «{Titles.Of(f)}» ثبت می‌شود" : null)">
+                        @foreach (var group in _types.Where(t => t.IsActive || t.Id == _model.CenterTypeId).GroupBy(t => t.Function))
+                        {
+                            <MudListSubheader>@Titles.Of(group.Key)</MudListSubheader>
+                            @foreach (var t in group)
+                            {
+                                <MudSelectItem T="short?" Value="t.Id">@t.Title</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudSelect T="int?" @bind-Value="_model.ParentId" Label="مرکز بالادست (اختیاری)" Clearable="true" Dense="true"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" HelperText="برای گزارش درختی، مثلاً «کارخانه» بالای خطوط تولید">
+                        @foreach (var c in _centers.Where(c => c.Id != Id))
+                        {
+                            <MudSelectItem T="int?" Value="c.Id">@c.Title</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudAutocomplete T="PersonListItemDto" Value="_manager" ValueChanged="ManagerChanged" SearchFunc="SearchPersons"
+                                     ToStringFunc="@(p => p?.DisplayName)" Label="مسئول مرکز (اختیاری)" Clearable="true"
+                                     ResetValueOnEmptyText="true" DebounceInterval="250" Dense="true"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_model.Notes" Label="توضیحات" Lines="2" MaxLength="500" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            </MudGrid>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                <MudText Typo="Typo.subtitle1"><b>بهای تمام‌شده: تسهیم و جذب</b></MudText>
+                <MudSpacer />
+                <MudLink Href="/base/lookups/cost_base" Typo="Typo.caption">تعریف مبناها</MudLink>
+            </MudStack>
+
+            @switch (Function)
+            {
+                case null:
+                    <MudAlert Severity="Severity.Info" Dense="true">ابتدا نوع مرکز را انتخاب کنید.</MudAlert>
+                    break;
+
+                case CostFunction.Production:
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                        مرکز تولیدی تسهیم نمی‌شود؛ سربار آن (هزینه‌های خودش و سهم مراکز خدماتی) با مبنای جذب به محصول می‌رود.
+                    </MudText>
+                    <MudSelect T="int?" @bind-Value="_model.AbsorptionBaseId" Label="مبنای جذب سربار" Clearable="true" Dense="true"
+                               Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var b in ActiveBases(_model.AbsorptionBaseId))
+                        {
+                            <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem>
+                        }
+                    </MudSelect>
+                    break;
+
+                case CostFunction.Selling:
+                    <MudAlert Severity="Severity.Normal" Dense="true">هزینه مراکز فروش و توزیع هزینه دوره است و تسهیم یا جذب نمی‌شود.</MudAlert>
+                    break;
+
+                default:
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                        @(Function == CostFunction.Service
+                            ? "هزینه مرکز خدماتی با مبنای تسهیم به مراکز تولیدی (یا خدماتی بعدی) تسهیم می‌شود. سهم‌ها پیش‌فرض‌اند و با رسیدن مقدار مبنا در هر دوره حساب می‌شوند."
+                            : "هزینه اداری هزینه دوره است؛ اگر برای بهای تمام‌شده کامل می‌خواهید بخشی از آن به تولید برسد، گیرنده‌ها را تعیین کنید.")
+                    </MudText>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12" sm="8">
+                            <MudSelect T="int?" @bind-Value="_model.AllocationBaseId" Label="مبنای تسهیم" Clearable="true" Dense="true"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                                @foreach (var b in ActiveBases(_model.AllocationBaseId))
+                                {
+                                    <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudNumericField T="short?" @bind-Value="_model.AllocationOrder" Label="ترتیب تسهیم" Min="1"
+                                             HelperText="کوچک‌تر زودتر" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudSimpleTable Dense="true" Elevation="0" Class="mt-2">
+                        <thead><tr><th>مرکز گیرنده</th><th style="width:130px">سهم ٪</th><th style="width:40px"></th></tr></thead>
+                        <tbody>
+                            @foreach (var a in _model.Allocations)
+                            {
+                                var row = a;
+                                <tr>
+                                    <td>
+                                        <MudSelect T="int?" @bind-Value="row.CenterId" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                                            @foreach (var c in Receivers(row.CenterId))
+                                            {
+                                                <MudSelectItem T="int?" Value="c.Id">@c.Title (@Titles.Of(c.Function))</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    </td>
+                                    <td><MudNumericField T="decimal" @bind-Value="row.Percent" Min="0" Max="100" HideSpinButtons="true" Class="num" Variant="Variant.Outlined" Margin="Margin.Dense" /></td>
+                                    <td><MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => _model.Allocations.Remove(row)" aria-label="حذف گیرنده" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                        @if (_model.Allocations.Count > 0)
+                        {
+                            <tfoot>
+                                <tr>
+                                    <td><b>جمع</b></td>
+                                    <td><MudText Color="@(PercentSum == 100 ? Color.Success : Color.Error)" Class="num"><b>@PercentSum.ToString("0.##")</b></MudText></td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        }
+                    </MudSimpleTable>
+                    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" Class="mt-1"
+                               OnClick="() => _model.Allocations.Add(new AllocationTargetDto { Percent = Math.Max(0, 100 - PercentSum) })">
+                        افزودن مرکز گیرنده
+                    </MudButton>
+                    break;
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private bool IsNew => Id is null;
+    private CostCenterDetailsDto _model = new();
+    private List<CostCenterTypeDto> _types = [];
+    private List<CostCenterListItemDto> _centers = [];
+    private List<CostBaseDto> _bases = [];
+    private PersonListItemDto? _manager;
+    private bool _loading = true;
+    private bool _saving;
+
+    private CostFunction? Function => _types.FirstOrDefault(t => t.Id == _model.CenterTypeId)?.Function;
+
+    private decimal PercentSum => _model.Allocations.Sum(a => a.Percent);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _types = (await Backend.Run<CostSetupService, List<CostCenterTypeDto>>(s => s.GetCenterTypesAsync(true, default))).Value ?? [];
+        _centers = (await Backend.Run<CostCenterService, List<CostCenterListItemDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        _bases = (await Backend.Run<CostSetupService, List<CostBaseDto>>(s => s.GetCostBasesAsync(default))).Value ?? [];
+        if (Id is int id)
+        {
+            var r = await Backend.Run<CostCenterService, CostCenterDetailsDto>(s => s.GetAsync(id, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); Nav.NavigateTo("/costing/centers"); return; }
+            _model = r.Value!;
+            _manager = _model.ManagerPersonId is int m
+                ? new PersonListItemDto(m, PersonKind.Natural, _model.ManagerName ?? "", null, null, true, [], null, null, null)
+                : null;
+        }
+        else
+        {
+            _model = new CostCenterDetailsDto();
+            _manager = null;
+        }
+        _loading = false;
+    }
+
+    private IEnumerable<CostBaseDto> ActiveBases(int? current) => _bases.Where(b => b.IsActive || b.Id == current);
+
+    private IEnumerable<CostCenterListItemDto> Receivers(int? current) => _centers.Where(c =>
+        c.Id != Id && (c.Id == current || (c.IsActive && c.Function is CostFunction.Production or CostFunction.Service
+                                          && _model.Allocations.All(a => a.CenterId != c.Id))));
+
+    private void TypeChanged(short? typeId)
+    {
+        _model.CenterTypeId = typeId;
+        // تنظیماتی که با وظیفه جدید جور نیست پاک می‌شود
+        if (Function != CostFunction.Production) _model.AbsorptionBaseId = null;
+        if (Function is CostFunction.Production or CostFunction.Selling)
+        {
+            _model.AllocationBaseId = null;
+            _model.AllocationOrder = null;
+            _model.Allocations.Clear();
+        }
+    }
+
+    private async Task<IEnumerable<PersonListItemDto>> SearchPersons(string? term, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(term)) return [];
+        var r = await Backend.Run<PersonService, List<PersonListItemDto>>(s => s.SearchAsync(term, null, null, false, ct));
+        return r.Value ?? [];
+    }
+
+    private void ManagerChanged(PersonListItemDto? person)
+    {
+        _manager = person;
+        _model.ManagerPersonId = person?.Id;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        try
+        {
+            if (IsNew)
+            {
+                var r = await Backend.Run<CostCenterService, int>(s => s.CreateAsync(_model, default));
+                if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+                Snackbar.Add("مرکز ثبت شد و تفصیلی آن ساخته شد.", Severity.Success);
+                Nav.NavigateTo($"/costing/centers/{r.Value}");
+            }
+            else
+            {
+                var r = await Backend.Run<CostCenterService>(s => s.UpdateAsync(Id!.Value, _model, default));
+                if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+                Snackbar.Add("تغییرات ذخیره شد.", Severity.Success);
+                await OnParametersSetAsync();
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.DeleteAsync($"مرکز «{_model.Title}»", "تفصیلی آن هم حذف می‌شود؛ اگر در سند آمده باشد فقط غیرفعال‌کردن ممکن است.")) return;
+        var r = await Backend.Run<CostCenterService>(s => s.DeleteAsync(Id!.Value, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Snackbar.Add("مرکز حذف شد.", Severity.Success);
+        Nav.NavigateTo("/costing/centers");
+    }
+}

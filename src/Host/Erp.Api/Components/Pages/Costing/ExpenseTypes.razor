@@ -1,0 +1,128 @@
+@page "/costing/expense-types"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>انواع هزینه</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">انواع هزینه</MudText>
+    <MudSpacer />
+    <MudCheckBox T="bool" @bind-Value="_showInactive" Label="غیرفعال‌ها هم" Dense="true" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => New(null)">نوع جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر نوع هزینه زیر یکی از چهار گروه (کل‌های هزینه) است و عوامل هزینه به نوع وصل می‌شوند؛ پس عامل فقط در معین‌های همان گروه ثبت می‌شود.
+    تغییر گروه نوعی که عاملش در سند آمده ممکن نیست.
+</MudText>
+
+<MudGrid Spacing="3">
+    @foreach (var nature in Enum.GetValues<CostNature>())
+    {
+        var rows = _types.Where(t => t.Nature == nature && (_showInactive || t.IsActive)).ToList();
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
+                    <MudText Typo="Typo.h6">@Titles.Of(nature)</MudText>
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text">کل @NatureCode(nature)</MudChip>
+                    <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" OnClick="() => New(nature)" aria-label="نوع جدید در این گروه" />
+                </MudStack>
+                <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                    <tbody>
+                        @foreach (var t in rows)
+                        {
+                            <tr style="cursor:pointer" @onclick="() => Edit(t)">
+                                <td>
+                                    @t.Title
+                                    @if (!t.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+                                </td>
+                                <td class="code" style="width:90px">@t.FactorCount عامل</td>
+                                <td style="width:40px; text-align:left" @onclick:stopPropagation="true">
+                                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small"
+                                                   Disabled="t.FactorCount > 0" OnClick="() => DeleteAsync(t)" aria-label="حذف" />
+                                </td>
+                            </tr>
+                        }
+                        @if (rows.Count == 0)
+                        {
+                            <tr><td colspan="3"><MudText Typo="Typo.body2" Color="Color.Secondary">نوعی تعریف نشده است.</MudText></td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "نوع هزینه جدید" : "ویرایش نوع هزینه")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12"><MudTextField @bind-Value="_title" Immediate="true" Label="عنوان" Placeholder="مثلاً انرژی و آب" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
+            <MudItem xs="12" sm="8"><EnumSelect TEnum="CostNature" @bind-Value="_nature" Label="گروه هزینه" Required="true" /></MudItem>
+            <MudItem xs="6" sm="4"><MudNumericField T="int" @bind-Value="_sort" Label="ترتیب" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="@(string.IsNullOrWhiteSpace(_title) || _nature is null)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<ExpenseTypeDto> _types = [];
+    private bool _showInactive;
+    private bool _editOpen;
+    private short? _editId;
+    private string? _title;
+    private CostNature? _nature;
+    private int _sort;
+    private bool _active = true;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private static string NatureCode(CostNature n) => n switch
+    {
+        CostNature.Payroll => "71", CostNature.Depreciation => "72", CostNature.OtherOperating => "73", _ => "76"
+    };
+
+    private async Task LoadAsync()
+    {
+        var r = await Backend.Run<CostSetupService, List<ExpenseTypeDto>>(s => s.GetExpenseTypesAsync(true, default));
+        if (r.Success) _types = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+    }
+
+    private void New(CostNature? nature)
+    {
+        (_editId, _title, _nature, _active) = (null, null, nature, true);
+        _sort = _types.Where(t => t.Nature == nature).Select(t => t.SortOrder).DefaultIfEmpty(0).Max() + 1;
+        _editOpen = true;
+    }
+
+    private void Edit(ExpenseTypeDto t)
+    {
+        (_editId, _title, _nature, _sort, _active) = (t.Id, t.Title, t.Nature, t.SortOrder, t.IsActive);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveExpenseTypeRequest(_title!, _nature!.Value, _sort, _active);
+        var error = _editId is short id
+            ? (await Backend.Run<CostSetupService>(s => s.UpdateExpenseTypeAsync(id, request, default))).Error
+            : (await Backend.Run<CostSetupService, short>(s => s.CreateExpenseTypeAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(ExpenseTypeDto t)
+    {
+        if (!await Dialogs.DeleteAsync($"نوع هزینه «{t.Title}»")) return;
+        var r = await Backend.Run<CostSetupService>(s => s.DeleteExpenseTypeAsync(t.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

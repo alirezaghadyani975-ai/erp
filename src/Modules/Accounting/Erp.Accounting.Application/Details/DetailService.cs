@@ -1,3 +1,4 @@
+using Erp.Costing.Contracts;
 using Erp.SharedKernel.Text;
 using Erp.Accounting.Application.Abstractions;
 using Erp.BaseData.Contracts;
@@ -130,8 +131,11 @@ public class DetailService(IAccountingDbContext db)
     {
         var detail = await db.DetailAccounts.FirstOrDefaultAsync(d => d.Id == id, ct)
                      ?? throw new NotFoundException("تفصیلی پیدا نشد.");
-        if (detail.PersonId is not null)
+        var owner = await db.DetailTypes.Where(t => t.Id == detail.DetailTypeId).Select(t => t.OwnerModule).FirstAsync(ct);
+        if (detail.PersonId is not null || owner is OwnerModules.Persons or OwnerModules.Payroll)
             throw new DomainException("تفصیلی اشخاص و کارکنان از فرم شخص مدیریت می‌شود.");
+        if (owner is OwnerModules.CostFactors or OwnerModules.CostCenters)
+            throw new DomainException("تفصیلی عوامل و مراکز هزینه از اطلاعات پایه بهای تمام‌شده مدیریت می‌شود.");
         return detail;
     }
 
@@ -143,11 +147,13 @@ public class DetailService(IAccountingDbContext db)
         if (overlap is not null)
             throw new DomainException($"بازه کد با گروه «{overlap.Title}» ({overlap.CodeFrom} تا {overlap.CodeTo}) هم‌پوشانی دارد.");
 
-        if (type.IsActive && type.OwnerModule is OwnerModules.Persons or OwnerModules.Payroll)
+        if (type.IsActive && OwnerModules.IsSingleActive(type.OwnerModule))
         {
             var twin = others.FirstOrDefault(t => t.IsActive && t.OwnerModule == type.OwnerModule && t.PersonKind == type.PersonKind);
             if (twin is not null)
-                throw new DomainException($"گروه فعال «{twin.Title}» همین نقش را دارد؛ برای هر نوع شخص فقط یک گروه فعال {(type.OwnerModule == OwnerModules.Persons ? "اشخاص" : "کارکنان")} مجاز است.");
+                throw new DomainException(type.OwnerModule is OwnerModules.Persons or OwnerModules.Payroll
+                    ? $"گروه فعال «{twin.Title}» همین نقش را دارد؛ برای هر نوع شخص فقط یک گروه فعال {(type.OwnerModule == OwnerModules.Persons ? "اشخاص" : "کارکنان")} مجاز است."
+                    : $"گروه فعال «{twin.Title}» همین نقش را دارد؛ فقط یک گروه فعال مجاز است.");
         }
     }
 
@@ -163,9 +169,20 @@ public class DetailService(IAccountingDbContext db)
     /// تفصیلی‌های غیرشخصی (بانک، صندوق، ...) از این فیلتر تأثیر نمی‌گیرند. نقش خالی یعنی همه.
     /// </summary>
     public Task<List<DetailAccountDto>> SearchAsync(IReadOnlyCollection<short>? detailTypeIds, IReadOnlyCollection<short>? roleIds,
-        string? term, CancellationToken ct)
+        string? term, CancellationToken ct) => SearchAsync(detailTypeIds, roleIds, term, null, null, ct);
+
+    /// <summary>
+    /// با فیلتر ماهیت و وظیفه معین هزینه: فقط عوامل همان ماهیت و مراکز همان وظیفه می‌آیند
+    /// (همان قاعده‌ای که در ثبت سند کنترل می‌شود).
+    /// </summary>
+    public Task<List<DetailAccountDto>> SearchAsync(IReadOnlyCollection<short>? detailTypeIds, IReadOnlyCollection<short>? roleIds,
+        string? term, CostNature? costNature, CostFunction? costFunction, CancellationToken ct)
     {
         var query = db.DetailAccounts.AsNoTracking();
+        if (costNature is not null)
+            query = query.Where(d => d.CostNature == null || d.CostNature == costNature);
+        if (costFunction is not null)
+            query = query.Where(d => d.CostFunction == null || d.CostFunction == costFunction);
         if (detailTypeIds is not null)
             query = query.Where(d => detailTypeIds.Contains(d.DetailTypeId) && d.IsActive);
         if (roleIds is { Count: > 0 })
@@ -200,6 +217,8 @@ public class DetailService(IAccountingDbContext db)
                    ?? throw new NotFoundException($"نوع تفصیلی {request.DetailTypeId} پیدا نشد.");
         if (type.OwnerModule is OwnerModules.Persons or OwnerModules.Payroll)
             throw new DomainException("تفصیلی اشخاص و کارکنان از قسمت تعریف شخص ساخته می‌شود.");
+        if (type.OwnerModule is OwnerModules.CostFactors or OwnerModules.CostCenters)
+            throw new DomainException("تفصیلی عوامل و مراکز هزینه از اطلاعات پایه بهای تمام‌شده ساخته می‌شود.");
 
         var code = string.IsNullOrWhiteSpace(request.Code)
             ? await NextCodeAsync(type, ct)

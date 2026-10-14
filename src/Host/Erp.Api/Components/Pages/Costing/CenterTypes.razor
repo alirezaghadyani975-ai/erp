@@ -1,0 +1,113 @@
+@page "/costing/center-types"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>انواع مرکز هزینه</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">انواع مرکز هزینه</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">نوع جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    وظیفه نوع تعیین می‌کند مراکزش در کدام معین‌های هزینه ثبت شوند (تولیدی، خدماتی، اداری، فروش) و چطور در بهای تمام‌شده رفتار کنند:
+    خدماتی و اداری به مراکز دیگر تسهیم می‌شوند، تولیدی سربارش را جذب محصول می‌کند و فروش هزینه دوره است.
+    می‌توانید نوع‌های ریزتر بسازید (مثلاً «تولیدی - مونتاژ»).
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1" Style="max-width:820px">
+    <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+        <thead><tr><th>نوع</th><th>وظیفه</th><th>مراکز</th><th>وضعیت</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var t in _types)
+            {
+                <tr style="cursor:pointer" @onclick="() => Edit(t)">
+                    <td>@t.Title</td>
+                    <td>@Titles.Of(t.Function)</td>
+                    <td class="code">@t.CenterCount</td>
+                    <td>
+                        @if (t.IsSystem) { <MudChip T="string" Size="Size.Small" Variant="Variant.Text">سیستمی</MudChip> }
+                        @if (!t.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+                    </td>
+                    <td style="text-align:left" @onclick:stopPropagation="true">
+                        @if (!t.IsSystem)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small"
+                                           Disabled="t.CenterCount > 0" OnClick="() => DeleteAsync(t)" aria-label="حذف" />
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "نوع مرکز جدید" : "ویرایش نوع مرکز")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12"><MudTextField @bind-Value="_title" Immediate="true" Label="عنوان" Placeholder="مثلاً تولیدی - مونتاژ" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
+            <MudItem xs="12" sm="8">
+                <EnumSelect TEnum="CostFunction" @bind-Value="_function" Label="وظیفه" Required="true" Disabled="_system" />
+            </MudItem>
+            <MudItem xs="6" sm="4"><MudNumericField T="int" @bind-Value="_sort" Label="ترتیب" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" Disabled="_system" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="@(string.IsNullOrWhiteSpace(_title) || _function is null)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<CostCenterTypeDto> _types = [];
+    private bool _editOpen;
+    private short? _editId;
+    private string? _title;
+    private CostFunction? _function;
+    private int _sort;
+    private bool _active = true;
+    private bool _system;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var r = await Backend.Run<CostSetupService, List<CostCenterTypeDto>>(s => s.GetCenterTypesAsync(true, default));
+        if (r.Success) _types = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+    }
+
+    private void New()
+    {
+        (_editId, _title, _function, _active, _system) = (null, null, null, true, false);
+        _sort = _types.Select(t => t.SortOrder).DefaultIfEmpty(0).Max() + 1;
+        _editOpen = true;
+    }
+
+    private void Edit(CostCenterTypeDto t)
+    {
+        (_editId, _title, _function, _sort, _active, _system) = (t.Id, t.Title, t.Function, t.SortOrder, t.IsActive, t.IsSystem);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveCostCenterTypeRequest(_title!, _function!.Value, _sort, _active);
+        var error = _editId is short id
+            ? (await Backend.Run<CostSetupService>(s => s.UpdateCenterTypeAsync(id, request, default))).Error
+            : (await Backend.Run<CostSetupService, short>(s => s.CreateCenterTypeAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(CostCenterTypeDto t)
+    {
+        if (!await Dialogs.DeleteAsync($"نوع مرکز «{t.Title}»")) return;
+        var r = await Backend.Run<CostSetupService>(s => s.DeleteCenterTypeAsync(t.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

@@ -1,3 +1,4 @@
+using Erp.Costing.Contracts;
 using Erp.SharedKernel.Text;
 using Erp.SharedKernel.Domain;
 
@@ -23,6 +24,8 @@ public class DetailAccount : AggregateRoot<int>
             throw new DomainException("عنوان تفصیلی الزامی است.");
         if (type.OwnerModule == OwnerModules.Persons && personId is null)
             throw new DomainException($"تفصیلی «{type.Title}» فقط برای یک شخص ساخته می‌شود.");
+        if (type.OwnerModule is OwnerModules.CostFactors or OwnerModules.CostCenters && sourceEntityId is null)
+            throw new DomainException($"تفصیلی «{type.Title}» فقط از اطلاعات پایه بهای تمام‌شده ساخته می‌شود.");
 
         DetailTypeId = type.Id;
         Code = code;
@@ -39,6 +42,18 @@ public class DetailAccount : AggregateRoot<int>
     public string? SourceModule { get; private set; }
     public long? SourceEntityId { get; private set; }
     public bool IsActive { get; private set; } = true;
+
+    /// <summary>برای عامل هزینه: ماهیت (فقط در معین‌های کلِ همان ماهیت ثبت می‌شود).</summary>
+    public CostNature? CostNature { get; private set; }
+
+    /// <summary>برای مرکز هزینه: وظیفه (فقط در معین‌های همان وظیفه ثبت می‌شود).</summary>
+    public CostFunction? CostFunction { get; private set; }
+
+    public void SetCostDimensions(CostNature? nature, CostFunction? function)
+    {
+        CostNature = nature;
+        CostFunction = function;
+    }
 
     public void Rename(string title) =>
         Title = string.IsNullOrWhiteSpace(title) ? throw new DomainException("عنوان الزامی است.") : PersianText.Normalize(title);

@@ -1,3 +1,4 @@
+using Erp.Costing.Contracts;
 using Erp.SharedKernel.Text;
 using Erp.SharedKernel.Domain;
 
@@ -26,6 +27,12 @@ public class Account : AggregateRoot<int>
     public bool IsStandard { get; private set; }
     public bool IsActive { get; private set; } = true;
 
+    /// <summary>کل‌ها و معین‌های هزینه: ماهیت (حقوق، استهلاک، سایر عملیاتی، مالی).</summary>
+    public CostNature? CostNature { get; private set; }
+
+    /// <summary>معین‌های هزینه: وظیفه (تولیدی، خدماتی، اداری، فروش)؛ مالی ندارد.</summary>
+    public CostFunction? CostFunction { get; private set; }
+
     public IReadOnlyCollection<AccountDetailLevel> DetailLevels => _detailLevels.AsReadOnly();
 
     /// <summary>حساب اختصاصی شرکت (کل یا معین) زیر یک حساب موجود.</summary>
@@ -53,7 +60,8 @@ public class Account : AggregateRoot<int>
             Title = NormalizeTitle(title),
             Nature = nature,
             Type = type,
-            IsStandard = false
+            IsStandard = false,
+            CostNature = parent.CostNature // معین اختصاصی زیر کل هزینه، ماهیت کل را می‌گیرد
         };
     }
 
