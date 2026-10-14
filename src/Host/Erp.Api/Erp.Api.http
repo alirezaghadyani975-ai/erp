@@ -1,0 +1,33 @@
+@api = http://localhost:5227/api
+
+### ساخت سال مالی 1405 (با ۱۲ دوره)
+POST {{api}}/accounting/fiscal-years/1405
+
+### سال‌های مالی
+GET {{api}}/accounting/fiscal-years
+
+### حساب با کد
+GET {{api}}/accounting/accounts/by-code/2305
+
+### انواع تفصیلی
+GET {{api}}/accounting/details/types
+
+### تعریف شخص با دو نقش: مشتری حقیقی (8) و تأمین‌کننده حقیقی (10)
+POST {{api}}/base/persons
+Content-Type: application/json
+
+{ "kind": "Natural", "displayName": "علی رضایی", "nationalId": "0012345678", "roleDetailTypeIds": [8, 10] }
+
+### سند با کد حساب و کد تفصیلی
+POST {{api}}/accounting/vouchers
+Content-Type: application/json
+
+{
+  "fiscalYearId": 1,
+  "date": "1405/07/21",
+  "description": "فروش نسیه",
+  "lines": [
+    { "accountCode": "2305", "detailCodes": ["01001"], "debit": 5000000, "credit": 0 },
+    { "accountCode": "6101", "debit": 0, "credit": 5000000 }
+  ]
+}

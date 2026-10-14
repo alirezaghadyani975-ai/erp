@@ -1,0 +1,60 @@
+@inherits LayoutComponentBase
+
+<MudRTLProvider RightToLeft="true">
+    <MudThemeProvider Theme="_theme" />
+    <MudPopoverProvider />
+    <MudDialogProvider />
+    <MudSnackbarProvider />
+
+    <MudLayout>
+        <MudAppBar Elevation="0" Dense="true" Color="Color.Primary">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                           OnClick="() => _drawerOpen = !_drawerOpen" aria-label="منو" />
+            <MudText Typo="Typo.h6" Class="mr-2">Erp</MudText>
+            <MudText Typo="Typo.body2" Class="mr-3" Style="opacity:.8">هسته مالی</MudText>
+            <MudSpacer />
+            <MudLink Href="/scalar" Target="_blank" Color="Color.Inherit" Typo="Typo.body2">API</MudLink>
+        </MudAppBar>
+
+        <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="1" Variant="DrawerVariant.Responsive">
+            <MudNavMenu>
+                <MudNavLink Href="/vouchers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.ReceiptLong">اسناد حسابداری</MudNavLink>
+                <MudNavLink Href="/vouchers/new" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.NoteAdd">سند جدید</MudNavLink>
+                <MudDivider Class="my-2" />
+                <MudNavLink Href="/accounts" Icon="@Icons.Material.Outlined.AccountTree">کدینگ حساب‌ها</MudNavLink>
+                <MudNavLink Href="/persons" Icon="@Icons.Material.Outlined.People">اشخاص</MudNavLink>
+                <MudNavLink Href="/fiscal-years" Icon="@Icons.Material.Outlined.CalendarMonth">سال و دوره مالی</MudNavLink>
+            </MudNavMenu>
+        </MudDrawer>
+
+        <MudMainContent>
+            <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4">
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    </MudLayout>
+</MudRTLProvider>
+
+@code {
+    private bool _drawerOpen = true;
+
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#1F5F8B",
+            Secondary = "#2E8B6E",
+            AppbarBackground = "#1F5F8B",
+            Background = "#F6F7F9",
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography { FontFamily = ["Vazirmatn", "Tahoma", "sans-serif"] },
+            H4 = new H4Typography { FontFamily = ["Vazirmatn", "Tahoma", "sans-serif"], FontSize = "1.6rem", FontWeight = "700" },
+            H5 = new H5Typography { FontFamily = ["Vazirmatn", "Tahoma", "sans-serif"], FontSize = "1.3rem", FontWeight = "700" },
+            H6 = new H6Typography { FontFamily = ["Vazirmatn", "Tahoma", "sans-serif"], FontWeight = "600" },
+            Button = new ButtonTypography { FontFamily = ["Vazirmatn", "Tahoma", "sans-serif"], TextTransform = "none" },
+        },
+        LayoutProperties = new LayoutProperties { DefaultBorderRadius = "8px" }
+    };
+}

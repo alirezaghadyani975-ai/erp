@@ -1,0 +1,44 @@
+/* فونت وزیرمتن (مجوز OFL) به‌صورت محلی؛ به CDN خارجی وابسته نیست */
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-Variable.woff2') format('woff2-variations'),
+         url('../fonts/Vazirmatn-Variable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-display: swap;
+}
+
+html, body {
+    font-family: 'Vazirmatn', Tahoma, sans-serif;
+    font-feature-settings: "ss01"; /* ارقام هم‌عرض */
+}
+
+/* مبالغ: هم‌عرض و چپ‌چین برای خواندن راحت ستون اعداد */
+.num, .num input {
+    font-variant-numeric: tabular-nums;
+    direction: ltr;
+    text-align: left;
+}
+
+.code { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+
+.voucher-grid { width: 100%; border-collapse: collapse; }
+.voucher-grid th { font-weight: 600; font-size: .85rem; color: var(--mud-palette-text-secondary);
+    text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--mud-palette-lines-default); }
+.voucher-grid td { padding: 2px 4px; vertical-align: top; border-bottom: 1px solid var(--mud-palette-lines-default); }
+.voucher-grid tfoot td { font-weight: 600; padding-top: 10px; border-bottom: none; }
+.voucher-grid .row-no { width: 32px; color: var(--mud-palette-text-secondary); padding-top: 18px; text-align: center; }
+.voucher-grid .col-account { min-width: 320px; width: 38%; }
+.voucher-grid .col-amount { width: 160px; }
+.voucher-grid th.col-amount, .voucher-grid tfoot td.num { text-align: left; }
+.voucher-grid .col-actions { width: 72px; white-space: nowrap; padding-top: 10px; }
+.detail-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.detail-chip-row > * { flex: 1 1 180px; }
+
+.diff-bad { color: var(--mud-palette-error); }
+.diff-ok { color: var(--mud-palette-success); }
+
+.tree-node { cursor: pointer; padding: 3px 6px; border-radius: 6px; display: flex; align-items: center; gap: 6px; }
+.tree-node:hover { background: var(--mud-palette-action-default-hover); }
+.tree-node.selected { background: var(--mud-palette-primary-hover); }
+.tree-children { padding-inline-start: 22px; }
+.tree-inactive { opacity: .55; text-decoration: line-through; }

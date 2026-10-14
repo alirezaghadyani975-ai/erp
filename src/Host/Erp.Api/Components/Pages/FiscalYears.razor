@@ -1,0 +1,97 @@
+@page "/fiscal-years"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+
+<PageTitle>سال و دوره مالی</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-3">سال و دوره مالی</MudText>
+
+<MudPaper Class="pa-4 mb-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        <MudNumericField T="int" Label="سال شمسی" @bind-Value="_year" Min="1395" Max="1420" HideSpinButtons="true"
+                         Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:140px" Class="code" />
+        <MudSelect T="byte" Label="ماه شروع" @bind-Value="_startMonth" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:160px">
+            @for (byte m = 1; m <= 12; m++)
+            {
+                var month = m;
+                <MudSelectItem T="byte" Value="month">@Months[month - 1]</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" Disabled="_busy">ساخت سال مالی با ۱۲ دوره</MudButton>
+    </MudStack>
+</MudPaper>
+
+@foreach (var y in _years)
+{
+    <MudPaper Class="pa-4 mb-3" Elevation="1">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudText Typo="Typo.h6">سال مالی @y.Title</MudText>
+            <MudText Typo="Typo.body2" Class="code">@y.StartDate تا @y.EndDate</MudText>
+            <MudChip T="string" Size="Size.Small" Color="@(y.Status == PeriodStatus.Open ? Color.Success : Color.Warning)">@Format.Period(y.Status)</MudChip>
+        </MudStack>
+        <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+            <thead><tr><th>دوره</th><th>از</th><th>تا</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var p in y.Periods)
+                {
+                    <tr>
+                        <td>@p.Title</td>
+                        <td class="code">@p.StartDate</td>
+                        <td class="code">@p.EndDate</td>
+                        <td><MudChip T="string" Size="Size.Small" Color="@(p.Status == PeriodStatus.Open ? Color.Success : Color.Warning)">@Format.Period(p.Status)</MudChip></td>
+                        <td>
+                            @if (p.Status == PeriodStatus.Open)
+                            {
+                                <MudButton Size="Size.Small" StartIcon="@Icons.Material.Outlined.Lock" OnClick="() => SetAsync(y.Id, p.PeriodNo, PeriodStatus.Locked)">قفل</MudButton>
+                            }
+                            else if (p.Status == PeriodStatus.Locked)
+                            {
+                                <MudButton Size="Size.Small" StartIcon="@Icons.Material.Outlined.LockOpen" OnClick="() => SetAsync(y.Id, p.PeriodNo, PeriodStatus.Open)">باز کردن</MudButton>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+
+@code {
+    private static readonly string[] Months =
+        ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"];
+
+    private List<FiscalYearDto> _years = [];
+    private int _year = int.Parse(Format.Today()[..4]);
+    private byte _startMonth = 1;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var r = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+        if (r.Success) _years = r.Value!;
+        else Snackbar.Add(r.Error!, Severity.Error);
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            var r = await Backend.Run<FiscalYearService, short>(s => s.CreateAsync(_year, _startMonth, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            Snackbar.Add($"سال مالی {_year} با ۱۲ دوره ساخته شد.", Severity.Success);
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SetAsync(short yearId, byte periodNo, PeriodStatus status)
+    {
+        var r = await Backend.Run<FiscalYearService>(s => s.SetPeriodStatusAsync(yearId, periodNo, status, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

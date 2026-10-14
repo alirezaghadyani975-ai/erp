@@ -1,0 +1,393 @@
+@page "/vouchers/new"
+@page "/vouchers/{Id:long}"
+@inject Backend Backend
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>@(Id is null ? "سند جدید" : $"سند {_tempNo}")</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2" Class="mb-3">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Href="/vouchers" aria-label="بازگشت به فهرست" />
+        <MudText Typo="Typo.h5">@(Id is null ? "سند جدید" : "سند حسابداری")</MudText>
+        @if (Id is not null)
+        {
+            <MudChip T="string" Color="Format.StatusColor(_status)" Size="Size.Small">@Format.Status(_status)</MudChip>
+            <MudText Typo="Typo.body2">شماره موقت <b class="code">@_tempNo</b></MudText>
+            @if (_voucherNo is not null)
+            {
+                <MudText Typo="Typo.body2">شماره قطعی <b class="code">@_voucherNo</b></MudText>
+            }
+        }
+    </MudStack>
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+    }
+
+    <MudPaper Class="pa-4 mb-3" Elevation="1">
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="4" md="2">
+                <MudSelect T="short" Label="سال مالی" @bind-Value="_yearId" Disabled="Id is not null"
+                           Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var y in _years)
+                    {
+                        <MudSelectItem T="short" Value="y.Id">@y.Title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4" md="2">
+                <MudTextField T="string" Label="تاریخ" @bind-Value="_date" Mask="@(new PatternMask("0000/00/00"))"
+                              Placeholder="1405/07/21" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Disabled="ReadOnly" Class="code" />
+            </MudItem>
+            <MudItem xs="12" md="8">
+                <MudTextField T="string" Label="شرح سند" @bind-Value="_description" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Disabled="ReadOnly" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudPaper Class="pa-2 mb-3" Elevation="1" Style="overflow-x:auto">
+        <table class="voucher-grid">
+            <thead>
+                <tr>
+                    <th class="row-no">#</th>
+                    <th class="col-account">معین و تفصیلی</th>
+                    <th>شرح ردیف</th>
+                    <th class="col-amount">بدهکار</th>
+                    <th class="col-amount">بستانکار</th>
+                    <th class="col-actions"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < _lines.Count; i++)
+                {
+                    var line = _lines[i];
+                    var rowNo = i + 1;
+                    <tr @key="line.Key">
+                        <td class="row-no">@rowNo</td>
+                        <td class="col-account">
+                            <AccountPicker Value="line.Account" ValueChanged="a => AccountChanged(line, a)" Disabled="ReadOnly" />
+                            @if (line.Account is { DetailLevels.Count: > 0 } account)
+                            {
+                                <div class="detail-chip-row mt-1">
+                                    @foreach (var level in account.DetailLevels.OrderBy(l => l.LevelNo))
+                                    {
+                                        var idx = level.LevelNo - 1;
+                                        <DetailPicker Value="line.Details[idx]" ValueChanged="d => line.Details[idx] = d"
+                                                      AllowedTypeIds="level.DetailTypeIds"
+                                                      Label="@($"تفصیلی {level.LevelNo}")"
+                                                      Required="level.IsRequired" Disabled="ReadOnly" />
+                                    }
+                                </div>
+                            }
+                        </td>
+                        <td>
+                            <MudTextField T="string" @bind-Value="line.Description" Placeholder="@_description"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="ReadOnly" />
+                        </td>
+                        <td class="col-amount">
+                            <MudNumericField T="decimal" Value="line.Debit" ValueChanged="v => SetDebit(line, v)"
+                                             Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="ReadOnly" />
+                        </td>
+                        <td class="col-amount">
+                            <MudNumericField T="decimal" Value="line.Credit" ValueChanged="v => SetCredit(line, v)"
+                                             Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
+                                             Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="ReadOnly" />
+                        </td>
+                        <td class="col-actions">
+                            @if (!ReadOnly)
+                            {
+                                <MudTooltip Text="اختلاف سند را در این ردیف بنشان">
+                                    <MudIconButton Icon="@Icons.Material.Outlined.Balance" Size="Size.Small"
+                                                   OnClick="() => Balance(line)" aria-label="تراز کردن با این ردیف" />
+                                </MudTooltip>
+                                <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error"
+                                               OnClick="() => RemoveLine(line)" aria-label="حذف ردیف" />
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td></td>
+                    <td>
+                        @if (!ReadOnly)
+                        {
+                            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="AddLine">ردیف جدید</MudButton>
+                        }
+                    </td>
+                    <td style="text-align:left">جمع</td>
+                    <td class="num">@Format.Amount(TotalDebit)</td>
+                    <td class="num">@Format.Amount(TotalCredit)</td>
+                    <td></td>
+                </tr>
+                <tr>
+                    <td></td><td></td>
+                    <td style="text-align:left">اختلاف</td>
+                    <td colspan="2" class="num @(Difference == 0 ? "diff-ok" : "diff-bad")">
+                        @(Difference == 0 ? "تراز است" : Format.Amount(Math.Abs(Difference)) + (Difference > 0 ? " (بدهکار بیشتر)" : " (بستانکار بیشتر)"))
+                    </td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </MudPaper>
+
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+        @if (_status == VoucherStatus.Draft)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                       OnClick="SaveAsync" Disabled="_busy">ذخیره پیش‌نویس</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Outlined.FactCheck"
+                       OnClick="MakeTemporaryAsync" Disabled="_busy">ذخیره و موقت کردن</MudButton>
+        }
+        @if (_status == VoucherStatus.Temporary)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Lock"
+                       OnClick="MakePermanentAsync" Disabled="_busy">دائم کردن</MudButton>
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Undo"
+                       OnClick="ReturnToDraftAsync" Disabled="_busy">برگشت به پیش‌نویس</MudButton>
+        }
+        @if (Id is not null && _status is VoucherStatus.Draft or VoucherStatus.Temporary)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Block"
+                       OnClick="VoidAsync" Disabled="_busy">باطل کردن</MudButton>
+        }
+        <MudSpacer />
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" Href="/vouchers/new" OnClick="NewVoucher">سند جدید</MudButton>
+    </MudStack>
+}
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private List<FiscalYearDto> _years = [];
+    private short _yearId;
+    private string? _date;
+    private string? _description;
+    private VoucherStatus _status = VoucherStatus.Draft;
+    private int _tempNo;
+    private int? _voucherNo;
+    private List<LineModel> _lines = [];
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private long? _loadedId = -1;
+
+    private bool ReadOnly => _status != VoucherStatus.Draft;
+    private decimal TotalDebit => _lines.Sum(l => l.Debit);
+    private decimal TotalCredit => _lines.Sum(l => l.Credit);
+    private decimal Difference => TotalDebit - TotalCredit;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedId == Id) return;
+        _loadedId = Id;
+        _loading = true;
+        _error = null;
+
+        var years = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+        _years = years.Value ?? [];
+
+        if (Id is long id) await LoadAsync(id);
+        else ResetNew();
+
+        _loading = false;
+    }
+
+    private void ResetNew()
+    {
+        var today = Format.Today();
+        var current = _years.FirstOrDefault(y => string.CompareOrdinal(y.StartDate, today) <= 0 && string.CompareOrdinal(y.EndDate, today) >= 0)
+                      ?? _years.FirstOrDefault();
+        _yearId = current?.Id ?? 0;
+        _date = current is null || string.CompareOrdinal(today, current.EndDate) <= 0 ? today : current.EndDate;
+        _description = null;
+        _status = VoucherStatus.Draft;
+        _tempNo = 0;
+        _voucherNo = null;
+        _lines = [new LineModel(), new LineModel()];
+        if (_years.Count == 0)
+            _error = "هنوز سال مالی تعریف نشده است. ابتدا از صفحه «سال و دوره مالی» یک سال بسازید.";
+    }
+
+    private async Task LoadAsync(long id)
+    {
+        var result = await Backend.Run<VoucherService, VoucherDto>(s => s.GetAsync(id, default));
+        if (!result.Success) { _error = result.Error; return; }
+        var v = result.Value!;
+
+        var codes = v.Lines.Select(l => l.AccountCode).Distinct().ToList();
+        var accounts = new Dictionary<string, AccountDto>();
+        foreach (var code in codes)
+        {
+            var a = await Backend.Run<AccountService, AccountDto>(s => s.GetByCodeAsync(code, default));
+            if (a.Success) accounts[code] = a.Value!;
+        }
+
+        _yearId = v.FiscalYearId;
+        _date = v.Date;
+        _description = v.Description;
+        _status = v.Status;
+        _tempNo = v.TempNo;
+        _voucherNo = v.VoucherNo;
+        _lines = v.Lines.Select(l =>
+        {
+            var model = new LineModel
+            {
+                Account = accounts.GetValueOrDefault(l.AccountCode),
+                Description = l.Description,
+                Debit = l.Debit,
+                Credit = l.Credit
+            };
+            for (var i = 0; i < l.Details.Count && i < 6; i++)
+                if (l.Details[i] is { } d) model.Details[i] = new DetailAccountDto(d.Id, d.Code, d.Title, 0, null, true);
+            return model;
+        }).ToList();
+    }
+
+    private void NewVoucher()
+    {
+        if (Id is null) { _loadedId = -1; ResetNew(); }
+    }
+
+    private static void AccountChanged(LineModel line, AccountDto? account)
+    {
+        line.Account = account;
+        Array.Clear(line.Details);
+    }
+
+    private static void SetDebit(LineModel line, decimal value)
+    {
+        line.Debit = value;
+        if (value > 0) line.Credit = 0;
+    }
+
+    private static void SetCredit(LineModel line, decimal value)
+    {
+        line.Credit = value;
+        if (value > 0) line.Debit = 0;
+    }
+
+    private void Balance(LineModel line)
+    {
+        var otherDebit = TotalDebit - line.Debit;
+        var otherCredit = TotalCredit - line.Credit;
+        var diff = otherDebit - otherCredit;
+        line.Debit = diff < 0 ? -diff : 0;
+        line.Credit = diff > 0 ? diff : 0;
+    }
+
+    private void AddLine() => _lines.Add(new LineModel());
+
+    private void RemoveLine(LineModel line)
+    {
+        _lines.Remove(line);
+        if (_lines.Count == 0) _lines.Add(new LineModel());
+    }
+
+    private SaveVoucherRequest BuildRequest()
+    {
+        var lines = _lines
+            .Where(l => l.Account is not null || l.Debit != 0 || l.Credit != 0)
+            .Select(l =>
+            {
+                var maxLevel = l.Account?.DetailLevels.Select(d => d.LevelNo).DefaultIfEmpty(0).Max() ?? 0;
+                var details = l.Details.Take(maxLevel).Select(d => d?.Code).ToList();
+                return new VoucherLineRequest(l.Account?.Code ?? "", details, l.Debit, l.Credit,
+                    string.IsNullOrWhiteSpace(l.Description) ? null : l.Description);
+            })
+            .ToList();
+        return new SaveVoucherRequest(_yearId, _date ?? "", _description, lines);
+    }
+
+    /// <summary>ذخیره؛ شناسه سند را برمی‌گرداند یا null اگر خطا داشت.</summary>
+    private async Task<long?> SaveCoreAsync()
+    {
+        _error = null;
+        var request = BuildRequest();
+        if (request.Lines.Any(l => l.AccountCode == ""))
+        {
+            _error = "برای همه ردیف‌هایی که مبلغ دارند، معین را انتخاب کنید.";
+            return null;
+        }
+
+        if (Id is long id)
+        {
+            var r = await Backend.Run<VoucherService>(s => s.UpdateAsync(id, request, default));
+            if (!r.Success) { _error = r.Error; return null; }
+            return id;
+        }
+
+        var created = await Backend.Run<VoucherService, long>(s => s.CreateAsync(request, default));
+        if (!created.Success) { _error = created.Error; return null; }
+        return created.Value;
+    }
+
+    private async Task SaveAsync() => await Busy(async () =>
+    {
+        var id = await SaveCoreAsync();
+        if (id is null) return;
+        Snackbar.Add("سند ذخیره شد.", Severity.Success);
+        await ReloadOrNavigate(id.Value);
+    });
+
+    private async Task MakeTemporaryAsync() => await Busy(async () =>
+    {
+        var id = await SaveCoreAsync();
+        if (id is null) return;
+        var r = await Backend.Run<VoucherService>(s => s.MarkTemporaryAsync(id.Value, default));
+        if (!r.Success) { _error = r.Error; await ReloadOrNavigate(id.Value); return; }
+        Snackbar.Add("سند موقت شد.", Severity.Success);
+        await ReloadOrNavigate(id.Value);
+    });
+
+    private async Task MakePermanentAsync() => await Change(s => s.MarkPermanentAsync(Id!.Value, default), "سند دائم شد.");
+
+    private async Task ReturnToDraftAsync() => await Change(s => s.ReturnToDraftAsync(Id!.Value, default), "سند به پیش‌نویس برگشت.");
+
+    private async Task VoidAsync() => await Change(s => s.VoidAsync(Id!.Value, default), "سند باطل شد.");
+
+    private async Task Change(Func<VoucherService, Task> action, string message) => await Busy(async () =>
+    {
+        _error = null;
+        var r = await Backend.Run<VoucherService>(action);
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add(message, Severity.Success);
+        await LoadAsync(Id!.Value);
+    });
+
+    private async Task ReloadOrNavigate(long id)
+    {
+        if (Id == id) await LoadAsync(id);
+        else Nav.NavigateTo($"/vouchers/{id}");
+    }
+
+    private async Task Busy(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        try { await action(); }
+        finally { _busy = false; }
+    }
+
+    private sealed class LineModel
+    {
+        public Guid Key { get; } = Guid.NewGuid();
+        public AccountDto? Account { get; set; }
+        public DetailAccountDto?[] Details { get; } = new DetailAccountDto?[6];
+        public string? Description { get; set; }
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+    }
+}

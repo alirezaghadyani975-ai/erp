@@ -1,0 +1,113 @@
+@page "/persons"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+
+<PageTitle>اشخاص</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-3">اشخاص</MudText>
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="7">
+        <MudPaper Class="pa-3" Elevation="1">
+            <MudTextField T="string" Value="_search" ValueChanged="SearchChanged" Immediate="true" DebounceInterval="300"
+                          Placeholder="جستجوی نام یا کد ملی" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search" Clearable="true" Class="mb-2" />
+            <MudTable T="PersonDto" Items="_persons" Dense="true" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>نام</MudTh>
+                    <MudTh>نوع</MudTh>
+                    <MudTh>کد/شناسه ملی</MudTh>
+                    <MudTh>تفصیلی‌ها</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.DisplayName</MudTd>
+                    <MudTd>@(context.Kind == PersonKind.Natural ? "حقیقی" : "حقوقی")</MudTd>
+                    <MudTd><span class="code">@context.NationalId</span></MudTd>
+                    <MudTd>
+                        @foreach (var d in context.Details)
+                        {
+                            <MudTooltip Text="@TypeTitle(d.DetailTypeId)">
+                                <MudChip T="string" Size="Size.Small"><span class="code">@d.Code</span></MudChip>
+                            </MudTooltip>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Class="pa-4">شخصی پیدا نشد.</MudText></NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="5">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.subtitle1" Class="mb-3"><b>تعریف شخص جدید</b></MudText>
+            <MudRadioGroup T="PersonKind" Value="_kind" ValueChanged="KindChanged">
+                <MudRadio T="PersonKind" Value="PersonKind.Natural" Color="Color.Primary">حقیقی</MudRadio>
+                <MudRadio T="PersonKind" Value="PersonKind.Legal" Color="Color.Primary">حقوقی</MudRadio>
+            </MudRadioGroup>
+            <MudTextField T="string" Label="@(_kind == PersonKind.Natural ? "نام و نام خانوادگی" : "نام شرکت")" @bind-Value="_name"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
+            <MudTextField T="string" Label="@(_kind == PersonKind.Natural ? "کد ملی" : "شناسه ملی")" @bind-Value="_nationalId"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2 code" />
+            <MudTextField T="string" Label="کد اقتصادی" @bind-Value="_economicCode" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2 code" />
+            <MudSelect T="short" Label="نقش‌ها" MultiSelection="true" @bind-SelectedValues="_roles"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2"
+                       MultiSelectionTextFunc="@(vals => string.Join("، ", vals.Select(v => TypeTitle(short.Parse(v!)))))"
+                       HelperText="برای هر نقش یک تفصیلی در بازه کد همان نقش ساخته می‌شود">
+                @foreach (var t in RoleTypes)
+                {
+                    <MudSelectItem T="short" Value="t.Id">@t.Title</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" OnClick="CreateAsync" Disabled="_busy">ثبت شخص</MudButton>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private List<PersonDto> _persons = [];
+    private List<DetailTypeDto> _types = [];
+    private string? _search;
+    private PersonKind _kind = PersonKind.Natural;
+    private string? _name, _nationalId, _economicCode;
+    private IReadOnlyCollection<short> _roles = new HashSet<short>();
+    private bool _busy;
+
+    private IEnumerable<DetailTypeDto> RoleTypes => _types.Where(t =>
+        t.OwnerModule is "persons" or "payroll" && (t.PersonKind is null || t.PersonKind == _kind));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _types = (await Backend.Run<DetailService, List<DetailTypeDto>>(s => s.GetTypesAsync(default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private string TypeTitle(short id) => _types.FirstOrDefault(t => t.Id == id)?.Title ?? id.ToString();
+
+    private async Task SearchChanged(string? value) { _search = value; await LoadAsync(); }
+
+    private void KindChanged(PersonKind kind) { _kind = kind; _roles = new HashSet<short>(); }
+
+    private async Task LoadAsync()
+    {
+        var r = await Backend.Run<PersonService, List<PersonDto>>(s => s.SearchAsync(_search, default));
+        if (r.Success) _persons = r.Value!;
+        else Snackbar.Add(r.Error!, Severity.Error);
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            var request = new CreatePersonRequest(_kind, _name ?? "", _nationalId, _economicCode, _roles.ToList());
+            var r = await Backend.Run<PersonService, int>(s => s.CreateAsync(request, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            Snackbar.Add("شخص ثبت شد.", Severity.Success);
+            _name = _nationalId = _economicCode = null;
+            _roles = new HashSet<short>();
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+}

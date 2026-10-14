@@ -1,0 +1,27 @@
+using Erp.Accounting.Application.Details;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Erp.Api.Controllers;
+
+/// <summary>انواع تفصیلی و تفصیلی‌ها</summary>
+[ApiController]
+[Route("api/accounting/details")]
+public class DetailsController(DetailService service) : ControllerBase
+{
+    [HttpGet("types")]
+    public Task<List<DetailTypeDto>> GetTypes(CancellationToken ct) => service.GetTypesAsync(ct);
+
+    [HttpPost("types")]
+    public async Task<ActionResult<short>> CreateType(CreateDetailTypeRequest request, CancellationToken ct) =>
+        Ok(await service.CreateTypeAsync(request, ct));
+
+    /// <summary>جستجوی تفصیلی با کد یا عنوان</summary>
+    [HttpGet]
+    public Task<List<DetailAccountDto>> Search([FromQuery] short? typeId, [FromQuery] string? q, CancellationToken ct) =>
+        service.SearchAsync(typeId, q, ct);
+
+    /// <summary>تفصیلی غیرشخصی (صندوق، بانک، مرکز هزینه، پروژه، ...)</summary>
+    [HttpPost]
+    public async Task<ActionResult<int>> Create(CreateDetailAccountRequest request, CancellationToken ct) =>
+        Ok(await service.CreateAccountAsync(request, ct));
+}

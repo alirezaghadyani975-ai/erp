@@ -1,0 +1,9 @@
+{
+  "dotnet.defaultSolution": "Erp.slnx",
+  "files.encoding": "utf8",
+  "editor.formatOnSave": false,
+  "files.exclude": {
+    "**/bin": true,
+    "**/obj": true
+  }
+}

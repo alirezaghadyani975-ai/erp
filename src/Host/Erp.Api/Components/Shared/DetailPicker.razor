@@ -1,0 +1,30 @@
+@* انتخاب تفصیلی از میان انواع مجاز یک سطح *@
+@inject Backend Backend
+
+<MudAutocomplete T="DetailAccountDto" Value="Value" ValueChanged="OnChanged" SearchFunc="Search"
+                 ToStringFunc="@(d => d is null ? null : $"{d.Code} - {d.Title}")"
+                 Label="@Label" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                 MaxItems="30" DebounceInterval="250" ResetValueOnEmptyText="true" SelectOnActivation="true"
+                 Disabled="Disabled" Required="Required">
+    <ItemTemplate Context="d">
+        <span class="code ml-2">@d.Code</span> @d.Title
+    </ItemTemplate>
+    <NoItemsTemplate><MudText Typo="Typo.body2" Class="pa-2">تفصیلی پیدا نشد.</MudText></NoItemsTemplate>
+</MudAutocomplete>
+
+@code {
+    [Parameter] public DetailAccountDto? Value { get; set; }
+    [Parameter] public EventCallback<DetailAccountDto?> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyCollection<short> AllowedTypeIds { get; set; } = [];
+    [Parameter] public string Label { get; set; } = "تفصیلی";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private async Task<IEnumerable<DetailAccountDto>> Search(string? term, CancellationToken ct)
+    {
+        var result = await Backend.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(AllowedTypeIds, term, ct));
+        return result.Value ?? [];
+    }
+
+    private Task OnChanged(DetailAccountDto? value) => ValueChanged.InvokeAsync(value);
+}

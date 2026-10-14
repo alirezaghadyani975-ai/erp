@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    پروژه‌های تست کتابخانه هستند، نه برنامه اجرایی؛
+    تا VS Code هنگام F5 آن‌ها را به‌جای Erp.Api اجرا نکند.
+    (Microsoft.NET.Test.Sdk به‌طور پیش‌فرض OutputType را Exe می‌کند.)
+  -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+</Project>

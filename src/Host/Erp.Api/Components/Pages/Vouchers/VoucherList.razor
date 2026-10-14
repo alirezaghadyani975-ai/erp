@@ -1,0 +1,96 @@
+@page "/vouchers"
+@inject Backend Backend
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>اسناد حسابداری</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+    <MudText Typo="Typo.h5">اسناد حسابداری</MudText>
+    <MudSpacer />
+    <MudSelect T="short?" Label="سال مالی" Value="_yearId" ValueChanged="YearChanged"
+               Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="min-width:150px">
+        @foreach (var y in _years)
+        {
+            <MudSelectItem T="short?" Value="y.Id">@y.Title</MudSelectItem>
+        }
+    </MudSelect>
+    <MudSelect T="VoucherStatus?" Label="وضعیت" Value="_status" ValueChanged="StatusChanged" Clearable="true"
+               Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="min-width:150px">
+        @foreach (var s in Enum.GetValues<VoucherStatus>())
+        {
+            <MudSelectItem T="VoucherStatus?" Value="s">@Format.Status(s)</MudSelectItem>
+        }
+    </MudSelect>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/vouchers/new">
+        سند جدید
+    </MudButton>
+</MudStack>
+
+@if (!_loading && _years.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        هنوز سال مالی تعریف نشده است. از صفحه <MudLink Href="/fiscal-years">سال و دوره مالی</MudLink> یک سال بسازید.
+    </MudAlert>
+}
+else
+{
+    <MudTable T="VoucherSummaryDto" Items="_rows" Hover="true" Dense="true" Loading="_loading" Elevation="1"
+              OnRowClick="RowClicked" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>ش. موقت</MudTh>
+            <MudTh>ش. قطعی</MudTh>
+            <MudTh>تاریخ</MudTh>
+            <MudTh>شرح</MudTh>
+            <MudTh>نوع</MudTh>
+            <MudTh>وضعیت</MudTh>
+            <MudTh Style="text-align:left">مبلغ</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.TempNo</span></MudTd>
+            <MudTd><span class="code">@(context.VoucherNo?.ToString() ?? "—")</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd>@context.Description</MudTd>
+            <MudTd>@Format.Type(context.Type)</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="Format.StatusColor(context.Status)">@Format.Status(context.Status)</MudChip></MudTd>
+            <MudTd Class="num">@Format.Amount(context.TotalDebit)</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">سندی ثبت نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    private List<FiscalYearDto> _years = [];
+    private List<VoucherSummaryDto> _rows = [];
+    private short? _yearId;
+    private VoucherStatus? _status;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var years = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+        if (!years.Success) { Snackbar.Add(years.Error!, Severity.Error); _loading = false; return; }
+        _years = years.Value!;
+        _yearId = _years.FirstOrDefault()?.Id;
+        await LoadAsync();
+    }
+
+    private void RowClicked(TableRowClickEventArgs<VoucherSummaryDto> args) =>
+        Nav.NavigateTo($"/vouchers/{args.Item!.Id}");
+
+    private async Task YearChanged(short? id) { _yearId = id; await LoadAsync(); }
+
+    private async Task StatusChanged(VoucherStatus? s) { _status = s; await LoadAsync(); }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        if (_yearId is short year)
+        {
+            var rows = await Backend.Run<VoucherService, List<VoucherSummaryDto>>(s => s.ListAsync(year, _status, default));
+            if (rows.Success) _rows = rows.Value!;
+            else Snackbar.Add(rows.Error!, Severity.Error);
+        }
+        _loading = false;
+    }
+}
