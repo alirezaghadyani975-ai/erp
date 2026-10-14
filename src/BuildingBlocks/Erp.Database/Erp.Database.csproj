@@ -4,6 +4,9 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Erp.SharedKernel\Erp.SharedKernel.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- اسکریپت‌ها فقط یک نسخه دارند: پوشه database در ریشه پروژه -->
     <EmbeddedResource Include="..\..\..\database\migrations\*.sql"
                       LogicalName="Erp.Database.Migrations.%(Filename)%(Extension)" />

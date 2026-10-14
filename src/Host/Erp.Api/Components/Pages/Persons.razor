@@ -2,13 +2,14 @@
 @inject Backend Backend
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject IDialogService Dialogs
 
 <PageTitle>اشخاص</PageTitle>
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
     <MudText Typo="Typo.h5">اشخاص</MudText>
     <MudSpacer />
-    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Label" OnClick="() => _rolesOpen = true">نقش‌ها</MudButton>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Label" Href="/base/roles">نقش‌ها</MudButton>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" Href="/persons/new">
         شخص جدید
     </MudButton>
@@ -27,6 +28,7 @@
                 <MudSelectItem T="short?" Value="r.Id">@r.Title</MudSelectItem>
             }
         </MudSelect>
+        <div style="min-width:220px"><LookupSelect Category="@LookupCodes.PersonGroup" Value="_groupFilter" ValueChanged="GroupFilterChanged" Label="گروه" /></div>
         <MudCheckBox T="bool" Value="_includeInactive" ValueChanged="InactiveChanged" Label="غیرفعال‌ها هم" Dense="true" />
     </MudStack>
 
@@ -39,7 +41,9 @@
             <MudTh>کد / شناسه ملی</MudTh>
             <MudTh>موبایل</MudTh>
             <MudTh>نقش‌ها</MudTh>
+            <MudTh>گروه</MudTh>
             <MudTh>کد کارمند</MudTh>
+            <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd><span class="code">@(context.DetailCode ?? "—")</span></MudTd>
@@ -59,90 +63,60 @@
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">@r</MudChip>
                 }
             </MudTd>
+            <MudTd>@context.GroupTitle</MudTd>
             <MudTd><span class="code">@context.EmployeeDetailCode</span></MudTd>
+            <MudTd Style="text-align:left">
+                <span @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" aria-label="حذف"
+                                   OnClick="() => DeleteAsync(context)" />
+                </span>
+            </MudTd>
         </RowTemplate>
         <NoRecordsContent><MudText Class="pa-4">شخصی پیدا نشد.</MudText></NoRecordsContent>
     </MudTable>
 </MudPaper>
 
-<MudDialog @bind-Visible="_rolesOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
-    <TitleContent><MudText Typo="Typo.h6">نقش‌های اشخاص</MudText></TitleContent>
-    <DialogContent>
-        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
-            نقش فقط برچسب است و کد تفصیلی شخص را عوض نمی‌کند؛ در قواعد تفصیلی هر معین، نقش‌ها فهرست اشخاص فرم سند را فیلتر می‌کنند.
-            نقش «کارمند» تفصیلی جدا در گروه کارکنان می‌سازد.
-        </MudText>
-        <MudSimpleTable Dense="true" Elevation="0">
-            <tbody>
-                @foreach (var r in _roles)
-                {
-                    <tr>
-                        <td>@r.Title</td>
-                        <td>@(r.IsSystem ? "سیستمی" : "تعریف کاربر")</td>
-                        <td style="text-align:left">
-                            @if (!r.IsSystem)
-                            {
-                                <MudSwitch T="bool" Value="r.IsActive" ValueChanged="v => ToggleRole(r, v)" Color="Color.Primary"
-                                           Label="@(r.IsActive ? "فعال" : "غیرفعال")" />
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </MudSimpleTable>
-        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-3">
-            <MudTextField T="string" @bind-Value="_newRole" Label="نقش جدید (مثلاً نماینده فروش)"
-                          Variant="Variant.Outlined" Margin="Margin.Dense" />
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddRole" Disabled="string.IsNullOrWhiteSpace(_newRole)">افزودن</MudButton>
-        </MudStack>
-    </DialogContent>
-</MudDialog>
 
 @code {
     private List<PersonListItemDto> _persons = [];
     private List<PersonRoleTypeDto> _roles = [];
     private string? _search;
     private short? _roleFilter;
+    private int? _groupFilter;
     private bool _includeInactive;
     private bool _loading = true;
-    private bool _rolesOpen;
-    private string? _newRole;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadRolesAsync();
+        _roles = (await Backend.Run<PersonService, List<PersonRoleTypeDto>>(s => s.GetRoleTypesAsync(true, default))).Value ?? [];
         await LoadAsync();
     }
-
-    private async Task LoadRolesAsync() =>
-        _roles = (await Backend.Run<PersonService, List<PersonRoleTypeDto>>(s => s.GetRoleTypesAsync(true, default))).Value ?? [];
 
     private async Task SearchChanged(string? term) { _search = term; await LoadAsync(); }
 
     private async Task RoleFilterChanged(short? role) { _roleFilter = role; await LoadAsync(); }
+
+    private async Task GroupFilterChanged(int? group) { _groupFilter = group; await LoadAsync(); }
 
     private async Task InactiveChanged(bool v) { _includeInactive = v; await LoadAsync(); }
 
     private async Task LoadAsync()
     {
         _loading = true;
-        var r = await Backend.Run<PersonService, List<PersonListItemDto>>(s => s.SearchAsync(_search, _roleFilter, _includeInactive, default));
+        var r = await Backend.Run<PersonService, List<PersonListItemDto>>(s =>
+            s.SearchAsync(_search, _roleFilter, _groupFilter, _includeInactive, default));
         if (r.Success) _persons = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
         _loading = false;
     }
 
-    private async Task AddRole()
+    private async Task DeleteAsync(PersonListItemDto person)
     {
-        var r = await Backend.Run<PersonService, short>(s => s.CreateRoleTypeAsync(_newRole!, default));
+        if (!await Dialogs.DeleteAsync($"«{person.DisplayName}»",
+                "تفصیلی‌های بدون گردش و مدارک او هم حذف می‌شوند. اگر در سند استفاده شده، فقط غیرفعال‌کردن ممکن است."))
+            return;
+        var r = await Backend.Run<PersonService>(s => s.DeleteAsync(person.Id, default));
         if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
-        _newRole = null;
-        await LoadRolesAsync();
-    }
-
-    private async Task ToggleRole(PersonRoleTypeDto role, bool active)
-    {
-        var r = await Backend.Run<PersonService>(s => s.UpdateRoleTypeAsync(role.Id, role.Title, active, default));
-        if (!r.Success) Snackbar.Add(r.Error!, Severity.Error);
-        await LoadRolesAsync();
+        Snackbar.Add("شخص حذف شد.", Severity.Success);
+        await LoadAsync();
     }
 }

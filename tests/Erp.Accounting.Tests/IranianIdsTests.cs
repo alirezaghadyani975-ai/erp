@@ -38,8 +38,8 @@ public class IranianIdsTests
     public void Iban_is_normalized_and_bank_detected()
     {
         Assert.Equal("IR110170000000123456789001", IranianIds.Normalize(IdKind.Iban, "ir11-0170-0000-0012-3456-7890-01"));
-        Assert.Equal("ملی ایران", IranianIds.BankFromIban("IR110170000000123456789001"));
-        Assert.Equal("سامان", IranianIds.BankFromIban("IR150560000000000001234567"));
+        Assert.Equal("017", IranianIds.IbanBankCode("IR110170000000123456789001"));
+        Assert.Equal("056", IranianIds.IbanBankCode("IR150560000000000001234567"));
     }
 
     [Theory]
@@ -49,7 +49,7 @@ public class IranianIdsTests
     public void Card_number(string card, bool valid) => Assert.Equal(valid, IranianIds.IsValid(IdKind.CardNumber, card));
 
     [Fact]
-    public void Card_bank_detected() => Assert.Equal("ملت", IranianIds.BankFromCard("6104330000000003"));
+    public void Card_prefix() => Assert.Equal("610433", IranianIds.CardPrefix("6104-3300-0000-0003"));
 
     [Theory]
     [InlineData("09121234567", "09121234567")]

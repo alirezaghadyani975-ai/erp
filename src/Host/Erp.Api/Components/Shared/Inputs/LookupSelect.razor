@@ -1,0 +1,49 @@
+@* انتخاب از جدول پایه (کشور، استان، شهر، نوع نشانی، گروه اشخاص، ...).
+   با Parent فقط اقلام زیر آن والد نمایش داده می‌شوند (مثلاً شهرهای یک استان).
+   اقلام غیرفعال فقط وقتی قبلاً انتخاب شده‌اند دیده می‌شوند. *@
+@inject UiLookups Lookups
+
+<MudAutocomplete T="int?" Value="Value" ValueChanged="OnChanged" SearchFunc="Search" ToStringFunc="Title"
+                 Label="@Label" Clearable="true" ResetValueOnEmptyText="true" Strict="false" Dense="true" MaxItems="null"
+                 Required="Required" RequiredError="@($"{Label} الزامی است.")" Disabled="Disabled" HelperText="@HelperText"
+                 Variant="Variant.Outlined" Margin="Margin.Dense" SelectOnActivation="true">
+    <NoItemsTemplate><MudText Typo="Typo.body2" Class="pa-2">موردی نیست؛ از «اطلاعات پایه» اضافه کنید.</MudText></NoItemsTemplate>
+</MudAutocomplete>
+
+@code {
+    [Parameter, EditorRequired] public string Category { get; set; } = "";
+    [Parameter] public int? Value { get; set; }
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    /// <summary>فیلتر والد فعال باشد (مثلاً شهر براساس استان).</summary>
+    [Parameter] public bool FilterByParent { get; set; }
+    [Parameter] public int? Parent { get; set; }
+
+    private List<LookupItemDto> _items = [];
+    private Dictionary<int, string> _titles = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _items = await Lookups.ItemsAsync(Category);
+        _titles = _items.ToDictionary(i => i.Id, i => UiLookups.Path(_items, i));
+    }
+
+    private string? Title(int? id) => id is int i ? _titles.GetValueOrDefault(i, "؟") : null;
+
+    private Task<IEnumerable<int?>> Search(string? term, CancellationToken ct)
+    {
+        var q = _items.Where(i => i.IsActive || i.Id == Value);
+        if (FilterByParent && Parent is int p) q = q.Where(i => i.ParentId == p);
+        if (!string.IsNullOrWhiteSpace(term) && term != Title(Value))
+        {
+            var t = PersianText.Normalize(term);
+            q = q.Where(i => _titles[i.Id].Contains(t) || (i.Code?.StartsWith(t) ?? false));
+        }
+        return Task.FromResult(q.Select(i => (int?)i.Id));
+    }
+
+    private Task OnChanged(int? value) => ValueChanged.InvokeAsync(value);
+}

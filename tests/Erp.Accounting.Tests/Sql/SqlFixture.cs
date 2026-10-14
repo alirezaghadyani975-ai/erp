@@ -1,4 +1,5 @@
 using Erp.Accounting.Infrastructure;
+using Erp.BaseData.Infrastructure;
 using Erp.Database;
 using Erp.SharedKernel.Abstractions;
 using Microsoft.Data.SqlClient;
@@ -39,6 +40,7 @@ public sealed class SqlFixture : IAsyncLifetime
         services.AddSingleton<ICompanyContext>(new TestCompany(ConnectionString));
         services.AddSingleton<ICurrentUser>(new TestUser());
         services.AddSingleton(TimeProvider.System);
+        services.AddBaseDataModule();
         services.AddAccountingModule();
         _services = services.BuildServiceProvider();
     }

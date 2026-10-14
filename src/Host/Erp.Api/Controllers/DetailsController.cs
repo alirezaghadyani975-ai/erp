@@ -32,4 +32,32 @@ public class DetailsController(DetailService service) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<int>> Create(CreateDetailAccountRequest request, CancellationToken ct) =>
         Ok(await service.CreateAccountAsync(request, ct));
+
+    [HttpDelete("types/{id}")]
+    public async Task<IActionResult> DeleteType(short id, CancellationToken ct)
+    {
+        await service.DeleteTypeAsync(id, ct);
+        return NoContent();
+    }
+
+    /// <summary>تفصیلی‌های یک گروه با تعداد استفاده در سند</summary>
+    [HttpGet("types/{id}/accounts")]
+    public Task<List<DetailAccountRowDto>> Accounts(short id, [FromQuery] string? q, CancellationToken ct) =>
+        service.ListAccountsAsync(id, q, ct);
+
+    /// <summary>ویرایش عنوان/وضعیت تفصیلی غیرشخصی</summary>
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Update(int id, [FromQuery] string title, [FromQuery] bool isActive, CancellationToken ct)
+    {
+        await service.UpdateAccountAsync(id, title, isActive, ct);
+        return NoContent();
+    }
+
+    /// <summary>حذف تفصیلی غیرشخصی بدون گردش</summary>
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        await service.DeleteAccountAsync(id, ct);
+        return NoContent();
+    }
 }

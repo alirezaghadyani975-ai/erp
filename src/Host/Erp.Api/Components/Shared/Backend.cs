@@ -1,4 +1,4 @@
-using Erp.Accounting.Application.Common;
+using Erp.Api.Infrastructure;
 
 namespace Erp.Api.Components.Shared;
 

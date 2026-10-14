@@ -83,12 +83,26 @@ public class AccountService(IAccountingDbContext db)
             throw new DomainException("یک یا چند نوع تفصیلی انتخاب‌شده وجود ندارد.");
 
         var roleIds = (request.RoleIds ?? []).Distinct().ToList();
-        if (await db.PersonRoleTypes.CountAsync(r => roleIds.Contains(r.Id), ct) != roleIds.Count)
+        if (await db.RoleTypeRefs.CountAsync(r => roleIds.Contains(r.Id), ct) != roleIds.Count)
             throw new DomainException("یک یا چند نقش انتخاب‌شده وجود ندارد.");
 
         var inUse = await TypesInUseAsync(id, levelNo, ct);
         account.SetDetailLevel(levelNo, request.IsRequired, typeIds,
             new Dictionary<int, IReadOnlySet<short>> { [levelNo] = inUse }, roleIds);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>حذف حساب اختصاصی (نه استاندارد) که زیرحساب و گردش ندارد.</summary>
+    public async Task DeleteAsync(int id, CancellationToken ct)
+    {
+        var account = await LoadAsync(id, ct);
+        if (account.IsStandard)
+            throw new DomainException("حساب استاندارد کدینگ حذف نمی‌شود؛ می‌توانید غیرفعالش کنید.");
+        if (await db.Accounts.AnyAsync(a => a.ParentId == id, ct))
+            throw new DomainException($"حساب {account.Code} زیرحساب دارد؛ ابتدا آن‌ها را حذف کنید.");
+        if (await db.VoucherLines.AnyAsync(l => l.AccountId == id, ct))
+            throw new DomainException($"حساب {account.Code} در سند استفاده شده و حذف نمی‌شود؛ غیرفعالش کنید.");
+        db.Accounts.Remove(account);
         await db.SaveChangesAsync(ct);
     }
 

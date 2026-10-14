@@ -24,4 +24,12 @@ public class FiscalYearsController(FiscalYearService service) : ControllerBase
         await service.SetPeriodStatusAsync(id, periodNo, status, ct);
         return NoContent();
     }
+
+    /// <summary>حذف (فقط اگر قواعد حذف امن اجازه دهد)</summary>
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(short id, CancellationToken ct)
+    {
+        await service.DeleteAsync(id, ct);
+        return NoContent();
+    }
 }

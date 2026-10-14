@@ -1,15 +1,15 @@
-using Erp.Accounting.Application.Details;
-using Erp.Accounting.Domain.BaseData;
+using Erp.BaseData.Contracts;
+using Erp.BaseData.Domain.Persons;
 
-namespace Erp.Accounting.Application.Persons;
+namespace Erp.BaseData.Application.Persons;
 
-public sealed record PersonRoleTypeDto(short Id, string? Code, string Title, bool IsSystem, bool IsActive);
+public sealed record PersonRoleTypeDto(short Id, string? Code, string Title, bool IsSystem, bool IsActive, int PersonCount = 0);
 
 public sealed class AddressDto
 {
-    public string? Title { get; set; }
-    public string? Province { get; set; }
-    public string? City { get; set; }
+    public int? AddressTypeId { get; set; }
+    public int? ProvinceId { get; set; }
+    public int? CityId { get; set; }
     public string Address { get; set; } = "";
     public string? PostalCode { get; set; }
     public string? Phone { get; set; }
@@ -18,37 +18,27 @@ public sealed class AddressDto
 
 public sealed class BankAccountDto
 {
-    public string? BankName { get; set; }
+    /// <summary>خالی = از شبا یا کارت تشخیص داده می‌شود.</summary>
+    public short? BankId { get; set; }
     public string? Iban { get; set; }
     public string? AccountNo { get; set; }
     public string? CardNo { get; set; }
     public bool IsDefault { get; set; }
 }
 
-/// <summary>اطلاعات پرسنلی؛ تاریخ‌ها شمسی (1405/01/01).</summary>
-public sealed class EmployeeDto
+public sealed class ContactDto
 {
-    public string? EmployeeNo { get; set; }
-    public string? HireDate { get; set; }
-    public string? EndDate { get; set; }
-    public ContractType? ContractType { get; set; }
-    public string? JobTitle { get; set; }
-    public InsuranceType? InsuranceType { get; set; }
-    public string? InsuranceNo { get; set; }
-    public string? InsuranceStartDate { get; set; }
-    public string? InsuranceJobCode { get; set; }
-    public string? WorkshopCode { get; set; }
-    public EducationLevel? EducationLevel { get; set; }
-    public string? EducationField { get; set; }
-    public MilitaryStatus? MilitaryStatus { get; set; }
-    public byte ChildrenCount { get; set; }
-    public byte DependentsCount { get; set; }
-    public TaxExemptionType? TaxExemptionType { get; set; }
+    public string FullName { get; set; } = "";
+    public int? ContactRoleId { get; set; }
+    public string? Mobile { get; set; }
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public string? Notes { get; set; }
 }
 
 /// <summary>
 /// ثبت یا ویرایش شخص. فرم رابط کاربری مستقیماً به همین کلاس وصل است.
-/// تاریخ‌ها شمسی‌اند؛ نوع شخص (حقیقی/حقوقی) بعد از ثبت عوض نمی‌شود.
+/// تاریخ‌ها شمسی‌اند؛ فیلدهای *Id اقلام جدول پایه‌اند؛ نوع شخص بعد از ثبت عوض نمی‌شود.
 /// </summary>
 public class SavePersonRequest
 {
@@ -60,12 +50,12 @@ public class SavePersonRequest
     public string? FatherName { get; set; }
     public Gender? Gender { get; set; }
     public string? BirthDate { get; set; }
-    public string? BirthPlace { get; set; }
+    public int? BirthCityId { get; set; }
     public string? IdNumber { get; set; }
-    public string? IdIssuePlace { get; set; }
+    public int? IdIssueCityId { get; set; }
     public MaritalStatus? MaritalStatus { get; set; }
     public bool IsForeign { get; set; }
-    public string? Nationality { get; set; }
+    public int? NationalityId { get; set; }
     public string? ForeignNationalCode { get; set; }
     public string? PassportNo { get; set; }
 
@@ -73,12 +63,13 @@ public class SavePersonRequest
     public LegalType? LegalType { get; set; }
     public string? RegistrationNo { get; set; }
     public string? RegistrationDate { get; set; }
-    public string? RegistrationPlace { get; set; }
+    public int? RegistrationCityId { get; set; }
 
     public string? NationalId { get; set; }
     public string? EconomicCode { get; set; }
     public TaxPayerType? TaxPayerType { get; set; }
     public string? BranchCode { get; set; }
+    public int? PersonGroupId { get; set; }
     public string? Mobile { get; set; }
     public string? Phone { get; set; }
     public string? Email { get; set; }
@@ -88,16 +79,24 @@ public class SavePersonRequest
     public List<short> RoleIds { get; set; } = [];
     public List<AddressDto> Addresses { get; set; } = [];
     public List<BankAccountDto> BankAccounts { get; set; } = [];
-    public EmployeeDto? Employee { get; set; }
+    public List<ContactDto> Contacts { get; set; } = [];
 }
 
-/// <summary>شخص با تفصیلی‌هایش (تفصیلی مشترک طرف‌حساب و تفصیلی کارمند).</summary>
+public sealed record AttachmentDto(int Id, string Title, string FileName, string ContentType, int SizeBytes, string UploadedAt);
+
+public sealed record AttachmentFile(string FileName, string ContentType, byte[] Content);
+
+/// <summary>شخص با رکوردهای وابسته‌اش در ماژول‌های دیگر (مثلاً تفصیلی‌ها) و پیوست‌ها.</summary>
 public sealed class PersonDetailsDto : SavePersonRequest
 {
     public int Id { get; set; }
     public string DisplayName { get; set; } = "";
-    public List<DetailAccountDto> Details { get; set; } = [];
+    public List<PersonLinkInfo> Links { get; set; } = [];
+    public List<AttachmentDto> Attachments { get; set; } = [];
 }
 
 public sealed record PersonListItemDto(int Id, PersonKind Kind, string DisplayName, string? NationalId, string? Mobile,
-    bool IsActive, List<string> Roles, string? DetailCode, string? EmployeeDetailCode);
+    bool IsActive, List<string> Roles, string? GroupTitle, string? DetailCode, string? EmployeeDetailCode);
+
+/// <summary>شخص مشابه برای هشدار پیش از ذخیره.</summary>
+public sealed record DuplicateDto(int Id, string DisplayName, string Reason);

@@ -4,5 +4,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Erp.Accounting.Domain\Erp.Accounting.Domain.csproj" />
+    <ProjectReference Include="..\..\BaseData\Erp.BaseData.Contracts\Erp.BaseData.Contracts.csproj" />
   </ItemGroup>
 </Project>

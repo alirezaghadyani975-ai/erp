@@ -1,0 +1,169 @@
+@page "/detail-types/{TypeId:int}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>@(_type?.Title ?? "حساب‌های تفصیلی")</PageTitle>
+
+@if (_type is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Href="/detail-types" aria-label="بازگشت" />
+    <MudText Typo="Typo.h5">@_type.Title</MudText>
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@Titles.Owner(_type.OwnerModule)</MudChip>
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"><span class="code">@_type.CodeFrom</span>&nbsp;تا&nbsp;<span class="code">@_type.CodeTo</span></MudChip>
+    <MudSpacer />
+    <MudTextField T="string" Value="_term" ValueChanged="SearchChanged" Immediate="true" DebounceInterval="300" Placeholder="کد یا عنوان"
+                  Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:240px" />
+</MudStack>
+
+@if (IsPersonGroup)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+        تفصیلی‌های این گروه از فرم «اشخاص» ساخته، تغییر نام و حذف می‌شوند؛ برای ویرایش روی ردیف بزنید.
+    </MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+            <MudTextField T="string" @bind-Value="_newTitle" Immediate="true" Label="عنوان تفصیلی جدید" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:260px" />
+            <MudTextField T="string" @bind-Value="_newCode" Label="کد (خالی = بعدی)" Placeholder="@_type.NextCode" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Class="code" MaxLength="_type.CodeLength" InputMode="InputMode.numeric" Style="max-width:170px" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAsync"
+                       Disabled="string.IsNullOrWhiteSpace(_newTitle)">افزودن</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+<MudTable T="DetailAccountRowDto" Items="_rows" Dense="true" Hover="true" Elevation="1" Loading="_loading"
+          RowStyle="@(IsPersonGroup ? "cursor:pointer" : null)" OnRowClick="RowClick">
+    <HeaderContent>
+        <MudTh>کد</MudTh>
+        <MudTh>عنوان</MudTh>
+        <MudTh>ردیف‌های سند</MudTh>
+        <MudTh>وضعیت</MudTh>
+        <MudTh></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd><span class="code">@context.Code</span></MudTd>
+        <MudTd>
+            @if (_renameId == context.Id)
+            {
+                <MudTextField T="string" @bind-Value="_renameText" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true"
+                              OnKeyDown="@(e => e.Key == "Enter" ? UpdateAsync(context, _renameText!, context.IsActive) : Task.CompletedTask)" />
+            }
+            else
+            {
+                @context.Title
+            }
+        </MudTd>
+        <MudTd><span class="code">@context.UsageCount</span></MudTd>
+        <MudTd>
+            @if (IsPersonGroup)
+            {
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            }
+            else
+            {
+                <MudSwitch T="bool" Value="context.IsActive" ValueChanged="v => UpdateAsync(context, context.Title, v)" Color="Color.Primary"
+                           Label="@(context.IsActive ? "فعال" : "غیرفعال")" />
+            }
+        </MudTd>
+        <MudTd Style="text-align:left; white-space:nowrap">
+            @if (!IsPersonGroup)
+            {
+                @if (_renameId == context.Id)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small"
+                                   OnClick="() => UpdateAsync(context, _renameText!, context.IsActive)" aria-label="ثبت نام" />
+                }
+                else
+                {
+                    <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small" OnClick="() => { _renameId = context.Id; _renameText = context.Title; }" aria-label="تغییر نام" />
+                }
+                <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" Disabled="context.UsageCount > 0"
+                               OnClick="() => DeleteAsync(context)" aria-label="حذف" />
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent><MudText Class="pa-4">تفصیلی‌ای نیست.</MudText></NoRecordsContent>
+</MudTable>
+<MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block">تفصیلی دارای ردیف سند حذف نمی‌شود؛ غیرفعالش کنید. حداکثر ۵۰۰ ردیف نمایش داده می‌شود.</MudText>
+
+@code {
+    [Parameter] public int TypeId { get; set; }
+    [Inject] private NavigationManager Nav { get; set; } = null!;
+
+    private DetailTypeDto? _type;
+    private List<DetailAccountRowDto> _rows = [];
+    private bool _loading = true;
+    private string? _term;
+    private string? _newTitle, _newCode;
+    private int? _renameId;
+    private string? _renameText;
+
+    private bool IsPersonGroup => _type?.OwnerModule is OwnerModules.Persons or OwnerModules.Payroll;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadTypeAsync();
+        if (_type is null) { Snackbar.Add("گروه تفصیلی پیدا نشد.", Severity.Error); Nav.NavigateTo("/detail-types"); return; }
+        await LoadAsync();
+    }
+
+    private async Task LoadTypeAsync()
+    {
+        var types = (await Backend.Run<DetailService, List<DetailTypeDto>>(s => s.GetTypesAsync(default))).Value ?? [];
+        _type = types.FirstOrDefault(t => t.Id == TypeId);
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var id = (short)TypeId;
+        var r = await Backend.Run<DetailService, List<DetailAccountRowDto>>(s => s.ListAccountsAsync(id, _term, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private async Task SearchChanged(string? term) { _term = term; await LoadAsync(); }
+
+    private void RowClick(TableRowClickEventArgs<DetailAccountRowDto> e)
+    {
+        if (IsPersonGroup && e.Item?.PersonId is int p) Nav.NavigateTo($"/persons/{p}");
+    }
+
+    private async Task AddAsync()
+    {
+        var request = new CreateDetailAccountRequest((short)TypeId, _newTitle!, string.IsNullOrWhiteSpace(_newCode) ? null : _newCode);
+        var r = await Backend.Run<DetailService, int>(s => s.CreateAccountAsync(request, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _newTitle = _newCode = null;
+        await LoadTypeAsync();
+        await LoadAsync();
+    }
+
+    private async Task UpdateAsync(DetailAccountRowDto row, string title, bool active)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return;
+        var r = await Backend.Run<DetailService>(s => s.UpdateAccountAsync(row.Id, title, active, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _renameId = null;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(DetailAccountRowDto row)
+    {
+        if (!await Dialogs.DeleteAsync($"تفصیلی {row.Code} «{row.Title}»")) return;
+        var r = await Backend.Run<DetailService>(s => s.DeleteAccountAsync(row.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadTypeAsync();
+        await LoadAsync();
+    }
+}

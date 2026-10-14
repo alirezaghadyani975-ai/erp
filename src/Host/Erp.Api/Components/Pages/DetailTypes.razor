@@ -1,8 +1,10 @@
 @page "/detail-types"
 @inject Backend Backend
 @inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject NavigationManager Nav
 
-<PageTitle>گروه‌های تفصیلی</PageTitle>
+<PageTitle>گروه‌ها و حساب‌های تفصیلی</PageTitle>
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
     <MudText Typo="Typo.h5">گروه‌های تفصیلی</MudText>
@@ -112,7 +114,18 @@
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
                                OnClick="SaveAsync" Disabled="@(Problem() is not null || string.IsNullOrWhiteSpace(_edit.Title))">ذخیره</MudButton>
                     <MudButton Variant="Variant.Text" OnClick="() => _edit = null">انصراف</MudButton>
+                    @if (_edit.Id is short editId)
+                    {
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.List" Href="@($"/detail-types/{editId}")">حساب‌های تفصیلی این گروه</MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete"
+                                   Disabled="_edit.UsedCount > 0" OnClick="DeleteAsync">حذف گروه</MudButton>
+                    }
                 </MudStack>
+                @if (_edit.UsedCount > 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">گروهی که تفصیلی دارد حذف نمی‌شود؛ غیرفعالش کنید.</MudText>
+                }
             </MudPaper>
         </MudItem>
     }
@@ -129,6 +142,7 @@
                 <MudTh>بازه کد</MudTh>
                 <MudTh>استفاده</MudTh>
                 <MudTh>کد بعدی</MudTh>
+                <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd>@context.Title</MudTd>
@@ -143,6 +157,12 @@
                     </MudTooltip>
                 </MudTd>
                 <MudTd><span class="code">@(context.NextCode ?? "پر شده")</span></MudTd>
+                <MudTd Style="text-align:left">
+                    <span @onclick:stopPropagation="true">
+                        <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.List"
+                                   Href="@($"/detail-types/{context.Id}")">@($"{context.UsedCount:#,0}") تفصیلی</MudButton>
+                    </span>
+                </MudTd>
             </RowTemplate>
         </MudTable>
     </MudItem>
@@ -288,12 +308,22 @@
     {
         var e = _edit!;
         var kind = e.OwnerModule is OwnerModules.Persons or OwnerModules.Payroll ? e.PersonKind : null;
-        var r = e.Id is short id
-            ? await Backend.Run<DetailService>(s => s.UpdateTypeAsync(id, new UpdateDetailTypeRequest(e.Title, e.OwnerModule, kind, e.From, e.To, e.IsActive), default))
-            : (await Backend.Run<DetailService, short>(s => s.CreateTypeAsync(new CreateDetailTypeRequest(e.Title, e.OwnerModule, e.From, e.To, kind), default)) is var c && c.Success
-                ? Result<bool>.Ok(true) : Result<bool>.Fail(c.Error!));
-        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        var error = e.Id is short id
+            ? (await Backend.Run<DetailService>(s => s.UpdateTypeAsync(id, new UpdateDetailTypeRequest(e.Title, e.OwnerModule, kind, e.From, e.To, e.IsActive), default))).Error
+            : (await Backend.Run<DetailService, short>(s => s.CreateTypeAsync(new CreateDetailTypeRequest(e.Title, e.OwnerModule, e.From, e.To, kind), default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
         Snackbar.Add("گروه تفصیلی ذخیره شد.", Severity.Success);
+        _edit = null;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        var e = _edit!;
+        if (!await Dialogs.DeleteAsync($"گروه تفصیلی «{e.OriginalTitle}»", "اگر در قواعد تفصیلی معینی آمده باشد، حذف نمی‌شود.")) return;
+        var r = await Backend.Run<DetailService>(s => s.DeleteTypeAsync(e.Id!.Value, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Snackbar.Add("گروه تفصیلی حذف شد.", Severity.Success);
         _edit = null;
         await LoadAsync();
     }

@@ -7,6 +7,7 @@ set "DB=ErpCompany_Default"
 set "API=http://localhost:5227/api"
 
 taskkill /f /im Erp.Api.exe >nul 2>&1
+call "%~dp0cleanup-old-files.bat" >nul 2>&1
 
 echo ===== %date% %time% > "%LOG%"
 echo ----- [1] .NET SDKs >> "%LOG%"
@@ -45,6 +46,9 @@ echo. >> "%LOG%"
 echo GET account 2305: >> "%LOG%"
 curl -s %API%/accounting/accounts/by-code/2305 >> "%LOG%" 2>&1
 echo. >> "%LOG%"
+echo GET provinces: >> "%LOG%"
+curl -s %API%/base/lookups/province >> "%LOG%" 2>&1
+echo. >> "%LOG%"
 echo GET detail types: >> "%LOG%"
 curl -s %API%/accounting/details/types >> "%LOG%" 2>&1
 echo. >> "%LOG%"
@@ -54,7 +58,7 @@ curl -s -X POST %API%/accounting/reports/trial-balance -H "Content-Type: applica
 echo. >> "%LOG%"
 
 echo ----- [7] database contents >> "%LOG%"
-sqlcmd -S .\ERP -E -C -I -d %DB% -h -1 -W -Q "SET NOCOUNT ON; SELECT 'scripts: ' + STRING_AGG(ScriptName, ', ') FROM dbo.SchemaVersions; SELECT 'accounts: ' + CAST(COUNT(*) AS varchar) FROM fin.Accounts; SELECT 'detail types: ' + CAST(COUNT(*) AS varchar) FROM fin.DetailTypes; SELECT 'calendar days: ' + CAST(COUNT(*) AS varchar) FROM base.Calendar; SELECT 'collation: ' + CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS varchar(60));" >> "%LOG%" 2>&1
+sqlcmd -S .\ERP -E -C -I -d %DB% -h -1 -W -Q "SET NOCOUNT ON; SELECT 'scripts: ' + STRING_AGG(ScriptName, ', ') FROM dbo.SchemaVersions; SELECT 'accounts: ' + CAST(COUNT(*) AS varchar) FROM fin.Accounts; SELECT 'detail types: ' + CAST(COUNT(*) AS varchar) FROM fin.DetailTypes; SELECT 'calendar days: ' + CAST(COUNT(*) AS varchar) FROM base.Calendar; SELECT 'lookup items: ' + CAST(COUNT(*) AS varchar) FROM base.LookupItems; SELECT 'banks: ' + CAST(COUNT(*) AS varchar) FROM base.Banks; SELECT 'persons: ' + CAST(COUNT(*) AS varchar) FROM base.Persons; SELECT 'collation: ' + CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS varchar(60));" >> "%LOG%" 2>&1
 
 echo ----- [8] SQL smoke test (all rows must be pass) >> "%LOG%"
 sqlcmd -S .\ERP -E -C -I -f 65001 -d %DB% -W -s "|" -i database\tests\04_smoke_test.sql >> "%LOG%" 2>&1

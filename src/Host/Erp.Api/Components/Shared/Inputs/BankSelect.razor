@@ -1,0 +1,24 @@
+@* انتخاب بانک؛ اگر خالی بماند، از شبا یا پیش‌شماره کارت تشخیص داده می‌شود. *@
+@inject UiLookups Lookups
+
+<MudSelect T="short?" Value="Value" ValueChanged="ValueChanged" Label="بانک" Clearable="true" Dense="true"
+           Placeholder="@(Detected?.Title ?? "از شبا / کارت")" HelperText="@(Value is null && Detected is not null ? "تشخیص خودکار" : null)"
+           Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
+    @foreach (var b in _banks.Where(b => b.IsActive || b.Id == Value))
+    {
+        <MudSelectItem T="short?" Value="b.Id">@b.Title</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter] public short? Value { get; set; }
+    [Parameter] public EventCallback<short?> ValueChanged { get; set; }
+    [Parameter] public string? Iban { get; set; }
+    [Parameter] public string? CardNo { get; set; }
+
+    private List<BankDto> _banks = [];
+
+    private BankDto? Detected => UiLookups.DetectBank(_banks, Iban, CardNo);
+
+    protected override async Task OnInitializedAsync() => _banks = await Lookups.BanksAsync();
+}

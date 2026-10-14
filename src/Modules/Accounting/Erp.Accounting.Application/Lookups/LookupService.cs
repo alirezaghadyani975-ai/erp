@@ -7,7 +7,8 @@ public sealed record CurrencyDto(short Id, string Code, string Title, byte Decim
 
 public sealed record UnitDto(short Id, string Title);
 
-public class LookupService(IAccountingDbContext db)
+/// <summary>ارزها و واحدهای سنجش برای ردیف سند.</summary>
+public class FinanceLookupService(IAccountingDbContext db)
 {
     public Task<List<CurrencyDto>> CurrenciesAsync(CancellationToken ct) =>
         db.Currencies.AsNoTracking().Where(c => c.IsActive).OrderByDescending(c => c.IsBase).ThenBy(c => c.Code)

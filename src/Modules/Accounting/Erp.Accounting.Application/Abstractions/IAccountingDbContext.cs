@@ -13,8 +13,11 @@ public interface IAccountingDbContext
     DbSet<Account> Accounts { get; }
     DbSet<DetailType> DetailTypes { get; }
     DbSet<DetailAccount> DetailAccounts { get; }
-    DbSet<Person> Persons { get; }
-    DbSet<PersonRoleType> PersonRoleTypes { get; }
+    /// <summary>فقط‌خواندنی: نقش اشخاص (مالک: ماژول اطلاعات پایه) برای فیلتر فهرست تفصیلی.</summary>
+    IQueryable<PersonRoleLink> PersonRoleLinks { get; }
+
+    /// <summary>فقط‌خواندنی: انواع نقش (مالک: ماژول اطلاعات پایه).</summary>
+    IQueryable<RoleTypeRef> RoleTypeRefs { get; }
     DbSet<Currency> Currencies { get; }
     DbSet<Unit> Units { get; }
     DbSet<FiscalYear> FiscalYears { get; }
@@ -27,4 +30,19 @@ public interface IAccountingDbContext
     Task<short> CreateFiscalYearAsync(int persianYear, byte startMonth, CancellationToken ct);
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>نقش یک شخص (base.PersonRoles)؛ نمای فقط‌خواندنی در حسابداری.</summary>
+public class PersonRoleLink
+{
+    public int PersonId { get; private set; }
+    public short RoleId { get; private set; }
+}
+
+/// <summary>نوع نقش (base.PersonRoleTypes)؛ نمای فقط‌خواندنی در حسابداری.</summary>
+public class RoleTypeRef
+{
+    public short Id { get; private set; }
+    public string Title { get; private set; } = null!;
+    public bool IsActive { get; private set; }
 }

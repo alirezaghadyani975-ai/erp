@@ -1,4 +1,3 @@
-using Erp.Accounting.Domain.BaseData;
 using Erp.Accounting.Domain.Details;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -30,7 +29,6 @@ internal class DetailAccountConfiguration : IEntityTypeConfiguration<DetailAccou
         b.Property(d => d.Title).HasMaxLength(200);
         b.Property(d => d.SourceModule).HasMaxLength(30).IsUnicode(false);
         b.HasOne<DetailType>().WithMany().HasForeignKey(d => d.DetailTypeId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne<Person>().WithMany().HasForeignKey(d => d.PersonId).OnDelete(DeleteBehavior.Restrict);
         b.Ignore(d => d.DomainEvents);
     }
 }

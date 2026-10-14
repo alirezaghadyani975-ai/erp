@@ -1,12 +1,14 @@
+using Erp.BaseData.Contracts;
 using Erp.SharedKernel.Domain;
 using Erp.SharedKernel.Text;
 using Erp.SharedKernel.Validation;
 
-namespace Erp.Accounting.Domain.BaseData;
+namespace Erp.BaseData.Domain.Persons;
 
 /// <summary>
 /// اطلاعات قابل ویرایش شخص. برای حقیقی نام و نام خانوادگی، برای حقوقی نام شرکت لازم است؛
 /// بقیه اختیاری‌اند ولی اگر وارد شوند قالب و رقم کنترلشان بررسی می‌شود.
+/// فیلدهای *Id به اقلام جدول پایه اشاره می‌کنند (درستی فهرستشان در سرویس کنترل می‌شود).
 /// </summary>
 public sealed class PersonProfile
 {
@@ -16,12 +18,12 @@ public sealed class PersonProfile
     public string? FatherName { get; init; }
     public Gender? Gender { get; init; }
     public DateOnly? BirthDate { get; init; }
-    public string? BirthPlace { get; init; }
+    public int? BirthCityId { get; init; }
     public string? IdNumber { get; init; }
-    public string? IdIssuePlace { get; init; }
+    public int? IdIssueCityId { get; init; }
     public MaritalStatus? MaritalStatus { get; init; }
     public bool IsForeign { get; init; }
-    public string? Nationality { get; init; }
+    public int? NationalityId { get; init; }
     public string? ForeignNationalCode { get; init; }
     public string? PassportNo { get; init; }
 
@@ -30,7 +32,7 @@ public sealed class PersonProfile
     public LegalType? LegalType { get; init; }
     public string? RegistrationNo { get; init; }
     public DateOnly? RegistrationDate { get; init; }
-    public string? RegistrationPlace { get; init; }
+    public int? RegistrationCityId { get; init; }
 
     // مشترک
     /// <summary>کد ملی (حقیقی) یا شناسه ملی (حقوقی).</summary>
@@ -38,6 +40,7 @@ public sealed class PersonProfile
     public string? EconomicCode { get; init; }
     public TaxPayerType? TaxPayerType { get; init; }
     public string? BranchCode { get; init; }
+    public int? PersonGroupId { get; init; }
     public string? Mobile { get; init; }
     public string? Phone { get; init; }
     public string? Email { get; init; }
@@ -45,20 +48,23 @@ public sealed class PersonProfile
     public string? Notes { get; init; }
 }
 
-public sealed record AddressData(string? Title, string? Province, string? City, string Address, string? PostalCode,
+public sealed record AddressData(int? AddressTypeId, int? ProvinceId, int? CityId, string Address, string? PostalCode,
     string? Phone, bool IsDefault);
 
-public sealed record BankAccountData(string? BankName, string? Iban, string? AccountNo, string? CardNo, bool IsDefault);
+public sealed record BankAccountData(short? BankId, string? Iban, string? AccountNo, string? CardNo, bool IsDefault);
+
+public sealed record ContactData(string FullName, int? ContactRoleId, string? Mobile, string? Phone, string? Email, string? Notes);
 
 /// <summary>
-/// شخص حقیقی یا حقوقی (base.Persons) با نقش‌ها، نشانی‌ها، حساب‌های بانکی و اطلاعات پرسنلی.
-/// هر شخص یک تفصیلی مشترک برای همه نقش‌های طرف‌حسابی دارد؛ نقش کارمند تفصیلی جدا دارد.
+/// شخص حقیقی یا حقوقی (base.Persons) با نقش‌ها، نشانی‌ها، حساب‌های بانکی و رابطین.
+/// پیوست‌ها جدا (PersonAttachment) نگه داشته می‌شوند تا محتوای فایل با شخص بارگذاری نشود.
 /// </summary>
 public class Person : AggregateRoot<int>
 {
     private readonly List<PersonRole> _roles = [];
     private readonly List<PersonAddress> _addresses = [];
     private readonly List<PersonBankAccount> _bankAccounts = [];
+    private readonly List<PersonContact> _contacts = [];
 
     private Person() { } // EF
 
@@ -80,22 +86,23 @@ public class Person : AggregateRoot<int>
     public string? FatherName { get; private set; }
     public Gender? Gender { get; private set; }
     public DateOnly? BirthDate { get; private set; }
-    public string? BirthPlace { get; private set; }
+    public int? BirthCityId { get; private set; }
     public string? IdNumber { get; private set; }
-    public string? IdIssuePlace { get; private set; }
+    public int? IdIssueCityId { get; private set; }
     public MaritalStatus? MaritalStatus { get; private set; }
     public bool IsForeign { get; private set; }
-    public string? Nationality { get; private set; }
+    public int? NationalityId { get; private set; }
     public string? ForeignNationalCode { get; private set; }
     public string? PassportNo { get; private set; }
 
     public LegalType? LegalType { get; private set; }
     public string? RegistrationNo { get; private set; }
     public DateOnly? RegistrationDate { get; private set; }
-    public string? RegistrationPlace { get; private set; }
+    public int? RegistrationCityId { get; private set; }
 
     public TaxPayerType? TaxPayerType { get; private set; }
     public string? BranchCode { get; private set; }
+    public int? PersonGroupId { get; private set; }
     public string? Mobile { get; private set; }
     public string? Phone { get; private set; }
     public string? Email { get; private set; }
@@ -106,7 +113,7 @@ public class Person : AggregateRoot<int>
     public IReadOnlyCollection<PersonRole> Roles => _roles.AsReadOnly();
     public IReadOnlyCollection<PersonAddress> Addresses => _addresses.AsReadOnly();
     public IReadOnlyCollection<PersonBankAccount> BankAccounts => _bankAccounts.AsReadOnly();
-    public Employee? Employee { get; private set; }
+    public IReadOnlyCollection<PersonContact> Contacts => _contacts.AsReadOnly();
 
     public void Update(PersonProfile profile, DateOnly today) => Apply(profile, today);
 
@@ -116,32 +123,25 @@ public class Person : AggregateRoot<int>
 
     public bool HasRole(short roleId) => _roles.Any(r => r.RoleId == roleId);
 
-    /// <summary>نقش‌ها را جایگزین می‌کند. کارمند فقط شخص حقیقی است و اطلاعات پرسنلی‌اش ساخته/حذف می‌شود.</summary>
+    /// <summary>
+    /// نقش‌ها را جایگزین می‌کند. کارمند فقط شخص حقیقی است و کد ملی لازم دارد
+    /// (اطلاعات کارگزینی بعداً در ماژول خودش ثبت می‌شود).
+    /// </summary>
     public void SetRoles(IReadOnlyCollection<short> roleIds, short employeeRoleId)
     {
         if (roleIds.Count == 0)
             throw new DomainException("حداقل یک نقش (مشتری، تأمین‌کننده، کارمند، ...) برای شخص لازم است.");
-        if (roleIds.Contains(employeeRoleId) && Kind != PersonKind.Natural)
-            throw new DomainException("نقش کارمند فقط برای شخص حقیقی است.");
+        if (roleIds.Contains(employeeRoleId))
+        {
+            if (Kind != PersonKind.Natural)
+                throw new DomainException("نقش کارمند فقط برای شخص حقیقی است.");
+            if (!IsForeign && NationalId is null)
+                throw new DomainException("برای کارمند کد ملی لازم است (بیمه و مالیات حقوق).");
+        }
 
         _roles.RemoveAll(r => !roleIds.Contains(r.RoleId));
         foreach (var id in roleIds.Distinct().Where(id => !HasRole(id)))
             _roles.Add(new PersonRole(id));
-
-        if (roleIds.Contains(employeeRoleId))
-        {
-            if (!IsForeign && NationalId is null)
-                throw new DomainException("برای کارمند کد ملی لازم است (بیمه و مالیات حقوق).");
-            Employee ??= new Employee();
-        }
-        else Employee = null;
-    }
-
-    public void SetEmployee(EmployeeData data, DateOnly today)
-    {
-        if (Employee is null)
-            throw new DomainException("اطلاعات پرسنلی فقط برای شخص با نقش کارمند ثبت می‌شود.");
-        Employee.Apply(data, today);
     }
 
     public void SetAddresses(IEnumerable<AddressData> addresses)
@@ -160,6 +160,13 @@ public class Person : AggregateRoot<int>
         EnsureSingleDefault(list, a => a.IsDefault, (a, v) => a.IsDefault = v);
         _bankAccounts.Clear();
         _bankAccounts.AddRange(list);
+    }
+
+    public void SetContacts(IEnumerable<ContactData> contacts)
+    {
+        var list = contacts.Select((c, i) => PersonContact.Create(c, i + 1)).ToList();
+        _contacts.Clear();
+        _contacts.AddRange(list);
     }
 
     private static void EnsureSingleDefault<T>(List<T> items, Func<T, bool> get, Action<T, bool> set)
@@ -183,12 +190,12 @@ public class Person : AggregateRoot<int>
             BirthDate = PastDate(p.BirthDate, today, "تاریخ تولد");
             if (BirthDate is { } b && b < today.AddYears(-120))
                 throw new DomainException("تاریخ تولد معتبر نیست.");
-            BirthPlace = Text(p.BirthPlace);
+            BirthCityId = p.BirthCityId;
             IdNumber = Digits(p.IdNumber, "شماره شناسنامه", 10);
-            IdIssuePlace = Text(p.IdIssuePlace);
+            IdIssueCityId = p.IdIssueCityId;
             MaritalStatus = p.MaritalStatus;
             IsForeign = p.IsForeign;
-            Nationality = IsForeign ? Text(p.Nationality) : null;
+            NationalityId = IsForeign ? p.NationalityId : null;
             ForeignNationalCode = IsForeign ? Checked(IdKind.ForeignNationalCode, p.ForeignNationalCode) : null;
             PassportNo = IsForeign ? Text(p.PassportNo)?.ToUpperInvariant() : null;
             NationalId = IsForeign ? null : Checked(IdKind.NationalCode, p.NationalId);
@@ -198,7 +205,7 @@ public class Person : AggregateRoot<int>
             LegalType = null;
             RegistrationNo = null;
             RegistrationDate = null;
-            RegistrationPlace = null;
+            RegistrationCityId = null;
         }
         else
         {
@@ -207,10 +214,10 @@ public class Person : AggregateRoot<int>
             LegalType = p.LegalType;
             RegistrationNo = Text(p.RegistrationNo);
             RegistrationDate = PastDate(p.RegistrationDate, today, "تاریخ ثبت");
-            RegistrationPlace = Text(p.RegistrationPlace);
+            RegistrationCityId = p.RegistrationCityId;
 
-            FirstName = LastName = FatherName = BirthPlace = IdNumber = IdIssuePlace = null;
-            Nationality = ForeignNationalCode = PassportNo = null;
+            FirstName = LastName = FatherName = IdNumber = ForeignNationalCode = PassportNo = null;
+            BirthCityId = IdIssueCityId = NationalityId = null;
             Gender = null;
             BirthDate = null;
             MaritalStatus = null;
@@ -218,17 +225,15 @@ public class Person : AggregateRoot<int>
         }
 
         EconomicCode = Checked(IdKind.EconomicCode, p.EconomicCode);
-        TaxPayerType = p.TaxPayerType ?? (Kind == PersonKind.Legal ? BaseData.TaxPayerType.Legal
-            : IsForeign ? BaseData.TaxPayerType.Foreign : BaseData.TaxPayerType.Natural);
+        TaxPayerType = p.TaxPayerType ?? (Kind == PersonKind.Legal ? Persons.TaxPayerType.Legal
+            : IsForeign ? Persons.TaxPayerType.Foreign : Persons.TaxPayerType.Natural);
         BranchCode = Checked(IdKind.BranchCode, p.BranchCode);
+        PersonGroupId = p.PersonGroupId;
         Mobile = Checked(IdKind.Mobile, p.Mobile);
         Phone = Checked(IdKind.Phone, p.Phone);
         Email = Checked(IdKind.Email, p.Email);
         Website = Text(p.Website);
         Notes = Text(p.Notes);
-
-        if (Employee is not null && !IsForeign && NationalId is null)
-            throw new DomainException("برای کارمند کد ملی لازم است (بیمه و مالیات حقوق).");
     }
 
     // ---------- کمکی‌های اعتبارسنجی (مشترک با بخش‌های دیگر شخص) ----------
@@ -308,9 +313,9 @@ public class PersonAddress : Entity<int>
         {
             return new PersonAddress
             {
-                Title = Person.Text(a.Title),
-                Province = Person.Text(a.Province),
-                City = Person.Text(a.City),
+                AddressTypeId = a.AddressTypeId,
+                ProvinceId = a.ProvinceId,
+                CityId = a.CityId,
                 Address = Person.Required(a.Address, "متن نشانی"),
                 PostalCode = Person.Checked(IdKind.PostalCode, a.PostalCode),
                 Phone = Person.Checked(IdKind.Phone, a.Phone),
@@ -324,16 +329,16 @@ public class PersonAddress : Entity<int>
     }
 
     public int PersonId { get; private set; }
-    public string? Title { get; private set; }
-    public string? Province { get; private set; }
-    public string? City { get; private set; }
+    public int? AddressTypeId { get; private set; }
+    public int? ProvinceId { get; private set; }
+    public int? CityId { get; private set; }
     public string Address { get; private set; } = null!;
     public string? PostalCode { get; private set; }
     public string? Phone { get; private set; }
     public bool IsDefault { get; internal set; }
 }
 
-/// <summary>حساب بانکی شخص (base.PersonBankAccounts). نام بانک اگر خالی باشد از شبا یا کارت تشخیص داده می‌شود.</summary>
+/// <summary>حساب بانکی شخص (base.PersonBankAccounts). بانک اگر انتخاب نشود از شبا یا کارت تشخیص داده می‌شود (در سرویس).</summary>
 public class PersonBankAccount : Entity<int>
 {
     private PersonBankAccount() { } // EF
@@ -347,14 +352,7 @@ public class PersonBankAccount : Entity<int>
             var accountNo = Person.Text(a.AccountNo);
             if (iban is null && card is null && accountNo is null)
                 throw new DomainException("شبا، شماره حساب یا شماره کارت لازم است.");
-            return new PersonBankAccount
-            {
-                Iban = iban,
-                CardNo = card,
-                AccountNo = accountNo,
-                BankName = Person.Text(a.BankName) ?? IranianIds.BankFromIban(iban) ?? IranianIds.BankFromCard(card),
-                IsDefault = a.IsDefault
-            };
+            return new PersonBankAccount { Iban = iban, CardNo = card, AccountNo = accountNo, BankId = a.BankId, IsDefault = a.IsDefault };
         }
         catch (DomainException ex)
         {
@@ -363,9 +361,73 @@ public class PersonBankAccount : Entity<int>
     }
 
     public int PersonId { get; private set; }
-    public string? BankName { get; private set; }
+    public short? BankId { get; private set; }
     public string? Iban { get; private set; }
     public string? AccountNo { get; private set; }
     public string? CardNo { get; private set; }
     public bool IsDefault { get; internal set; }
+}
+
+/// <summary>رابط شخص (base.PersonContacts)، معمولاً برای اشخاص حقوقی.</summary>
+public class PersonContact : Entity<int>
+{
+    private PersonContact() { } // EF
+
+    internal static PersonContact Create(ContactData c, int row)
+    {
+        try
+        {
+            return new PersonContact
+            {
+                FullName = Person.Required(c.FullName, "نام رابط"),
+                ContactRoleId = c.ContactRoleId,
+                Mobile = Person.Checked(IdKind.Mobile, c.Mobile),
+                Phone = Person.Checked(IdKind.Phone, c.Phone),
+                Email = Person.Checked(IdKind.Email, c.Email),
+                Notes = Person.Text(c.Notes)
+            };
+        }
+        catch (DomainException ex)
+        {
+            throw new DomainException($"رابط {row}: {ex.Message}");
+        }
+    }
+
+    public int PersonId { get; private set; }
+    public string FullName { get; private set; } = null!;
+    public int? ContactRoleId { get; private set; }
+    public string? Mobile { get; private set; }
+    public string? Phone { get; private set; }
+    public string? Email { get; private set; }
+    public string? Notes { get; private set; }
+}
+
+/// <summary>پیوست مدرک شخص (base.PersonAttachments)؛ حداکثر ۱۰ مگابایت.</summary>
+public class PersonAttachment : Entity<int>
+{
+    public const int MaxBytes = 10 * 1024 * 1024;
+
+    private PersonAttachment() { } // EF
+
+    public PersonAttachment(int personId, string title, string fileName, string contentType, byte[] content, int uploadedBy)
+    {
+        if (content.Length == 0) throw new DomainException("فایل خالی است.");
+        if (content.Length > MaxBytes) throw new DomainException("حجم فایل حداکثر ۱۰ مگابایت است.");
+        PersonId = personId;
+        FileName = Path.GetFileName(fileName.Trim());
+        Title = Person.Text(title) ?? Path.GetFileNameWithoutExtension(FileName);
+        ContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType.Trim();
+        Content = content;
+        SizeBytes = content.Length;
+        UploadedBy = uploadedBy;
+    }
+
+    public int PersonId { get; private set; }
+    public string Title { get; private set; } = null!;
+    public string FileName { get; private set; } = null!;
+    public string ContentType { get; private set; } = null!;
+    public int SizeBytes { get; private set; }
+    public byte[] Content { get; private set; } = [];
+    public DateTime UploadedAt { get; private set; }
+    public int UploadedBy { get; private set; }
 }

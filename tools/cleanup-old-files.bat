@@ -1,15 +1,15 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0.."
-rem حذف فایل‌های نسخه قبلی (EF Migrations و کلاس‌های قدیمی) — یک بار اجرا کنید
-if exist "tests\Erp.Accounting.Tests\DetailAndCalendarTests.cs" del /q "tests\Erp.Accounting.Tests\DetailAndCalendarTests.cs"
-if exist "src\BuildingBlocks\Erp.SharedKernel\Domain\IAuditable.cs" del /q "src\BuildingBlocks\Erp.SharedKernel\Domain\IAuditable.cs"
-if exist "src\Modules\Accounting\Erp.Accounting.Domain\Currencies\Currency.cs" del /q "src\Modules\Accounting\Erp.Accounting.Domain\Currencies\Currency.cs"
-if exist "src\Modules\Accounting\Erp.Accounting.Infrastructure\Persistence\AuditInterceptor.cs" del /q "src\Modules\Accounting\Erp.Accounting.Infrastructure\Persistence\AuditInterceptor.cs"
-if exist "src\Modules\Accounting\Erp.Accounting.Infrastructure\Persistence\Migrations\20261013081934_InitialAccounting.cs" del /q "src\Modules\Accounting\Erp.Accounting.Infrastructure\Persistence\Migrations\20261013081934_InitialAccounting.cs"
-if exist "src\Modules\Accounting\Erp.Accounting.Infrastructure\Persistence\Migrations\20261013081934_InitialAccounting.Designer.cs" del /q "src\Modules\Accounting\Erp.Accounting.Infrastructure\Persistence\Migrations\20261013081934_InitialAccounting.Designer.cs"
-if exist "src\Modules\Accounting\Erp.Accounting.Infrastructure\Persistence\Migrations\AccountingDbContextModelSnapshot.cs" del /q "src\Modules\Accounting\Erp.Accounting.Infrastructure\Persistence\Migrations\AccountingDbContextModelSnapshot.cs"
-if exist "src\Modules\Accounting\Erp.Accounting.Infrastructure\Persistence\Migrations" rmdir "src\Modules\Accounting\Erp.Accounting.Infrastructure\Persistence\Migrations"
-if exist "src\Modules\Accounting\Erp.Accounting.Domain\Currencies" rmdir "src\Modules\Accounting\Erp.Accounting.Domain\Currencies"
+rem حذف فایل‌هایی که در نسخه جدید جابه‌جا یا حذف شده‌اند (اشخاص به ماژول BaseData رفت). اجرای چندباره بی‌خطر است.
+rem نسخه قبلی این فایل‌ها در git (commit قبلی) باقی است.
+if exist "src\Modules\Accounting\Erp.Accounting.Application\Abstractions\NotFoundException.cs" del /q "src\Modules\Accounting\Erp.Accounting.Application\Abstractions\NotFoundException.cs"
+if exist "src\Modules\Accounting\Erp.Accounting.Application\Common\ErrorMessages.cs" del /q "src\Modules\Accounting\Erp.Accounting.Application\Common\ErrorMessages.cs"
+if exist "src\Modules\Accounting\Erp.Accounting.Application\Persons\PersonDtos.cs" del /q "src\Modules\Accounting\Erp.Accounting.Application\Persons\PersonDtos.cs"
+if exist "src\Modules\Accounting\Erp.Accounting.Application\Persons\PersonService.cs" del /q "src\Modules\Accounting\Erp.Accounting.Application\Persons\PersonService.cs"
+if exist "src\Modules\Accounting\Erp.Accounting.Domain\BaseData\Employee.cs" del /q "src\Modules\Accounting\Erp.Accounting.Domain\BaseData\Employee.cs"
+if exist "src\Modules\Accounting\Erp.Accounting.Domain\BaseData\Person.cs" del /q "src\Modules\Accounting\Erp.Accounting.Domain\BaseData\Person.cs"
+if exist "src\Modules\Accounting\Erp.Accounting.Domain\BaseData\PersonEnums.cs" del /q "src\Modules\Accounting\Erp.Accounting.Domain\BaseData\PersonEnums.cs"
+if exist "src\Modules\Accounting\Erp.Accounting.Application\Common" rmdir "src\Modules\Accounting\Erp.Accounting.Application\Common" 2>nul
+if exist "src\Modules\Accounting\Erp.Accounting.Application\Persons" rmdir "src\Modules\Accounting\Erp.Accounting.Application\Persons" 2>nul
 echo فایل‌های قدیمی حذف شد.
-pause

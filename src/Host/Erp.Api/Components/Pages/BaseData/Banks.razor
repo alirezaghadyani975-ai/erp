@@ -1,0 +1,118 @@
+@page "/base/banks"
+@inject Backend Backend
+@inject UiLookups Cache
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>بانک‌ها</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">بانک‌ها</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">بانک جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    بانک حساب اشخاص از «کد شبا» (رقم‌های ۵ تا ۷ شبا) یا «پیش‌شماره کارت» (۶ رقم اول) همین جدول تشخیص داده می‌شود.
+    اگر بانک یا پیش‌شماره جدیدی آمد، همین‌جا اضافه کنید؛ نیازی به تغییر برنامه نیست.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTextField T="string" @bind-Value="_term" Immediate="true" Placeholder="جستجو" Clearable="true" Class="mb-2"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:280px" />
+    <MudTable T="BankDto" Items="Visible" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>نام بانک</MudTh>
+            <MudTh>کد شبا</MudTh>
+            <MudTh>پیش‌شماره کارت</MudTh>
+            <MudTh>وضعیت</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Title</MudTd>
+            <MudTd><span class="code">@context.IbanCode</span></MudTd>
+            <MudTd><span class="code">@context.CardPrefixes?.Replace(",", "، ")</span></MudTd>
+            <MudTd>@if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }</MudTd>
+            <MudTd Style="text-align:left">
+                <span @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" aria-label="حذف"
+                                   OnClick="() => DeleteAsync(context)" />
+                </span>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "بانک جدید" : "ویرایش بانک")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_title" Immediate="true" Label="نام بانک" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_ibanCode" Label="کد شبا" Placeholder="017" MaxLength="3" InputMode="InputMode.numeric" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_cardPrefixes" Label="پیش‌شماره‌های کارت" Placeholder="603799,170019" HelperText="شش رقمی؛ چند مورد را با کاما جدا کنید" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="string.IsNullOrWhiteSpace(_title)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<BankDto> _banks = [];
+    private bool _loading = true;
+    private string? _term;
+
+    private bool _editOpen;
+    private short? _editId;
+    private string? _title, _ibanCode, _cardPrefixes;
+    private bool _active = true;
+
+    private IEnumerable<BankDto> Visible => string.IsNullOrWhiteSpace(_term) ? _banks
+        : _banks.Where(b => b.Title.Contains(PersianText.Normalize(_term)) || b.IbanCode == _term || (b.CardPrefixes?.Contains(_term) ?? false));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<BankService, List<BankDto>>(s => s.GetAllAsync(true, default));
+        if (r.Success) _banks = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private void New()
+    {
+        (_editId, _title, _ibanCode, _cardPrefixes, _active) = (null, null, null, null, true);
+        _editOpen = true;
+    }
+
+    private void Edit(BankDto b)
+    {
+        (_editId, _title, _ibanCode, _cardPrefixes, _active) = (b.Id, b.Title, b.IbanCode, b.CardPrefixes, b.IsActive);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveBankRequest(_title!, _ibanCode, _cardPrefixes, _active);
+        var error = _editId is short id
+            ? (await Backend.Run<BankService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<BankService, short>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Cache.Invalidate();
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(BankDto bank)
+    {
+        if (!await Dialogs.DeleteAsync($"بانک «{bank.Title}»", "اگر در حساب اشخاص استفاده شده باشد حذف نمی‌شود؛ می‌توانید غیرفعالش کنید.")) return;
+        var r = await Backend.Run<BankService>(s => s.DeleteAsync(bank.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Cache.Invalidate();
+        await LoadAsync();
+    }
+}

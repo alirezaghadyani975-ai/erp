@@ -11,24 +11,35 @@
             <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
                            OnClick="() => _drawerOpen = !_drawerOpen" aria-label="منو" />
             <MudText Typo="Typo.h6" Class="mr-2">Erp</MudText>
-            <MudText Typo="Typo.body2" Class="mr-3" Style="opacity:.8">هسته مالی</MudText>
+            
             <MudSpacer />
             <MudLink Href="/scalar" Target="_blank" Color="Color.Inherit" Typo="Typo.body2">API</MudLink>
         </MudAppBar>
 
         <MudDrawer Class="no-print" @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="1" Variant="DrawerVariant.Responsive">
             <MudNavMenu>
-                <MudNavLink Href="/vouchers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.ReceiptLong">اسناد حسابداری</MudNavLink>
-                <MudNavLink Href="/vouchers/new" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.NoteAdd">سند جدید</MudNavLink>
-                <MudNavGroup Title="گزارش‌ها" Icon="@Icons.Material.Outlined.Assessment" Expanded="true">
-                    <MudNavLink Href="/reports/trial-balance" Icon="@Icons.Material.Outlined.TableChart">تراز آزمایشی</MudNavLink>
-                    <MudNavLink Href="/reports/ledger" Icon="@Icons.Material.Outlined.MenuBook">دفتر معین و تفصیلی</MudNavLink>
+                <MudNavGroup Title="مالی" Icon="@Icons.Material.Outlined.AccountBalanceWallet" Expanded="true">
+                    <MudNavGroup Title="حسابداری" Icon="@Icons.Material.Outlined.Calculate" Expanded="true">
+                        <MudNavLink Href="/vouchers" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.ReceiptLong">اسناد حسابداری</MudNavLink>
+                        <MudNavLink Href="/vouchers/new" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.NoteAdd">سند جدید</MudNavLink>
+                        <MudNavGroup Title="گزارش‌ها" Icon="@Icons.Material.Outlined.Assessment" Expanded="true">
+                            <MudNavLink Href="/reports/trial-balance" Icon="@Icons.Material.Outlined.TableChart">تراز آزمایشی</MudNavLink>
+                            <MudNavLink Href="/reports/ledger" Icon="@Icons.Material.Outlined.MenuBook">دفتر معین و تفصیلی</MudNavLink>
+                        </MudNavGroup>
+                        <MudNavGroup Title="تعاریف" Icon="@Icons.Material.Outlined.Tune" Expanded="false">
+                            <MudNavLink Href="/accounts" Icon="@Icons.Material.Outlined.AccountTree">کدینگ حساب‌ها</MudNavLink>
+                            <MudNavLink Href="/detail-types" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Category">گروه‌ها و حساب‌های تفصیلی</MudNavLink>
+                            <MudNavLink Href="/fiscal-years" Icon="@Icons.Material.Outlined.CalendarMonth">سال و دوره مالی</MudNavLink>
+                        </MudNavGroup>
+                    </MudNavGroup>
                 </MudNavGroup>
                 <MudDivider Class="my-2" />
-                <MudNavLink Href="/accounts" Icon="@Icons.Material.Outlined.AccountTree">کدینگ حساب‌ها</MudNavLink>
-                <MudNavLink Href="/persons" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.People">اشخاص</MudNavLink>
-                <MudNavLink Href="/detail-types" Icon="@Icons.Material.Outlined.Category">گروه‌های تفصیلی</MudNavLink>
-                <MudNavLink Href="/fiscal-years" Icon="@Icons.Material.Outlined.CalendarMonth">سال و دوره مالی</MudNavLink>
+                <MudNavGroup Title="اطلاعات پایه" Icon="@Icons.Material.Outlined.Storage" Expanded="true">
+                    <MudNavLink Href="/persons" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.People">اشخاص</MudNavLink>
+                    <MudNavLink Href="/base/roles" Icon="@Icons.Material.Outlined.Label">نقش‌های اشخاص</MudNavLink>
+                    <MudNavLink Href="/base/lookups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.ListAlt">جدول‌های پایه</MudNavLink>
+                    <MudNavLink Href="/base/banks" Icon="@Icons.Material.Outlined.AccountBalance">بانک‌ها</MudNavLink>
+                </MudNavGroup>
             </MudNavMenu>
         </MudDrawer>
 

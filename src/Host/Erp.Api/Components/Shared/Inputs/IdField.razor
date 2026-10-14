@@ -20,13 +20,7 @@
 
     private string? Validate(string? value) => IranianIds.Error(Kind, value);
 
-    /// <summary>نام بانک برای شبا و کارت، وگرنه متن راهنما.</summary>
-    private string? Helper => Kind switch
-    {
-        IdKind.Iban => IranianIds.BankFromIban(Value) is { } bank ? $"بانک {bank}" : HelperText,
-        IdKind.CardNumber => IranianIds.BankFromCard(Value) is { } bank ? $"بانک {bank}" : HelperText,
-        _ => HelperText
-    };
+    private string? Helper => HelperText;
 
     private async Task OnChanged(string? value)
     {

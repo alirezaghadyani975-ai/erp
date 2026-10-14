@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Erp.Accounting.Domain.BaseData;
+using Erp.BaseData.Contracts;
 using Erp.Accounting.Domain.ChartOfAccounts;
 using Erp.Accounting.Domain.Details;
 using Erp.Accounting.Domain.FiscalYears;

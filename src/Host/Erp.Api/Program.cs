@@ -2,6 +2,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json.Serialization;
 using System.Text.Unicode;
 using Erp.Accounting.Infrastructure;
+using Erp.BaseData.Infrastructure;
 using Erp.Api.Components;
 using Erp.Api.Components.Shared;
 using Erp.Api.Infrastructure;
@@ -18,7 +19,8 @@ builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<DatabaseMigrator>();
 
-// ماژول‌ها — ماژول‌های بعدی (انبار، فروش، خرید، ...) همین‌جا اضافه می‌شوند
+// ماژول‌ها — ماژول‌های بعدی (انبار، فروش، خرید، کارگزینی، ...) همین‌جا اضافه می‌شوند
+builder.Services.AddBaseDataModule();
 builder.Services.AddAccountingModule();
 
 builder.Services.AddControllers().AddJsonOptions(o =>
@@ -34,6 +36,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddMudServices();
 builder.Services.AddScoped<Backend>();
+builder.Services.AddScoped<UiLookups>();
 
 var app = builder.Build();
 

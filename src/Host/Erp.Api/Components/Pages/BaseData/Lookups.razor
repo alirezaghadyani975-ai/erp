@@ -1,0 +1,230 @@
+@page "/base/lookups"
+@page "/base/lookups/{Code}"
+@inject Backend Backend
+@inject UiLookups Cache
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject NavigationManager Nav
+
+<PageTitle>جدول‌های پایه</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-1">جدول‌های پایه</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    فهرست‌هایی که در فرم‌ها انتخاب می‌شوند تا اطلاعات یکدست و قابل گزارش‌گیری باشد (به‌جای تایپ آزاد).
+    اقلام سیستمی حذف نمی‌شوند ولی می‌توانید غیرفعالشان کنید.
+</MudText>
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="3">
+        <MudPaper Elevation="1">
+            <MudList T="string" SelectedValue="Code" SelectedValueChanged="SelectCategory" Dense="true">
+                @foreach (var c in _categories)
+                {
+                    <MudListItem T="string" Value="c.Code" Icon="@(c.IsTree ? Icons.Material.Outlined.AccountTree : Icons.Material.Outlined.List)">
+                        <div class="d-flex align-center">
+                            <span>@c.Title</span>
+                            <MudSpacer />
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@c.ItemCount</MudChip>
+                        </div>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="9">
+        @if (Current is { } cat)
+        {
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2" Class="mb-2">
+                    <MudText Typo="Typo.h6">@cat.Title</MudText>
+                    @if (ParentCategory is { } pc)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">زیرمجموعه @pc.Title</MudChip>
+                    }
+                    else if (cat.IsTree)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">درختی</MudChip>
+                    }
+                    <MudSpacer />
+                    @if (ParentCategory is { } p2)
+                    {
+                        <div style="min-width:200px">
+                            <LookupSelect Category="@p2.Code" Value="_parentFilter" ValueChanged="ParentFilterChanged" Label="@($"فیلتر {p2.Title}")" />
+                        </div>
+                    }
+                    <MudTextField T="string" @bind-Value="_term" Immediate="true" Placeholder="جستجو" Clearable="true"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:220px" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">قلم جدید</MudButton>
+                </MudStack>
+                @if (!string.IsNullOrEmpty(cat.Description))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2 d-block">@cat.Description</MudText>
+                }
+
+                <MudTable T="LookupItemDto" Items="Visible" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+                          OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+                    <HeaderContent>
+                        <MudTh>عنوان</MudTh>
+                        <MudTh>کد</MudTh>
+                        @if (ParentCategory is not null || cat.IsTree)
+                        {
+                            <MudTh>@(ParentCategory?.Title ?? "والد")</MudTh>
+                        }
+                        <MudTh>ترتیب</MudTh>
+                        <MudTh>وضعیت</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@(cat.IsTree ? UiLookups.Path(_items, context) : context.Title)</MudTd>
+                        <MudTd><span class="code">@context.Code</span></MudTd>
+                        @if (ParentCategory is not null || cat.IsTree)
+                        {
+                            <MudTd>@context.ParentTitle</MudTd>
+                        }
+                        <MudTd><span class="code">@context.SortOrder</span></MudTd>
+                        <MudTd>
+                            @if (context.IsSystem) { <MudChip T="string" Size="Size.Small" Variant="Variant.Text">سیستمی</MudChip> }
+                            @if (!context.IsActive) { <MudChip T="string" Size="Size.Small" Color="Color.Default">غیرفعال</MudChip> }
+                        </MudTd>
+                        <MudTd Style="text-align:left">
+                            @if (!context.IsSystem)
+                            {
+                                <span @onclick:stopPropagation="true">
+                                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" aria-label="حذف"
+                                                   OnClick="() => DeleteAsync(context)" />
+                                </span>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Class="pa-4">قلمی نیست.</MudText></NoRecordsContent>
+                </MudTable>
+            </MudPaper>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info">یک فهرست را از سمت راست انتخاب کنید.</MudAlert>
+        }
+    </MudItem>
+</MudGrid>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "قلم جدید" : "ویرایش قلم") — @Current?.Title</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_edit.Title" Immediate="true" Label="عنوان" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_edit.Code" Label="کد (اختیاری)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" MaxLength="20" /></MudItem>
+            @if (ParentCategory is { } pc)
+            {
+                <MudItem xs="12" sm="8"><LookupSelect Category="@pc.Code" @bind-Value="_edit.ParentId" Label="@pc.Title" /></MudItem>
+            }
+            else if (Current?.IsTree == true)
+            {
+                <MudItem xs="12" sm="8"><LookupSelect Category="@Current.Code" @bind-Value="_edit.ParentId" Label="زیرمجموعه‌ی" HelperText="خالی = سطح اول" /></MudItem>
+            }
+            <MudItem xs="6" sm="4"><MudNumericField T="int" @bind-Value="_edit.SortOrder" Label="ترتیب نمایش" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="6" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_edit.IsActive" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="string.IsNullOrWhiteSpace(_edit.Title)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public string? Code { get; set; }
+
+    private List<LookupCategoryDto> _categories = [];
+    private List<LookupItemDto> _items = [];
+    private bool _loading;
+    private string? _term;
+    private int? _parentFilter;
+
+    private bool _editOpen;
+    private int? _editId;
+    private EditModel _edit = new();
+
+    private sealed class EditModel
+    {
+        public string Title { get; set; } = "";
+        public string? Code { get; set; }
+        public int? ParentId { get; set; }
+        public int SortOrder { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+
+    private LookupCategoryDto? Current => _categories.FirstOrDefault(c => c.Code == Code);
+
+    private LookupCategoryDto? ParentCategory =>
+        Current?.ParentCategoryId is short p && !Current.IsTree ? _categories.FirstOrDefault(c => c.Id == p) : null;
+
+    private IEnumerable<LookupItemDto> Visible => _items
+        .Where(i => _parentFilter is null || i.ParentId == _parentFilter)
+        .Where(i => string.IsNullOrWhiteSpace(_term) || i.Title.Contains(PersianText.Normalize(_term)) || (i.Code?.Contains(_term) ?? false));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadCategoriesAsync();
+        if (Code is null && _categories.Count > 0) { Nav.NavigateTo($"/base/lookups/{_categories[0].Code}", replace: true); return; }
+        _parentFilter = null;
+        await LoadItemsAsync();
+    }
+
+    private async Task LoadCategoriesAsync() =>
+        _categories = (await Backend.Run<LookupService, List<LookupCategoryDto>>(s => s.GetCategoriesAsync(default))).Value ?? [];
+
+    private async Task LoadItemsAsync()
+    {
+        if (Current is not { } cat) { _items = []; return; }
+        _loading = true;
+        var r = await Backend.Run<LookupService, List<LookupItemDto>>(s => s.GetItemsAsync(cat.Id, null, default));
+        if (r.Success) _items = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private void SelectCategory(string? code)
+    {
+        if (code is not null && code != Code) Nav.NavigateTo($"/base/lookups/{code}");
+    }
+
+    private void ParentFilterChanged(int? id) => _parentFilter = id;
+
+    private void New()
+    {
+        _editId = null;
+        _edit = new EditModel { ParentId = _parentFilter, SortOrder = 0 };
+        _editOpen = true;
+    }
+
+    private void Edit(LookupItemDto item)
+    {
+        _editId = item.Id;
+        _edit = new EditModel { Title = item.Title, Code = item.Code, ParentId = item.ParentId, SortOrder = item.SortOrder, IsActive = item.IsActive };
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveLookupItemRequest(Current!.Id, _edit.Title, _edit.Code, _edit.ParentId, _edit.SortOrder, _edit.IsActive);
+        var error = _editId is int id
+            ? (await Backend.Run<LookupService>(s => s.UpdateItemAsync(id, request, default))).Error
+            : (await Backend.Run<LookupService, int>(s => s.CreateItemAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Cache.Invalidate();
+        await LoadCategoriesAsync();
+        await LoadItemsAsync();
+    }
+
+    private async Task DeleteAsync(LookupItemDto item)
+    {
+        if (!await Dialogs.DeleteAsync($"«{item.Title}»", "اگر در اشخاص استفاده شده باشد حذف نمی‌شود؛ می‌توانید غیرفعالش کنید.")) return;
+        var r = await Backend.Run<LookupService>(s => s.DeleteItemAsync(item.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Cache.Invalidate();
+        await LoadCategoriesAsync();
+        await LoadItemsAsync();
+    }
+}

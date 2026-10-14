@@ -46,4 +46,12 @@ public class AccountsController(AccountService service) : ControllerBase
         await service.RemoveDetailLevelAsync(id, levelNo, ct);
         return NoContent();
     }
+
+    /// <summary>حذف (فقط اگر قواعد حذف امن اجازه دهد)</summary>
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        await service.DeleteAsync(id, ct);
+        return NoContent();
+    }
 }

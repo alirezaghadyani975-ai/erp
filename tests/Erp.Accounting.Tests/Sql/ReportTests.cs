@@ -1,10 +1,11 @@
 using Erp.Accounting.Application.ChartOfAccounts;
 using Erp.Accounting.Application.Details;
 using Erp.Accounting.Application.FiscalYears;
-using Erp.Accounting.Application.Persons;
+using Erp.BaseData.Application.Persons;
+using Erp.BaseData.Contracts;
 using Erp.Accounting.Application.Reports;
 using Erp.Accounting.Application.Vouchers;
-using Erp.Accounting.Domain.BaseData;
+using Erp.Accounting.Domain.ChartOfAccounts;
 using Erp.Accounting.Domain.Vouchers;
 using Erp.SharedKernel.Domain;
 
@@ -236,5 +237,41 @@ public class ReportTests(SqlFixture db)
         Assert.Contains("از تاریخ", ex.Message);
 
         await Assert.ThrowsAsync<DomainException>(() => Ledger(new LedgerRequest(new ReportFilter(seed.YearId))));
+    }
+    [Fact]
+    public async Task Delete_rules_for_accounts_vouchers_years_and_persons()
+    {
+        if (!db.Enabled) return;
+        var seed = await SeedAsync();
+
+        // حساب استاندارد حذف نمی‌شود؛ حساب اختصاصی با گردش هم نه، تا سندش حذف شود
+        var cash = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("2603", default));
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<AccountService>(s => s.DeleteAsync(cash.Id, default)));
+        var custom = await db.Run<AccountService, int>(s => s.CreateAsync(
+            new CreateAccountRequest(cash.ParentId!.Value, "2698", "صندوق آزمایشی حذف", AccountNature.Debit, null), default));
+        var draft = await Voucher(seed.YearId, "1405/04/02", VoucherType.Normal, Line("2698", null, 10, 0), Line("6101", null, 0, 10));
+        var used = await Assert.ThrowsAsync<DomainException>(() => db.Run<AccountService>(s => s.DeleteAsync(custom, default)));
+        Assert.Contains("2698", used.Message);
+
+        // سال مالی دارای سند حذف نمی‌شود
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<FiscalYearService>(s => s.DeleteAsync(seed.YearId, default)));
+
+        // سند موقت حذف نمی‌شود؛ پیش‌نویس حذف می‌شود و بعد حساب هم
+        await db.Run<VoucherService>(s => s.MarkTemporaryAsync(draft, default));
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<VoucherService>(s => s.DeleteAsync(draft, default)));
+        await db.Run<VoucherService>(s => s.ReturnToDraftAsync(draft, default));
+        await db.Run<VoucherService>(s => s.DeleteAsync(draft, default));
+        await db.Run<AccountService>(s => s.DeleteAsync(custom, default));
+
+        // سال بدون سند حذف می‌شود
+        var empty = await db.Run<FiscalYearService, short>(s => s.CreateAsync(1410, 1, default));
+        await db.Run<FiscalYearService>(s => s.DeleteAsync(empty, default));
+        Assert.DoesNotContain(await db.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default)), y => y.Id == empty);
+
+        // شخص با تفصیلی دارای گردش حذف نمی‌شود
+        var details = await db.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(seed.CustomerTypeId, null, default));
+        var personId = details.Single(d => d.Id == seed.Customer1).PersonId!.Value;
+        var ex = await Assert.ThrowsAsync<DomainException>(() => db.Run<PersonService>(s => s.DeleteAsync(personId, default)));
+        Assert.Contains("غیرفعال", ex.Message);
     }
 }

@@ -3,7 +3,9 @@ using Erp.Accounting.Application.Abstractions;
 using Erp.Accounting.Infrastructure.Persistence;
 using Erp.SharedKernel.Abstractions;
 using Microsoft.EntityFrameworkCore;
+using Erp.Database;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Erp.Accounting.Infrastructure;
 
@@ -14,11 +16,10 @@ public static class DependencyInjection
     {
         services.AddAccountingApplication();
 
+        services.TryAddScoped<CompanyConnection>();
+        services.TryAddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CompanyConnection>());
         services.AddDbContext<AccountingDbContext>((sp, options) =>
-        {
-            var company = sp.GetRequiredService<ICompanyContext>();
-            options.UseSqlServer(company.ConnectionString);
-        });
+            options.UseSqlServer(sp.GetRequiredService<CompanyConnection>().Connection));
 
         services.AddScoped<IAccountingDbContext>(sp => sp.GetRequiredService<AccountingDbContext>());
         return services;

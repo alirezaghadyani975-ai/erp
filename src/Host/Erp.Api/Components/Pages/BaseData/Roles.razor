@@ -1,0 +1,100 @@
+@page "/base/roles"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>نقش‌های اشخاص</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-1">نقش‌های اشخاص</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    نقش فقط برچسب است و کد تفصیلی شخص را عوض نمی‌کند؛ در قواعد تفصیلی هر معین، نقش‌ها فهرست اشخاص فرم سند را فیلتر می‌کنند.
+    نقش «کارمند» تفصیلی جدا در گروه کارکنان می‌سازد. نقش‌های سیستمی حذف یا غیرفعال نمی‌شوند.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1" Style="max-width:760px">
+    <MudSimpleTable Dense="true" Elevation="0" Hover="true">
+        <thead><tr><th>نقش</th><th>نوع</th><th>تعداد اشخاص</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var r in _roles)
+            {
+                <tr>
+                    <td>
+                        @if (_renameId == r.Id)
+                        {
+                            <MudTextField T="string" @bind-Value="_renameText" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true"
+                                          OnKeyDown="@(e => e.Key == "Enter" ? RenameAsync(r) : Task.CompletedTask)" />
+                        }
+                        else
+                        {
+                            @r.Title
+                        }
+                    </td>
+                    <td>@(r.IsSystem ? "سیستمی" : "تعریف کاربر")</td>
+                    <td class="code">@r.PersonCount</td>
+                    <td style="text-align:left; white-space:nowrap">
+                        @if (!r.IsSystem)
+                        {
+                            <MudSwitch T="bool" Value="r.IsActive" ValueChanged="v => UpdateAsync(r, r.Title, v)" Color="Color.Primary"
+                                       Label="@(r.IsActive ? "فعال" : "غیرفعال")" />
+                            @if (_renameId == r.Id)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" OnClick="() => RenameAsync(r)" aria-label="ثبت نام" />
+                            }
+                            else
+                            {
+                                <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small" OnClick="() => { _renameId = r.Id; _renameText = r.Title; }" aria-label="تغییر نام" />
+                            }
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => DeleteAsync(r)" aria-label="حذف" />
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mt-3">
+        <MudTextField T="string" @bind-Value="_newRole" Immediate="true" Label="نقش جدید (مثلاً نماینده فروش)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddAsync" Disabled="string.IsNullOrWhiteSpace(_newRole)">افزودن</MudButton>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private List<PersonRoleTypeDto> _roles = [];
+    private string? _newRole;
+    private short? _renameId;
+    private string? _renameText;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync() =>
+        _roles = (await Backend.Run<PersonService, List<PersonRoleTypeDto>>(s => s.GetRoleTypesAsync(true, default))).Value ?? [];
+
+    private async Task AddAsync()
+    {
+        var r = await Backend.Run<PersonService, short>(s => s.CreateRoleTypeAsync(_newRole!, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _newRole = null;
+        await LoadAsync();
+    }
+
+    private async Task UpdateAsync(PersonRoleTypeDto role, string title, bool active)
+    {
+        var r = await Backend.Run<PersonService>(s => s.UpdateRoleTypeAsync(role.Id, title, active, default));
+        if (!r.Success) Snackbar.Add(r.Error!, Severity.Error);
+        await LoadAsync();
+    }
+
+    private async Task RenameAsync(PersonRoleTypeDto role)
+    {
+        if (string.IsNullOrWhiteSpace(_renameText)) return;
+        await UpdateAsync(role, _renameText, role.IsActive);
+        _renameId = null;
+    }
+
+    private async Task DeleteAsync(PersonRoleTypeDto role)
+    {
+        if (!await Dialogs.DeleteAsync($"نقش «{role.Title}»", "اگر به شخص یا قاعده تفصیلی داده شده باشد حذف نمی‌شود؛ غیرفعالش کنید.")) return;
+        var r = await Backend.Run<PersonService>(s => s.DeleteRoleTypeAsync(role.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

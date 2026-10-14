@@ -1,5 +1,5 @@
 using Erp.SharedKernel.Text;
-using Erp.Accounting.Domain.BaseData;
+using Erp.BaseData.Contracts;
 using Erp.SharedKernel.Domain;
 
 namespace Erp.Accounting.Domain.Details;
@@ -33,7 +33,7 @@ public class DetailType : AggregateRoot<short>
             throw new DomainException($"ماژول مالک «{ownerModule}» معتبر نیست.");
         if (personKind is not null && ownerModule is not (OwnerModules.Persons or OwnerModules.Payroll))
             throw new DomainException("نوع شخص (حقیقی/حقوقی) فقط برای گروه‌های اشخاص و کارکنان معنا دارد.");
-        if (ownerModule == OwnerModules.Payroll && personKind == BaseData.PersonKind.Legal)
+        if (ownerModule == OwnerModules.Payroll && personKind == Erp.BaseData.Contracts.PersonKind.Legal)
             throw new DomainException("کارکنان فقط شخص حقیقی‌اند.");
         (CodeFrom, CodeTo) = CheckRange(codeFrom, codeTo);
 

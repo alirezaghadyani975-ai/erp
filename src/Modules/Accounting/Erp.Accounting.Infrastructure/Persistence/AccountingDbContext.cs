@@ -4,6 +4,7 @@ using Erp.Accounting.Domain.ChartOfAccounts;
 using Erp.Accounting.Domain.Details;
 using Erp.Accounting.Domain.FiscalYears;
 using Erp.Accounting.Domain.Vouchers;
+using Erp.Database;
 using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Accounting.Infrastructure.Persistence;
@@ -12,14 +13,16 @@ namespace Erp.Accounting.Infrastructure.Persistence;
 /// نگاشت به جدول‌های موجود (schema های base و fin).
 /// ساختار دیتابیس فقط با اسکریپت‌های پوشه database ساخته و تغییر می‌کند، نه با EF Migrations.
 /// </summary>
-public class AccountingDbContext(DbContextOptions<AccountingDbContext> options)
-    : DbContext(options), IAccountingDbContext
+public class AccountingDbContext : DbContext, IAccountingDbContext
 {
+    public AccountingDbContext(DbContextOptions<AccountingDbContext> options, CompanyConnection connection) : base(options) =>
+        connection.Enlist((tx, ct) => Database.UseTransactionAsync(tx, ct), tx => Database.UseTransaction(tx));
+
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<DetailType> DetailTypes => Set<DetailType>();
     public DbSet<DetailAccount> DetailAccounts => Set<DetailAccount>();
-    public DbSet<Person> Persons => Set<Person>();
-    public DbSet<PersonRoleType> PersonRoleTypes => Set<PersonRoleType>();
+    public IQueryable<PersonRoleLink> PersonRoleLinks => Set<PersonRoleLink>().AsNoTracking();
+    public IQueryable<RoleTypeRef> RoleTypeRefs => Set<RoleTypeRef>().AsNoTracking();
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<Unit> Units => Set<Unit>();
     public DbSet<FiscalYear> FiscalYears => Set<FiscalYear>();

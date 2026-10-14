@@ -2,9 +2,9 @@ using Erp.Accounting.Application.ChartOfAccounts;
 using Erp.Accounting.Application.Details;
 using Erp.Accounting.Application.FiscalYears;
 using Erp.Accounting.Application.Lookups;
-using Erp.Accounting.Application.Persons;
 using Erp.Accounting.Application.Reports;
 using Erp.Accounting.Application.Vouchers;
+using Erp.BaseData.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Erp.Accounting.Application;
@@ -15,10 +15,10 @@ public static class DependencyInjection
     {
         services.AddScoped<AccountService>();
         services.AddScoped<DetailService>();
-        services.AddScoped<PersonService>();
+        services.AddScoped<IPersonLinks, PersonDetailLinks>();
         services.AddScoped<FiscalYearService>();
         services.AddScoped<VoucherService>();
-        services.AddScoped<LookupService>();
+        services.AddScoped<FinanceLookupService>();
         services.AddScoped<ReportService>();
         return services;
     }

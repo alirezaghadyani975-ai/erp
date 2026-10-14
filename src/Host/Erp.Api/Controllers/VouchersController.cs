@@ -54,4 +54,12 @@ public class VouchersController(VoucherService service) : ControllerBase
         await service.VoidAsync(id, ct);
         return NoContent();
     }
+
+    /// <summary>حذف (فقط اگر قواعد حذف امن اجازه دهد)</summary>
+    [HttpDelete("{id:long}")]
+    public async Task<IActionResult> Delete(long id, CancellationToken ct)
+    {
+        await service.DeleteAsync(id, ct);
+        return NoContent();
+    }
 }

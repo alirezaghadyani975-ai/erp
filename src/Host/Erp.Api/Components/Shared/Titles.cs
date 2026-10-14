@@ -1,5 +1,6 @@
-using Erp.Accounting.Domain.BaseData;
 using Erp.Accounting.Domain.Details;
+using Erp.BaseData.Contracts;
+using Erp.BaseData.Domain.Persons;
 
 namespace Erp.Api.Components.Shared;
 
@@ -18,17 +19,6 @@ public static class Titles
         [TaxPayerType.Natural] = "حقیقی", [TaxPayerType.Legal] = "حقوقی",
         [TaxPayerType.CivilPartnership] = "مشارکت مدنی", [TaxPayerType.Foreign] = "اتباع غیرایرانی",
         [TaxPayerType.FinalConsumer] = "مصرف‌کننده نهایی",
-        [ContractType.Permanent] = "دائم", [ContractType.Fixed] = "قراردادی", [ContractType.Contract] = "پیمانی",
-        [ContractType.Hourly] = "ساعتی", [ContractType.PartTime] = "پاره‌وقت", [ContractType.Intern] = "کارآموز",
-        [InsuranceType.SocialSecurity] = "تأمین اجتماعی", [InsuranceType.HealthService] = "خدمات درمانی",
-        [InsuranceType.ArmedForces] = "نیروهای مسلح", [InsuranceType.Other] = "سایر", [InsuranceType.None] = "بدون بیمه",
-        [EducationLevel.BelowDiploma] = "زیر دیپلم", [EducationLevel.Diploma] = "دیپلم", [EducationLevel.Associate] = "کاردانی",
-        [EducationLevel.Bachelor] = "کارشناسی", [EducationLevel.Master] = "کارشناسی ارشد", [EducationLevel.Doctorate] = "دکترا",
-        [MilitaryStatus.Completed] = "پایان خدمت", [MilitaryStatus.Exempt] = "معاف", [MilitaryStatus.Eligible] = "مشمول",
-        [MilitaryStatus.Serving] = "در حال خدمت",
-        [TaxExemptionType.Veteran] = "ایثارگر / جانباز", [TaxExemptionType.FreedPow] = "آزاده",
-        [TaxExemptionType.MartyrChild] = "فرزند شهید", [TaxExemptionType.Deprived] = "مناطق کمتر توسعه‌یافته",
-        [TaxExemptionType.Other] = "سایر",
     };
 
     public static string Of<TEnum>(TEnum? value) where TEnum : struct, Enum =>

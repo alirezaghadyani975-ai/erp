@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Accounting.Application.Vouchers;
 
-public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProvider clock)
+public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProvider clock, IUnitOfWork uow)
 {
     private const int NumberingRetries = 3;
 
@@ -94,7 +94,7 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
         var voucher = await LoadAsync(id, ct);
         var fiscalYear = await GetFiscalYearAsync(voucher.FiscalYearId, ct);
 
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await using var tx = await uow.BeginAsync(ct);
         voucher.UpdateHeader(fiscalYear, PersianDate.Parse(request.Date), request.Description);
         voucher.ClearLines();
         await db.SaveChangesAsync(ct); // ردیف‌های قبلی پیش از درج ردیف‌های جدید حذف شوند (شماره ردیف یکتاست)
@@ -102,6 +102,16 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
         await AddLinesAsync(voucher, request.Lines, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+    }
+
+    /// <summary>حذف سند؛ فقط پیش‌نویس. سند موقت باطل می‌شود و سند دائم هیچ‌وقت حذف نمی‌شود.</summary>
+    public async Task DeleteAsync(long id, CancellationToken ct)
+    {
+        var voucher = await LoadAsync(id, ct);
+        if (voucher.Status != VoucherStatus.Draft)
+            throw new DomainException("فقط سند پیش‌نویس حذف می‌شود؛ سند موقت را برگردانید به پیش‌نویس یا باطل کنید، سند دائم حذف نمی‌شود.");
+        db.Vouchers.Remove(voucher);
+        await db.SaveChangesAsync(ct);
     }
 
     public Task MarkTemporaryAsync(long id, CancellationToken ct) => ChangeAsync(id, v => v.MarkTemporary(), ct);

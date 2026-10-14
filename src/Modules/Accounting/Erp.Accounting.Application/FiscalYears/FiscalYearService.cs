@@ -39,6 +39,18 @@ public class FiscalYearService(IAccountingDbContext db)
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>حذف سال مالی؛ فقط وقتی هیچ سندی (حتی پیش‌نویس یا باطل) ندارد.</summary>
+    public async Task DeleteAsync(short id, CancellationToken ct)
+    {
+        var year = await db.FiscalYears.Include(f => f.Periods).FirstOrDefaultAsync(f => f.Id == id, ct)
+                   ?? throw new NotFoundException($"سال مالی {id} پیدا نشد.");
+        var count = await db.Vouchers.CountAsync(v => v.FiscalYearId == id, ct);
+        if (count > 0)
+            throw new DomainException($"سال مالی {year.Title} {count} سند دارد و حذف نمی‌شود.");
+        db.FiscalYears.Remove(year);
+        await db.SaveChangesAsync(ct);
+    }
+
     private static FiscalYearDto ToDto(FiscalYear f) => new(
         f.Id, f.Title, PersianDate.ToPersian(f.StartDate), PersianDate.ToPersian(f.EndDate), f.Status,
         f.Periods.OrderBy(p => p.PeriodNo)

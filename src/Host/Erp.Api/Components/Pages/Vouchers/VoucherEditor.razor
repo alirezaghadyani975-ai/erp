@@ -3,6 +3,7 @@
 @inject Backend Backend
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject IDialogService Dialogs
 
 <PageTitle>@(Id is null ? "سند جدید" : $"سند {_tempNo}")</PageTitle>
 
@@ -157,6 +158,11 @@ else
                        OnClick="MakePermanentAsync" Disabled="_busy">دائم کردن</MudButton>
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Undo"
                        OnClick="ReturnToDraftAsync" Disabled="_busy">برگشت به پیش‌نویس</MudButton>
+        }
+        @if (Id is not null && _status == VoucherStatus.Draft)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete"
+                       OnClick="DeleteAsync" Disabled="_busy">حذف پیش‌نویس</MudButton>
         }
         @if (Id is not null && _status is VoucherStatus.Draft or VoucherStatus.Temporary)
         {
@@ -357,6 +363,18 @@ else
     private async Task ReturnToDraftAsync() => await Change(s => s.ReturnToDraftAsync(Id!.Value, default), "سند به پیش‌نویس برگشت.");
 
     private async Task VoidAsync() => await Change(s => s.VoidAsync(Id!.Value, default), "سند باطل شد.");
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.DeleteAsync($"سند پیش‌نویس {_tempNo}")) return;
+        await Busy(async () =>
+        {
+            var r = await Backend.Run<VoucherService>(s => s.DeleteAsync(Id!.Value, default));
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("سند حذف شد.", Severity.Success);
+            Nav.NavigateTo("/vouchers");
+        });
+    }
 
     private async Task Change(Func<VoucherService, Task> action, string message) => await Busy(async () =>
     {

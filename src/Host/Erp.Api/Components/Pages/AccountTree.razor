@@ -1,6 +1,7 @@
 @page "/accounts"
 @inject Backend Backend
 @inject ISnackbar Snackbar
+@inject IDialogService Dialogs
 
 <PageTitle>کدینگ حساب‌ها</PageTitle>
 
@@ -44,6 +45,10 @@
                     <MudTextField T="string" Label="عنوان" @bind-Value="_editTitle" Variant="Variant.Outlined" Margin="Margin.Dense" />
                     <MudSwitch T="bool" @bind-Value="_editActive" Color="Color.Primary" Label="فعال" />
                     <MudButton Variant="Variant.Outlined" OnClick="SaveAccountAsync" Disabled="_busy">ذخیره</MudButton>
+                    @if (!a.IsStandard)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" OnClick="DeleteAccountAsync" Disabled="_busy" aria-label="حذف حساب" />
+                    }
                 </MudStack>
                 @if (a.IsStandard)
                 {
@@ -237,6 +242,20 @@
         await LoadTreeAsync();
         await ReloadSelectedAsync();
     });
+
+    private async Task DeleteAccountAsync()
+    {
+        var a = _selected!;
+        if (!await Dialogs.DeleteAsync($"حساب {a.Code} «{a.Title}»", "حساب دارای زیرحساب یا گردش حذف نمی‌شود؛ غیرفعالش کنید.")) return;
+        await Busy(async () =>
+        {
+            var r = await Backend.Run<AccountService>(s => s.DeleteAsync(a.Id, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            Snackbar.Add("حساب حذف شد.", Severity.Success);
+            _selected = null;
+            await LoadTreeAsync();
+        });
+    }
 
     private void AddLevel() => _levels.Add(new LevelModel(_levels.Count + 1) { IsRequired = true });
 

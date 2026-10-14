@@ -6,7 +6,7 @@ namespace Erp.Api.Controllers;
 /// <summary>داده‌های پایه: ارزها و واحدها</summary>
 [ApiController]
 [Route("api/base")]
-public class LookupsController(LookupService service) : ControllerBase
+public class LookupsController(FinanceLookupService service) : ControllerBase
 {
     [HttpGet("currencies")]
     public Task<List<CurrencyDto>> Currencies(CancellationToken ct) => service.CurrenciesAsync(ct);

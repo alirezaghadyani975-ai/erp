@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\Erp.SharedKernel\Erp.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\BaseData\Erp.BaseData.Contracts\Erp.BaseData.Contracts.csproj" />
   </ItemGroup>
 </Project>

@@ -54,6 +54,5 @@ internal class AccountDetailLevelRoleConfiguration : IEntityTypeConfiguration<Ac
     {
         b.ToTable("AccountDetailLevelRoles", "fin");
         b.HasKey(r => new { r.AccountId, r.LevelNo, r.RoleId });
-        b.HasOne<PersonRoleType>().WithMany().HasForeignKey(r => r.RoleId).OnDelete(DeleteBehavior.Restrict);
     }
 }

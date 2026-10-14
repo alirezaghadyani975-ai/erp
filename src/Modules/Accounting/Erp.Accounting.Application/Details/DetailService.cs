@@ -1,6 +1,6 @@
 using Erp.SharedKernel.Text;
 using Erp.Accounting.Application.Abstractions;
-using Erp.Accounting.Domain.BaseData;
+using Erp.BaseData.Contracts;
 using Erp.Accounting.Domain.Details;
 using Erp.SharedKernel.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +24,9 @@ public sealed record UpdateDetailTypeRequest(string Title, string OwnerModule, P
     string CodeFrom, string CodeTo, bool IsActive);
 
 public sealed record DetailAccountDto(int Id, string Code, string Title, short DetailTypeId, int? PersonId, bool IsActive);
+
+/// <param name="UsageCount">تعداد ردیف‌های سند که این تفصیلی را دارند.</param>
+public sealed record DetailAccountRowDto(int Id, string Code, string Title, int? PersonId, bool IsActive, int UsageCount);
 
 /// <summary>اگر Code خالی باشد، اولین کد آزاد بعد از آخرین کد بازه داده می‌شود.</summary>
 public sealed record CreateDetailAccountRequest(short DetailTypeId, string Title, string? Code);
@@ -74,6 +77,64 @@ public class DetailService(IAccountingDbContext db)
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>حذف گروه تفصیلی؛ فقط وقتی تفصیلی ندارد و در قاعده هیچ معینی نیامده است.</summary>
+    public async Task DeleteTypeAsync(short id, CancellationToken ct)
+    {
+        var type = await db.DetailTypes.FirstOrDefaultAsync(t => t.Id == id, ct)
+                   ?? throw new NotFoundException("گروه تفصیلی پیدا نشد.");
+        var count = await db.DetailAccounts.CountAsync(d => d.DetailTypeId == id, ct);
+        if (count > 0)
+            throw new DomainException($"گروه «{type.Title}» {count} تفصیلی دارد و حذف نمی‌شود؛ غیرفعالش کنید.");
+        var accounts = await db.Accounts.Where(a => a.DetailLevels.Any(l => l.AllowedTypes.Any(t => t.DetailTypeId == id)))
+            .Select(a => a.Code).ToListAsync(ct);
+        if (accounts.Count > 0)
+            throw new DomainException($"گروه «{type.Title}» در قواعد تفصیلی معین {string.Join("، ", accounts)} آمده است؛ ابتدا از آن‌جا بردارید.");
+        db.DetailTypes.Remove(type);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>تفصیلی‌های یک گروه (برای صفحه مدیریت تفصیلی‌ها)، با تعداد ردیف‌های سند.</summary>
+    public async Task<List<DetailAccountRowDto>> ListAccountsAsync(short typeId, string? term, CancellationToken ct)
+    {
+        var query = db.DetailAccounts.AsNoTracking().Where(d => d.DetailTypeId == typeId);
+        term = PersianText.NormalizeOrNull(term);
+        if (term is not null) query = query.Where(d => d.Title.Contains(term) || d.Code.StartsWith(term));
+        return await query.OrderBy(d => d.Code).Take(500)
+            .Select(d => new DetailAccountRowDto(d.Id, d.Code, d.Title, d.PersonId, d.IsActive,
+                db.VoucherLines.Count(l => l.Detail1Id == d.Id || l.Detail2Id == d.Id || l.Detail3Id == d.Id
+                                           || l.Detail4Id == d.Id || l.Detail5Id == d.Id || l.Detail6Id == d.Id)))
+            .ToListAsync(ct);
+    }
+
+    /// <summary>ویرایش عنوان و وضعیت تفصیلی غیرشخصی (تفصیلی اشخاص از فرم شخص هماهنگ می‌شود).</summary>
+    public async Task UpdateAccountAsync(int id, string title, bool isActive, CancellationToken ct)
+    {
+        var detail = await LoadNonPersonDetailAsync(id, ct);
+        detail.Rename(title);
+        if (isActive) detail.Activate(); else detail.Deactivate();
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>حذف تفصیلی غیرشخصی که در هیچ سندی نیامده است.</summary>
+    public async Task DeleteAccountAsync(int id, CancellationToken ct)
+    {
+        var detail = await LoadNonPersonDetailAsync(id, ct);
+        if (await db.VoucherLines.AnyAsync(l => l.Detail1Id == id || l.Detail2Id == id || l.Detail3Id == id
+                                                || l.Detail4Id == id || l.Detail5Id == id || l.Detail6Id == id, ct))
+            throw new DomainException($"تفصیلی {detail.Code} در سند استفاده شده و حذف نمی‌شود؛ غیرفعالش کنید.");
+        db.DetailAccounts.Remove(detail);
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task<DetailAccount> LoadNonPersonDetailAsync(int id, CancellationToken ct)
+    {
+        var detail = await db.DetailAccounts.FirstOrDefaultAsync(d => d.Id == id, ct)
+                     ?? throw new NotFoundException("تفصیلی پیدا نشد.");
+        if (detail.PersonId is not null)
+            throw new DomainException("تفصیلی اشخاص و کارکنان از فرم شخص مدیریت می‌شود.");
+        return detail;
+    }
+
     /// <summary>هم‌پوشانی بازه و یکتایی گروه فعال اشخاص/کارکنان برای هر نوع شخص.</summary>
     private async Task EnsureValidTypeAsync(DetailType type, CancellationToken ct)
     {
@@ -110,7 +171,7 @@ public class DetailService(IAccountingDbContext db)
         if (roleIds is { Count: > 0 })
         {
             var personTypes = db.DetailTypes.Where(t => t.OwnerModule == OwnerModules.Persons).Select(t => t.Id);
-            var withRole = db.Persons.Where(p => p.Roles.Any(r => roleIds.Contains(r.RoleId))).Select(p => p.Id);
+            var withRole = db.PersonRoleLinks.Where(r => roleIds.Contains(r.RoleId)).Select(r => r.PersonId);
             query = query.Where(d => !personTypes.Contains(d.DetailTypeId) || withRole.Contains(d.PersonId!.Value));
         }
         term = PersianText.NormalizeOrNull(term);

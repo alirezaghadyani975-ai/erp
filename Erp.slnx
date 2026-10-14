@@ -1,4 +1,10 @@
 <Solution>
+  <Folder Name="/src/Modules/BaseData/">
+    <Project Path="src/Modules/BaseData/Erp.BaseData.Application/Erp.BaseData.Application.csproj" />
+    <Project Path="src/Modules/BaseData/Erp.BaseData.Contracts/Erp.BaseData.Contracts.csproj" />
+    <Project Path="src/Modules/BaseData/Erp.BaseData.Domain/Erp.BaseData.Domain.csproj" />
+    <Project Path="src/Modules/BaseData/Erp.BaseData.Infrastructure/Erp.BaseData.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/BuildingBlocks/">
     <Project Path="src/BuildingBlocks/Erp.Database/Erp.Database.csproj" />

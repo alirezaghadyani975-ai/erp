@@ -1,6 +1,7 @@
 @page "/fiscal-years"
 @inject Backend Backend
 @inject ISnackbar Snackbar
+@inject IDialogService Dialogs
 
 <PageTitle>سال و دوره مالی</PageTitle>
 
@@ -28,6 +29,10 @@
             <MudText Typo="Typo.h6">سال مالی @y.Title</MudText>
             <MudText Typo="Typo.body2" Class="code">@y.StartDate تا @y.EndDate</MudText>
             <MudChip T="string" Size="Size.Small" Color="@(y.Status == PeriodStatus.Open ? Color.Success : Color.Warning)">@Format.Period(y.Status)</MudChip>
+            <MudSpacer />
+            <MudTooltip Text="فقط سال مالی بدون هیچ سندی حذف می‌شود">
+                <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => DeleteAsync(y)" aria-label="حذف سال مالی" />
+            </MudTooltip>
         </MudStack>
         <MudSimpleTable Dense="true" Hover="true" Elevation="0">
             <thead><tr><th>دوره</th><th>از</th><th>تا</th><th>وضعیت</th><th></th></tr></thead>
@@ -92,6 +97,15 @@
     {
         var r = await Backend.Run<FiscalYearService>(s => s.SetPeriodStatusAsync(yearId, periodNo, status, default));
         if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(FiscalYearDto year)
+    {
+        if (!await Dialogs.DeleteAsync($"سال مالی {year.Title} و دوره‌هایش", "سال دارای سند (حتی پیش‌نویس یا باطل) حذف نمی‌شود.")) return;
+        var r = await Backend.Run<FiscalYearService>(s => s.DeleteAsync(year.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Snackbar.Add($"سال مالی {year.Title} حذف شد.", Severity.Success);
         await LoadAsync();
     }
 }
