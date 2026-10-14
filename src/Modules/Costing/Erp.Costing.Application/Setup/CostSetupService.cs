@@ -7,68 +7,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Costing.Application.Setup;
 
-/// <summary>انواع هزینه (زیر گروه‌های ماهیت) و انواع مرکز هزینه (با وظیفه).</summary>
+/// <summary>انواع مرکز هزینه (با وظیفه) و مبناهای تسهیم و جذب.</summary>
 public class CostSetupService(ICostingDbContext db, IUnitOfWork uow, ICostDetailLinks links)
 {
-    // ------------------------------------------------------------------ انواع هزینه
-
-    public async Task<List<ExpenseTypeDto>> GetExpenseTypesAsync(bool includeInactive, CancellationToken ct)
-    {
-        var counts = await db.CostFactors.GroupBy(f => f.ExpenseTypeId).Select(g => new { g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
-        var types = await db.ExpenseTypes.AsNoTracking().Where(t => includeInactive || t.IsActive)
-            .OrderBy(t => t.Nature).ThenBy(t => t.SortOrder).ThenBy(t => t.Title).ToListAsync(ct);
-        return types.Select(t => new ExpenseTypeDto(t.Id, t.Title, t.Nature, t.SortOrder, t.IsActive, counts.GetValueOrDefault(t.Id))).ToList();
-    }
-
-    public async Task<short> CreateExpenseTypeAsync(SaveExpenseTypeRequest request, CancellationToken ct)
-    {
-        var type = new ExpenseType(request.Title, request.Nature, request.SortOrder);
-        if (!request.IsActive) type.Deactivate();
-        await EnsureUniqueAsync(type, ct);
-        db.Add(type);
-        await db.SaveChangesAsync(ct);
-        return type.Id;
-    }
-
-    /// <summary>
-    /// ویرایش نوع هزینه. تغییر گروه، ماهیت همه عوامل این نوع را عوض می‌کند؛ اگر عاملی در سند آمده باشد ممنوع است.
-    /// </summary>
-    public async Task UpdateExpenseTypeAsync(short id, SaveExpenseTypeRequest request, CancellationToken ct)
-    {
-        var type = await db.ExpenseTypes.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("نوع هزینه پیدا نشد.");
-        var natureChanged = type.Nature != request.Nature;
-        var factors = natureChanged ? await db.CostFactors.Where(f => f.ExpenseTypeId == id).ToListAsync(ct) : [];
-        foreach (var f in factors)
-            if (await links.IsUsedAsync(CostDetailKind.Factor, f.Id, ct))
-                throw new DomainException($"عامل «{f.Title}» از این نوع در سند آمده است؛ گروه هزینه نوع عوض نمی‌شود.");
-
-        await using var tx = await uow.BeginAsync(ct);
-        type.Update(request.Title, request.Nature, request.SortOrder);
-        if (request.IsActive) type.Activate(); else type.Deactivate();
-        await EnsureUniqueAsync(type, ct);
-        await db.SaveChangesAsync(ct);
-        foreach (var f in factors)
-            await links.SyncAsync(new CostDetailSnapshot(CostDetailKind.Factor, f.Id, f.Title, f.IsActive, type.Nature, null), ct);
-        await tx.CommitAsync(ct);
-    }
-
-    public async Task DeleteExpenseTypeAsync(short id, CancellationToken ct)
-    {
-        var type = await db.ExpenseTypes.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("نوع هزینه پیدا نشد.");
-        var count = await db.CostFactors.CountAsync(f => f.ExpenseTypeId == id, ct);
-        if (count > 0)
-            throw new DomainException($"نوع «{type.Title}» {count} عامل هزینه دارد و حذف نمی‌شود؛ غیرفعالش کنید.");
-        db.Remove(type);
-        await db.SaveChangesAsync(ct);
-    }
-
-    private async Task EnsureUniqueAsync(ExpenseType type, CancellationToken ct)
-    {
-        if (await db.ExpenseTypes.AnyAsync(t => t.Id != type.Id && t.Title == type.Title, ct))
-            throw new DomainException($"نوع هزینه «{type.Title}» قبلاً تعریف شده است.");
-    }
-
     // ------------------------------------------------------------------ انواع مرکز
 
     public async Task<List<CostCenterTypeDto>> GetCenterTypesAsync(bool includeInactive, CancellationToken ct)

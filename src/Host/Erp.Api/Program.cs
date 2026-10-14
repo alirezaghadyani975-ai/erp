@@ -39,6 +39,7 @@ builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddMudServices();
 builder.Services.AddScoped<Backend>();
 builder.Services.AddScoped<UiLookups>();
+builder.Services.AddScoped<Erp.Api.Components.Shared.Tabs.TabService>();
 
 var app = builder.Build();
 

@@ -11,6 +11,7 @@ public static class CostTitles
         CostNature.Depreciation => "استهلاک",
         CostNature.OtherOperating => "سایر هزینه‌های عملیاتی",
         CostNature.Finance => "هزینه‌های مالی",
+        CostNature.Personnel => "هزینه کارکنان",
         _ => nature.ToString()
     };
 

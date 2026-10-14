@@ -5,16 +5,6 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Erp.Costing.Infrastructure.Persistence.Configurations;
 
-internal class ExpenseTypeConfiguration : IEntityTypeConfiguration<ExpenseType>
-{
-    public void Configure(EntityTypeBuilder<ExpenseType> b)
-    {
-        b.ToTable("ExpenseTypes", "cost");
-        b.HasKey(t => t.Id);
-        b.Property(t => t.Title).HasMaxLength(100);
-    }
-}
-
 internal class CostFactorConfiguration : IEntityTypeConfiguration<CostFactor>
 {
     public void Configure(EntityTypeBuilder<CostFactor> b)
@@ -24,7 +14,6 @@ internal class CostFactorConfiguration : IEntityTypeConfiguration<CostFactor>
         b.Property(f => f.Title).HasMaxLength(200);
         b.Property(f => f.VariablePercent).HasPrecision(5, 2);
         b.Property(f => f.Notes).HasMaxLength(500);
-        b.HasOne<ExpenseType>().WithMany().HasForeignKey(f => f.ExpenseTypeId).OnDelete(DeleteBehavior.Restrict);
         b.Ignore(f => f.DomainEvents);
     }
 }

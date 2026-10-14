@@ -4,52 +4,29 @@ using Erp.SharedKernel.Text;
 
 namespace Erp.Costing.Domain;
 
-/// <summary>نوع هزینه (cost.ExpenseTypes)، زیر یکی از گروه‌های ماهیت هزینه؛ کاربر تعریف می‌کند.</summary>
-public class ExpenseType : Entity<short>
-{
-    private ExpenseType() { } // EF
-
-    public ExpenseType(string title, CostNature nature, int sortOrder = 0) => Update(title, nature, sortOrder);
-
-    public string Title { get; private set; } = null!;
-    public CostNature Nature { get; private set; }
-    public int SortOrder { get; private set; }
-    public bool IsActive { get; private set; } = true;
-
-    public void Update(string title, CostNature nature, int sortOrder)
-    {
-        Title = Texts.Required(title, "عنوان نوع هزینه", 100);
-        Nature = Enum.IsDefined(nature) ? nature : throw new DomainException("گروه هزینه معتبر نیست.");
-        SortOrder = sortOrder;
-    }
-
-    public void Activate() => IsActive = true;
-    public void Deactivate() => IsActive = false;
-}
-
 /// <summary>
-/// عامل هزینه (cost.CostFactors): سطح ۱ تفصیلی معین‌های هزینه. ماهیتش از نوع هزینه می‌آید
-/// و فقط در معین‌های همان کل ثبت می‌شود. رفتار ثابت/متغیر/نیمه‌متغیر برای تحلیل هزینه-حجم-سود و بودجه.
+/// عامل هزینه (cost.CostFactors): سطح ۱ تفصیلی معین‌های هزینه. گروهش (ماهیت: حقوق، کارکنان، استهلاک، ...)
+/// تعیین می‌کند فقط در معین‌های کدام کل ثبت شود. رفتار ثابت/متغیر/نیمه‌متغیر برای تحلیل هزینه-حجم-سود و بودجه.
 /// </summary>
 public class CostFactor : AggregateRoot<int>
 {
     private CostFactor() { } // EF
 
-    public CostFactor(string title, ExpenseType type, CostBehavior behavior, decimal? variablePercent, string? notes) =>
-        Update(title, type, behavior, variablePercent, notes);
+    public CostFactor(string title, CostNature nature, CostBehavior behavior, decimal? variablePercent, string? notes) =>
+        Update(title, nature, behavior, variablePercent, notes);
 
     public string Title { get; private set; } = null!;
-    public short ExpenseTypeId { get; private set; }
+    public CostNature Nature { get; private set; }
     public CostBehavior Behavior { get; private set; }
     public decimal? VariablePercent { get; private set; }
     public bool IsActive { get; private set; } = true;
     public string? Notes { get; private set; }
 
-    public void Update(string title, ExpenseType type, CostBehavior behavior, decimal? variablePercent, string? notes)
+    public void Update(string title, CostNature nature, CostBehavior behavior, decimal? variablePercent, string? notes)
     {
         Title = Texts.Required(title, "عنوان عامل هزینه", 200);
-        if (!type.IsActive && type.Id != ExpenseTypeId)
-            throw new DomainException($"نوع هزینه «{type.Title}» غیرفعال است.");
+        if (!Enum.IsDefined(nature))
+            throw new DomainException("گروه هزینه معتبر نیست.");
         if (!Enum.IsDefined(behavior))
             throw new DomainException("رفتار هزینه معتبر نیست.");
         if (behavior == CostBehavior.Mixed)
@@ -59,7 +36,7 @@ public class CostFactor : AggregateRoot<int>
         }
         else variablePercent = null;
 
-        ExpenseTypeId = type.Id;
+        Nature = nature;
         Behavior = behavior;
         VariablePercent = variablePercent is { } p ? Math.Round(p, 2) : null;
         Notes = Texts.Optional(notes, "توضیحات", 500);

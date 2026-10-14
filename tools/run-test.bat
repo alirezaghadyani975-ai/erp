@@ -16,6 +16,9 @@ dotnet --list-sdks >> "%LOG%" 2>&1
 echo ----- [2] SQL Server (.\ERP) >> "%LOG%"
 sqlcmd -S .\ERP -E -C -I -h -1 -W -Q "SET NOCOUNT ON; SELECT @@SERVERNAME + ' | ' + CAST(SERVERPROPERTY('ProductVersion') AS varchar(20)) + ' | ' + CAST(SERVERPROPERTY('Edition') AS varchar(60))" >> "%LOG%" 2>&1
 
+rem  run-test.bat nobuild  = skip build and tests (after reset-vouchers.bat)
+if /i "%~1"=="nobuild" goto :startapi
+
 echo ----- [3] build >> "%LOG%"
 dotnet build -nologo -v q >> "%LOG%" 2>&1
 
@@ -24,6 +27,7 @@ set "ERP_TEST_SQL=Server=.\ERP;Database=ErpCompany_Test;Trusted_Connection=True;
 dotnet test -nologo -v q --no-build >> "%LOG%" 2>&1
 set "ERP_TEST_SQL="
 
+:startapi
 echo ----- [5] start API (creates/updates database) >> "%LOG%"
 start "Erp API" cmd /k "dotnet run --no-build --project src\Host\Erp.Api --launch-profile http > %APILOG% 2>&1"
 
@@ -43,8 +47,8 @@ echo. >> "%LOG%"
 echo GET fiscal-years: >> "%LOG%"
 curl -s %API%/accounting/fiscal-years >> "%LOG%" 2>&1
 echo. >> "%LOG%"
-echo GET account 2305: >> "%LOG%"
-curl -s %API%/accounting/accounts/by-code/2305 >> "%LOG%" 2>&1
+echo GET account 3325: >> "%LOG%"
+curl -s %API%/accounting/accounts/by-code/3325 >> "%LOG%" 2>&1
 echo. >> "%LOG%"
 echo GET provinces: >> "%LOG%"
 curl -s %API%/base/lookups/province >> "%LOG%" 2>&1

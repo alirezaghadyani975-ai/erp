@@ -4,8 +4,9 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
+@inject TabService Tabs
 
-<PageTitle>@(IsNew ? "مرکز هزینه جدید" : _model.Title)</PageTitle>
+<TabTitle Text="@(IsNew ? "مرکز هزینه جدید" : _model.Title)" />
 
 @if (_loading)
 {
@@ -190,7 +191,7 @@
         if (Id is int id)
         {
             var r = await Backend.Run<CostCenterService, CostCenterDetailsDto>(s => s.GetAsync(id, default));
-            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); Nav.NavigateTo("/costing/centers"); return; }
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); Tabs.CloseCurrentAndGo("/costing/centers"); return; }
             _model = r.Value!;
             _manager = _model.ManagerPersonId is int m
                 ? new PersonListItemDto(m, PersonKind.Natural, _model.ManagerName ?? "", null, null, true, [], null, null, null)
@@ -246,7 +247,7 @@
                 var r = await Backend.Run<CostCenterService, int>(s => s.CreateAsync(_model, default));
                 if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
                 Snackbar.Add("مرکز ثبت شد و تفصیلی آن ساخته شد.", Severity.Success);
-                Nav.NavigateTo($"/costing/centers/{r.Value}");
+                Tabs.Go($"/costing/centers/{r.Value}");
             }
             else
             {
@@ -268,6 +269,6 @@
         var r = await Backend.Run<CostCenterService>(s => s.DeleteAsync(Id!.Value, default));
         if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
         Snackbar.Add("مرکز حذف شد.", Severity.Success);
-        Nav.NavigateTo("/costing/centers");
+        Tabs.CloseCurrentAndGo("/costing/centers");
     }
 }

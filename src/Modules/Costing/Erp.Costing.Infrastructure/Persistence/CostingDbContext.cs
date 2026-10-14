@@ -14,7 +14,6 @@ public class CostingDbContext : DbContext, ICostingDbContext
     public CostingDbContext(DbContextOptions<CostingDbContext> options, CompanyConnection connection) : base(options) =>
         connection.Enlist((tx, ct) => Database.UseTransactionAsync(tx, ct), tx => Database.UseTransaction(tx));
 
-    public IQueryable<ExpenseType> ExpenseTypes => Set<ExpenseType>();
     public IQueryable<CostFactor> CostFactors => Set<CostFactor>();
     public IQueryable<CostCenterType> CostCenterTypes => Set<CostCenterType>();
     public IQueryable<CostCenter> CostCenters => Set<CostCenter>();

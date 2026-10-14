@@ -2,14 +2,11 @@ using Erp.Costing.Contracts;
 
 namespace Erp.Costing.Application;
 
-public sealed record ExpenseTypeDto(short Id, string Title, CostNature Nature, int SortOrder, bool IsActive, int FactorCount);
+public sealed record CostFactorDto(int Id, string? Code, string Title, CostNature Nature, CostBehavior Behavior,
+    decimal? VariablePercent, bool IsActive, string? Notes);
 
-public sealed record SaveExpenseTypeRequest(string Title, CostNature Nature, int SortOrder, bool IsActive);
-
-public sealed record CostFactorDto(int Id, string? Code, string Title, short ExpenseTypeId, string ExpenseTypeTitle,
-    CostNature Nature, CostBehavior Behavior, decimal? VariablePercent, bool IsActive, string? Notes);
-
-public sealed record SaveCostFactorRequest(string Title, short ExpenseTypeId, CostBehavior Behavior, decimal? VariablePercent,
+/// <param name="Nature">گروه هزینه (کلِ هزینه‌ای که عامل در آن ثبت می‌شود).</param>
+public sealed record SaveCostFactorRequest(string Title, CostNature Nature, CostBehavior Behavior, decimal? VariablePercent,
     bool IsActive, string? Notes);
 
 public sealed record CostCenterTypeDto(short Id, string Title, CostFunction Function, int SortOrder, bool IsActive, bool IsSystem,

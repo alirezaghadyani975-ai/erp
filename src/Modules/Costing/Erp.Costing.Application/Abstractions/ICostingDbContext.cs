@@ -4,7 +4,6 @@ namespace Erp.Costing.Application.Abstractions;
 
 public interface ICostingDbContext
 {
-    IQueryable<ExpenseType> ExpenseTypes { get; }
     IQueryable<CostFactor> CostFactors { get; }
     IQueryable<CostCenterType> CostCenterTypes { get; }
     IQueryable<CostCenter> CostCenters { get; }

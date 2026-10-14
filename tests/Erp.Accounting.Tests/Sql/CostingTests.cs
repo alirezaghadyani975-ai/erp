@@ -29,7 +29,7 @@ public class CostingTests(SqlFixture db)
         (await CenterTypes()).First(t => t.Function == function && t.IsSystem).Id;
 
     private Task<List<CostFactorDto>> Factors(string? term = null) =>
-        db.Run<CostFactorService, List<CostFactorDto>>(s => s.SearchAsync(term, null, null, true, default));
+        db.Run<CostFactorService, List<CostFactorDto>>(s => s.SearchAsync(term, null, true, default));
 
     private async Task<string> FactorCode(string title) => (await Factors()).Single(f => f.Title == title).Code!;
 
@@ -66,37 +66,48 @@ public class CostingTests(SqlFixture db)
     {
         if (!db.Enabled) return;
         var tree = await db.Run<AccountService, List<AccountNodeDto>>(s => s.GetTreeAsync(default));
-        var group7 = tree.Single(g => g.Code == "7");
-        Assert.Equal(["7001", "7002"], group7.Children.Single(k => k.Code == "70").Children.Select(m => m.Code));
-        Assert.Equal(4, group7.Children.Single(k => k.Code == "71").Children.Count);
-        Assert.Single(group7.Children.Single(k => k.Code == "76").Children);
+        Assert.Equal(["1", "2", "3", "4", "5", "6", "7", "8", "9"], tree.Select(g => g.Code));
+        var group8 = tree.Single(g => g.Code == "8");
+        Assert.Equal(["80", "81", "82", "83", "84", "89"], group8.Children.Select(k => k.Code));
+        Assert.Equal(["8001", "8002"], group8.Children.Single(k => k.Code == "80").Children.Select(m => m.Code));
+        Assert.Equal(["8210", "8240", "8260", "8280"], group8.Children.Single(k => k.Code == "82").Children.Select(m => m.Code));
+        Assert.Single(group8.Children.Single(k => k.Code == "89").Children);
 
         var types = await db.Run<DetailService, List<DetailTypeDto>>(s => s.GetTypesAsync(default));
         var factorType = types.Single(t => t.OwnerModule == OwnerModules.CostFactors);
         var centerType = types.Single(t => t.OwnerModule == OwnerModules.CostCenters);
-        Assert.Equal(("09001", "08101"), (factorType.CodeFrom, centerType.CodeFrom));
+        Assert.Equal(("410001", "400001"), (factorType.CodeFrom, centerType.CodeFrom));
         Assert.True(factorType.UsedCount >= 59);
 
-        var salary = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("7101", default));
+        var salary = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("8110", default));
         Assert.Equal((CostNature.Payroll, CostFunction.Production), (salary.CostNature!.Value, salary.CostFunction!.Value));
         Assert.Equal([factorType.Id], salary.DetailLevels[0].DetailTypeIds);
         Assert.Equal([centerType.Id], salary.DetailLevels[1].DetailTypeIds);
         Assert.All(salary.DetailLevels, l => Assert.True(l.IsRequired));
 
-        var finance = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("7601", default));
+        var finance = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("8990", default));
         Assert.Null(finance.CostFunction);
         Assert.False(finance.DetailLevels[1].IsRequired);
 
-        Assert.Empty((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("7001", default))).DetailLevels);
-        Assert.True((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("2603", default))).DetailLevels[0].IsRequired);
+        Assert.Empty((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("8001", default))).DetailLevels);
+        Assert.True((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("1001", default))).DetailLevels[0].IsRequired);
+        Assert.Equal(new[] { "100001", "101001", "110001", "120001", "130001", "140001", "200001", "300001", "400001", "410001", "500001", "600001", "800001" },
+            types.OrderBy(t => t.CodeFrom).Select(t => t.CodeFrom));
+        Assert.All(types, t => Assert.Equal(6, t.CodeLength));
 
-        var legalAr = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("2304", default));
-        var legalType = types.Single(t => t.OwnerModule == OwnerModules.Persons && t.PersonKind == Erp.BaseData.Contracts.PersonKind.Legal);
-        Assert.Equal([legalType.Id], legalAr.DetailLevels[0].DetailTypeIds);
-        Assert.Single(legalAr.DetailLevels[0].RoleIds);
+        // اسناد دریافتنی: هر دو نوع شخص با فیلتر نقش مشتری (1211 را تست گزارش تغییر می‌دهد)؛ اسناد در جریان وصول: شخص و بانک
+        var ar = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("1201", default));
+        var personTypes = types.Where(t => t.OwnerModule == OwnerModules.Persons).Select(t => t.Id).Order().ToList();
+        Assert.Equal(personTypes, ar.DetailLevels[0].DetailTypeIds.Order().ToList());
+        Assert.Single(ar.DetailLevels[0].RoleIds);
+        Assert.Equal(2, (await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("1202", default))).DetailLevels.Count);
+
+        var personnel = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("8260", default));
+        Assert.Equal((CostNature.Personnel, CostFunction.Selling), (personnel.CostNature!.Value, personnel.CostFunction!.Value));
 
         var factors = await Factors();
         Assert.Contains(factors, f => f.Title == "اضافه‌کاری" && f.Behavior == CostBehavior.Variable && f.Nature == CostNature.Payroll);
+        Assert.Contains(factors, f => f.Title == "غذای کارکنان" && f.Nature == CostNature.Personnel);
         Assert.All(factors, f => Assert.NotNull(f.Code));
     }
 
@@ -110,26 +121,26 @@ public class CostingTests(SqlFixture db)
         var interest = await FactorCode("سود تضمین‌شده و کارمزد تسهیلات");
 
         var ok = await Draft(seed.YearId,
-            Line("7101", 1000, 0, basePay, seed.ProductionCode),
-            Line("7102", 500, 0, basePay, seed.ServiceCode),
-            Line("7601", 200, 0, interest),
-            Line("5203", 0, 1700));
+            Line("8110", 1000, 0, basePay, seed.ProductionCode),
+            Line("8140", 500, 0, basePay, seed.ServiceCode),
+            Line("8990", 200, 0, interest),
+            Line("3325", 0, 1700));
         Assert.True(ok > 0);
 
         var wrongNature = await Assert.ThrowsAsync<DomainException>(() =>
-            Draft(seed.YearId, Line("7101", 100, 0, buildingDep, seed.ProductionCode), Line("5203", 0, 100)));
+            Draft(seed.YearId, Line("8110", 100, 0, buildingDep, seed.ProductionCode), Line("3325", 0, 100)));
         Assert.Contains("استهلاک", wrongNature.Message);
 
         var wrongFunction = await Assert.ThrowsAsync<DomainException>(() =>
-            Draft(seed.YearId, Line("7101", 100, 0, basePay, seed.AdminCode), Line("5203", 0, 100)));
+            Draft(seed.YearId, Line("8110", 100, 0, basePay, seed.AdminCode), Line("3325", 0, 100)));
         Assert.Contains("اداری", wrongFunction.Message);
 
         var missingCenter = await Assert.ThrowsAsync<DomainException>(() =>
-            Draft(seed.YearId, Line("7101", 100, 0, basePay), Line("5203", 0, 100)));
+            Draft(seed.YearId, Line("8110", 100, 0, basePay), Line("3325", 0, 100)));
         Assert.Contains("سطح 2", missingCenter.Message);
 
         // انتخاب در فرم سند هم همین فیلتر را دارد
-        var account = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("7101", default));
+        var account = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("8110", default));
         var factorsForSalary = await db.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(
             account.DetailLevels[0].DetailTypeIds, null, null, account.CostNature, account.CostFunction, default));
         Assert.Contains(factorsForSalary, d => d.Code == basePay);
@@ -139,7 +150,7 @@ public class CostingTests(SqlFixture db)
         Assert.Equal([seed.ProductionCode], centersForSalary.Select(d => d.Code));
 
         // مواد مصرفی بدون تفصیلی
-        Assert.True(await Draft(seed.YearId, Line("7001", 300, 0), Line("7002", 100, 0), Line("2203", 0, 400)) > 0);
+        Assert.True(await Draft(seed.YearId, Line("8001", 300, 0), Line("8002", 100, 0), Line("1601", 0, 400)) > 0);
     }
 
     [Fact]
@@ -147,10 +158,7 @@ public class CostingTests(SqlFixture db)
     {
         if (!db.Enabled) return;
         var seed = await SeedAsync();
-        var types = await db.Run<CostSetupService, List<ExpenseTypeDto>>(s => s.GetExpenseTypesAsync(true, default));
-        var energy = types.Single(t => t.Title == "انرژی و آب").Id;
-        var repairs = types.Single(t => t.Title == "تعمیر و نگهداری").Id;
-        var payroll = types.First(t => t.Nature == CostNature.Payroll).Id;
+        const CostNature energy = CostNature.OtherOperating, repairs = CostNature.Depreciation, payroll = CostNature.Payroll;
 
         var noPercent = await Assert.ThrowsAsync<DomainException>(() => db.Run<CostFactorService, int>(s =>
             s.CreateAsync(new SaveCostFactorRequest("بخار", energy, CostBehavior.Mixed, null, true, null), default)));
@@ -160,13 +168,13 @@ public class CostingTests(SqlFixture db)
             s.CreateAsync(new SaveCostFactorRequest("بخار", energy, CostBehavior.Mixed, 40, true, null), default));
         var factor = (await Factors("بخار")).Single();
         Assert.Equal((40m, CostNature.OtherOperating), (factor.VariablePercent!.Value, factor.Nature));
-        Assert.StartsWith("09", factor.Code);
+        Assert.StartsWith("41", factor.Code);
 
-        // تغییر نوع به گروه دیگر وقتی در سند نیامده مجاز است و ماهیت تفصیلی هم عوض می‌شود
+        // تغییر گروه وقتی در سند نیامده مجاز است و ماهیت تفصیلی هم عوض می‌شود
         await db.Run<CostFactorService>(s => s.UpdateAsync(id, new SaveCostFactorRequest("بخار", payroll, CostBehavior.Fixed, 55, true, null), default));
         var changed = (await Factors("بخار")).Single();
         Assert.Equal((CostNature.Payroll, (decimal?)null), (changed.Nature, changed.VariablePercent));
-        await Draft(seed.YearId, Line("7103", 10, 0, changed.Code, seed.AdminCode), Line("5203", 0, 10));
+        await Draft(seed.YearId, Line("8180", 10, 0, changed.Code, seed.AdminCode), Line("3325", 0, 10));
 
         // در سند آمده: گروه هزینه عوض نمی‌شود، داخل همان گروه می‌شود؛ حذف هم نمی‌شود
         var used = await Assert.ThrowsAsync<DomainException>(() => db.Run<CostFactorService>(s =>
@@ -244,7 +252,7 @@ public class CostingTests(SqlFixture db)
 
         var list = await db.Run<CostCenterService, List<CostCenterListItemDto>>(s => s.GetAllAsync(true, default));
         Assert.Contains(list, c => c.Id == seed.Service && c.TargetCount == 1 && c.AllocationBaseTitle == "ساعت کار ماشین");
-        Assert.Contains(list, c => c.Id == line2 && c.AbsorptionBaseTitle == "ساعت کار ماشین" && c.Code!.StartsWith("081"));
+        Assert.Contains(list, c => c.Id == line2 && c.AbsorptionBaseTitle == "ساعت کار ماشین" && c.Code!.StartsWith("40"));
     }
 
     [Fact]
@@ -252,7 +260,7 @@ public class CostingTests(SqlFixture db)
     {
         if (!db.Enabled) return;
         var seed = await SeedAsync();
-        await Draft(seed.YearId, Line("7303", 50, 0, await FactorCode("ملزومات و نوشت‌افزار"), seed.AdminCode), Line("5203", 0, 50));
+        await Draft(seed.YearId, Line("8480", 50, 0, await FactorCode("ملزومات و نوشت‌افزار"), seed.AdminCode), Line("3325", 0, 50));
 
         var admin = await db.Run<CostCenterService, CostCenterDetailsDto>(s => s.GetAsync(seed.Admin, default));
         admin.CenterTypeId = await CenterType(CostFunction.Selling);
@@ -288,22 +296,15 @@ public class CostingTests(SqlFixture db)
     }
 
     [Fact]
-    public async Task Expense_type_nature_is_locked_when_its_factors_are_used()
+    public async Task Personnel_factor_only_in_personnel_expenses()
     {
         if (!db.Enabled) return;
         var seed = await SeedAsync();
-        var types = await db.Run<CostSetupService, List<ExpenseTypeDto>>(s => s.GetExpenseTypesAsync(true, default));
-        var cash = types.Single(t => t.Title == "حقوق و مزایای نقدی");
-        await Draft(seed.YearId, Line("7101", 10, 0, await FactorCode("حق مسکن"), seed.ProductionCode), Line("5203", 0, 10));
+        var food = await FactorCode("غذای کارکنان");
+        Assert.True(await Draft(seed.YearId, Line("8210", 30, 0, food, seed.ProductionCode), Line("3325", 0, 30)) > 0);
 
-        var ex = await Assert.ThrowsAsync<DomainException>(() => db.Run<CostSetupService>(s =>
-            s.UpdateExpenseTypeAsync(cash.Id, new SaveExpenseTypeRequest(cash.Title, CostNature.OtherOperating, cash.SortOrder, true), default)));
-        Assert.Contains("در سند آمده", ex.Message);
-
-        // تغییر عنوان مجاز است؛ حذف نوعِ دارای عامل نه
-        await db.Run<CostSetupService>(s => s.UpdateExpenseTypeAsync(cash.Id, new SaveExpenseTypeRequest("حقوق و مزایای نقدی کارکنان", CostNature.Payroll, 1, true), default));
-        await Assert.ThrowsAsync<DomainException>(() => db.Run<CostSetupService>(s => s.DeleteExpenseTypeAsync(cash.Id, default)));
-        var empty = await db.Run<CostSetupService, short>(s => s.CreateExpenseTypeAsync(new SaveExpenseTypeRequest("نوع خالی", CostNature.Finance, 9, true), default));
-        await db.Run<CostSetupService>(s => s.DeleteExpenseTypeAsync(empty, default));
+        var wrong = await Assert.ThrowsAsync<DomainException>(() =>
+            Draft(seed.YearId, Line("8110", 30, 0, food, seed.ProductionCode), Line("3325", 0, 30)));
+        Assert.Contains("هزینه کارکنان", wrong.Message);
     }
 }

@@ -1,0 +1,53 @@
+@* جایگزین RouteView: هر مسیر را به تب‌ها می‌سپارد و همه تب‌های باز را داخل چیدمان نگه می‌دارد. *@
+@implements IDisposable
+@inject TabService Tabs
+@inject NavigationManager Nav
+
+<LayoutView Layout="DefaultLayout">
+    <div class="tab-strip no-print">
+        @foreach (var tab in Tabs.Tabs)
+        {
+            var key = tab.Key;
+            var active = key == Tabs.ActiveKey;
+            <div class="tab-item @(active ? "active" : "")" title="@tab.Title"
+                 @onclick="() => Tabs.Activate(key)" @onmouseup="e => { if (e.Button == 1) Tabs.Close(key); }">
+                <span class="tab-title">@tab.Title</span>
+                <span class="tab-close" @onclick="() => Tabs.Close(key)" @onclick:stopPropagation="true" aria-label="بستن">×</span>
+            </div>
+        }
+        @if (Tabs.Tabs.Count > 1)
+        {
+            <MudTooltip Text="بستن بقیه تب‌ها">
+                <MudIconButton Icon="@Icons.Material.Outlined.ClearAll" Size="Size.Small" Class="tab-close-others"
+                               OnClick="() => Tabs.CloseOthers(Tabs.ActiveKey!)" aria-label="بستن بقیه تب‌ها" />
+            </MudTooltip>
+        }
+    </div>
+
+    @if (Tabs.Active is { } current)
+    {
+        <PageTitle>@current.Title</PageTitle>
+    }
+
+    @foreach (var tab in Tabs.Tabs)
+    {
+        <div @key="@($"{tab.Key}#{tab.Version}")" class="tab-page" style="@(tab.Key == Tabs.ActiveKey ? null : "display:none")">
+            <CascadingValue Value="new TabContext(tab.Key)" IsFixed="true">
+                <DynamicComponent Type="tab.PageType" Parameters="tab.Parameters" />
+            </CascadingValue>
+        </div>
+    }
+</LayoutView>
+
+@code {
+    [Parameter, EditorRequired] public Microsoft.AspNetCore.Components.RouteData RouteData { get; set; } = null!;
+    [Parameter] public Type DefaultLayout { get; set; } = null!;
+
+    protected override void OnInitialized() => Tabs.Changed += OnChanged;
+
+    protected override void OnParametersSet() => Tabs.Open(RouteData, Nav.Uri);
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Tabs.Changed -= OnChanged;
+}

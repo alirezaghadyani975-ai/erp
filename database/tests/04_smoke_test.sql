@@ -15,9 +15,9 @@ DECLARE @err INT, @YearId SMALLINT, @PersonId INT, @CustType SMALLINT, @Cust INT
 SELECT @D1 = [Date] FROM base.Calendar WHERE PersianDate = '1419/01/12';
 SELECT @D2 = [Date] FROM base.Calendar WHERE PersianDate = '1419/01/05';
 SELECT @Y0 = MIN([Date]), @Y1 = MAX([Date]) FROM base.Calendar WHERE PersianYear = 1419;
-SELECT @AR = Id FROM fin.Accounts WHERE Code = '2305';     -- دریافتنی تجاری اشخاص حقیقی
-SELECT @Sales = Id FROM fin.Accounts WHERE Code = '6101';  -- فروش
-SELECT @Kol23 = Id FROM fin.Accounts WHERE Code = '23';    -- یک حساب کل (غیرمعین)
+SELECT @AR = Id FROM fin.Accounts WHERE Code = '1211';     -- حساب‌های دریافتنی تجاری
+SELECT @Sales = Id FROM fin.Accounts WHERE Code = '6001';  -- فروش محصول
+SELECT @Kol23 = Id FROM fin.Accounts WHERE Code = '12';    -- یک حساب کل (غیرمعین)
 SELECT TOP (1) @CustType = Id FROM fin.DetailTypes WHERE OwnerModule = 'persons' AND PersonKind = 1 AND IsActive = 1;
 
 -- کد آزاد بعدی در گروه اشخاص حقیقی (دیتابیس ممکن است اشخاص واقعی هم داشته باشد)
@@ -125,9 +125,9 @@ INSERT @R VALUES (N'نمای دفتر: دو ردیف با تاریخ شمسی ۱
     CASE WHEN (SELECT COUNT(*) FROM fin.vLedger WHERE VoucherId = @V1 AND PersianDate = '1419/01/12') = 2
          THEN N'قبول' ELSE N'رد' END);
 
--- 8) عامل هزینه فقط در کلِ ماهیت خودش (اسکریپت ۰۷)
+-- 8) عامل هزینه فقط در کلِ ماهیت خودش (اسکریپت‌های ۰۷ و ۰۸)
 DECLARE @V3 BIGINT, @Salary INT, @PayFactor INT, @DepFactor INT;
-SELECT @Salary = Id FROM fin.Accounts WHERE Code = '7101';
+SELECT @Salary = Id FROM fin.Accounts WHERE Code = '8110';
 SELECT TOP (1) @PayFactor = Id FROM fin.DetailAccounts WHERE SourceModule = 'costing' AND CostNature = 1;
 SELECT TOP (1) @DepFactor = Id FROM fin.DetailAccounts WHERE SourceModule = 'costing' AND CostNature = 2;
 INSERT fin.Vouchers (FiscalYearId, TempNo, VoucherDate, CreatedBy, [Description]) VALUES (@YearId, 3, @D1, 1, N'تست عامل هزینه');

@@ -1,0 +1,17 @@
+@* عنوان تب (و عنوان مرورگر وقتی تب فعال است). جایگزین PageTitle در صفحه‌ها. *@
+@inject TabService Tabs
+
+@if (Context is null)
+{
+    <PageTitle>@Text</PageTitle>
+}
+
+@code {
+    [CascadingParameter] public TabContext? Context { get; set; }
+    [Parameter] public string? Text { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Context is not null && !string.IsNullOrWhiteSpace(Text)) Tabs.SetTitle(Context.Key, Text);
+    }
+}

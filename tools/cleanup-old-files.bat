@@ -12,4 +12,5 @@ if exist "src\Modules\Accounting\Erp.Accounting.Domain\BaseData\Person.cs" del /
 if exist "src\Modules\Accounting\Erp.Accounting.Domain\BaseData\PersonEnums.cs" del /q "src\Modules\Accounting\Erp.Accounting.Domain\BaseData\PersonEnums.cs"
 if exist "src\Modules\Accounting\Erp.Accounting.Application\Common" rmdir "src\Modules\Accounting\Erp.Accounting.Application\Common" 2>nul
 if exist "src\Modules\Accounting\Erp.Accounting.Application\Persons" rmdir "src\Modules\Accounting\Erp.Accounting.Application\Persons" 2>nul
+if exist "src\Host\Erp.Api\Components\Pages\Costing\ExpenseTypes.razor" del /q "src\Host\Erp.Api\Components\Pages\Costing\ExpenseTypes.razor"
 echo فایل‌های قدیمی حذف شد.

@@ -3,7 +3,7 @@
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
 
-<PageTitle>عوامل هزینه</PageTitle>
+<TabTitle Text="عوامل هزینه" />
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
     <MudText Typo="Typo.h5">عوامل هزینه</MudText>
@@ -11,7 +11,7 @@
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">عامل جدید</MudButton>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
-    عامل هزینه تفصیلی سطح ۱ معین‌های هزینه است و کد تفصیلی‌اش خودکار ساخته می‌شود. فقط در کلِ گروه نوع هزینه‌اش ثبت می‌شود
+    عامل هزینه تفصیلی سطح ۱ معین‌های هزینه است و کد تفصیلی‌اش خودکار ساخته می‌شود. فقط در کلِ گروه خودش ثبت می‌شود
     (مثلاً «اضافه‌کاری» فقط در معین‌های حقوق و دستمزد). رفتار هزینه برای تحلیل هزینه-حجم-سود و بودجه انعطاف‌پذیر است.
 </MudText>
 
@@ -21,13 +21,6 @@
                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
                       Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:220px" />
         <div style="min-width:220px"><EnumSelect TEnum="CostNature" @bind-Value="_nature" Label="گروه هزینه" /></div>
-        <MudSelect T="short?" @bind-Value="_typeFilter" Label="نوع هزینه" Clearable="true" Dense="true"
-                   Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:220px">
-            @foreach (var t in _types.Where(t => _nature is null || t.Nature == _nature))
-            {
-                <MudSelectItem T="short?" Value="t.Id">@t.Title</MudSelectItem>
-            }
-        </MudSelect>
         <div style="min-width:160px"><EnumSelect TEnum="CostBehavior" @bind-Value="_behavior" Label="رفتار" /></div>
         <MudCheckBox T="bool" @bind-Value="_showInactive" Label="غیرفعال‌ها هم" Dense="true" />
     </MudStack>
@@ -37,8 +30,7 @@
         <HeaderContent>
             <MudTh>کد تفصیلی</MudTh>
             <MudTh>عامل هزینه</MudTh>
-            <MudTh>نوع هزینه</MudTh>
-            <MudTh>گروه</MudTh>
+            <MudTh>گروه هزینه</MudTh>
             <MudTh>رفتار</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
@@ -48,8 +40,7 @@
                 @context.Title
                 @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
             </MudTd>
-            <MudTd>@context.ExpenseTypeTitle</MudTd>
-            <MudTd><MudText Typo="Typo.caption">@Titles.Of(context.Nature)</MudText></MudTd>
+            <MudTd>@Titles.Of(context.Nature)</MudTd>
             <MudTd>
                 <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@BehaviorColor(context.Behavior)">
                     @Titles.Of(context.Behavior)@(context.VariablePercent is { } p ? $" ({p:0.##}٪ متغیر)" : "")
@@ -77,18 +68,8 @@
         <MudGrid Spacing="2">
             <MudItem xs="12"><MudTextField @bind-Value="_title" Immediate="true" Label="عنوان" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
             <MudItem xs="12">
-                <MudSelect T="short?" @bind-Value="_typeId" Label="نوع هزینه" Required="true" Dense="true"
-                           Variant="Variant.Outlined" Margin="Margin.Dense"
-                           HelperText="@(SelectedType is { } st ? $"در معین‌های «{Titles.Of(st.Nature)}» ثبت می‌شود" : null)">
-                    @foreach (var group in _types.Where(t => t.IsActive || t.Id == _typeId).GroupBy(t => t.Nature))
-                    {
-                        <MudListSubheader>@Titles.Of(group.Key)</MudListSubheader>
-                        @foreach (var t in group)
-                        {
-                            <MudSelectItem T="short?" Value="t.Id">@t.Title</MudSelectItem>
-                        }
-                    }
-                </MudSelect>
+                <EnumSelect TEnum="CostNature" @bind-Value="_natureEdit" Label="گروه هزینه" Required="true" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">فقط در معین‌های همین گروه (کل) ثبت می‌شود.</MudText>
             </MudItem>
             <MudItem xs="12">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">رفتار هزینه</MudText>
@@ -112,17 +93,15 @@
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="@(string.IsNullOrWhiteSpace(_title) || _typeId is null)">ذخیره</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="@(string.IsNullOrWhiteSpace(_title) || _natureEdit is null)">ذخیره</MudButton>
     </DialogActions>
 </MudDialog>
 
 @code {
     private List<CostFactorDto> _factors = [];
-    private List<ExpenseTypeDto> _types = [];
     private bool _loading = true;
     private string? _term;
     private CostNature? _nature;
-    private short? _typeFilter;
     private CostBehavior? _behavior;
     private bool _showInactive;
 
@@ -130,26 +109,19 @@
     private int? _editId;
     private string? _editCode;
     private string? _title;
-    private short? _typeId;
+    private CostNature? _natureEdit;
     private CostBehavior _behaviorEdit = CostBehavior.Fixed;
     private decimal? _percent;
     private string? _notes;
     private bool _active = true;
 
-    private ExpenseTypeDto? SelectedType => _types.FirstOrDefault(t => t.Id == _typeId);
-
     private IEnumerable<CostFactorDto> Visible => _factors
         .Where(f => _showInactive || f.IsActive)
         .Where(f => _nature is null || f.Nature == _nature)
-        .Where(f => _typeFilter is null || f.ExpenseTypeId == _typeFilter)
         .Where(f => _behavior is null || f.Behavior == _behavior)
         .Where(f => string.IsNullOrWhiteSpace(_term) || f.Title.Contains(PersianText.Normalize(_term)) || (f.Code?.StartsWith(_term.Trim()) ?? false));
 
-    protected override async Task OnInitializedAsync()
-    {
-        _types = (await Backend.Run<CostSetupService, List<ExpenseTypeDto>>(s => s.GetExpenseTypesAsync(true, default))).Value ?? [];
-        await LoadAsync();
-    }
+    protected override Task OnInitializedAsync() => LoadAsync();
 
     private static Color BehaviorColor(CostBehavior b) => b switch
     {
@@ -159,28 +131,28 @@
     private async Task LoadAsync()
     {
         _loading = true;
-        var r = await Backend.Run<CostFactorService, List<CostFactorDto>>(s => s.SearchAsync(null, null, null, true, default));
+        var r = await Backend.Run<CostFactorService, List<CostFactorDto>>(s => s.SearchAsync(null, null, true, default));
         if (r.Success) _factors = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
         _loading = false;
     }
 
     private void New()
     {
-        (_editId, _editCode, _title, _typeId, _behaviorEdit, _percent, _notes, _active) =
-            (null, null, null, _typeFilter, CostBehavior.Fixed, null, null, true);
+        (_editId, _editCode, _title, _natureEdit, _behaviorEdit, _percent, _notes, _active) =
+            (null, null, null, _nature, CostBehavior.Fixed, null, null, true);
         _editOpen = true;
     }
 
     private void Edit(CostFactorDto f)
     {
-        (_editId, _editCode, _title, _typeId, _behaviorEdit, _percent, _notes, _active) =
-            (f.Id, f.Code, f.Title, f.ExpenseTypeId, f.Behavior, f.VariablePercent, f.Notes, f.IsActive);
+        (_editId, _editCode, _title, _natureEdit, _behaviorEdit, _percent, _notes, _active) =
+            (f.Id, f.Code, f.Title, f.Nature, f.Behavior, f.VariablePercent, f.Notes, f.IsActive);
         _editOpen = true;
     }
 
     private async Task SaveAsync()
     {
-        var request = new SaveCostFactorRequest(_title!, _typeId!.Value, _behaviorEdit,
+        var request = new SaveCostFactorRequest(_title!, _natureEdit!.Value, _behaviorEdit,
             _behaviorEdit == CostBehavior.Mixed ? _percent : null, _active, _notes);
         var error = _editId is int id
             ? (await Backend.Run<CostFactorService>(s => s.UpdateAsync(id, request, default))).Error

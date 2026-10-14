@@ -5,8 +5,9 @@
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
 @inject NavigationManager Nav
+@inject TabService Tabs
 
-<PageTitle>جدول‌های پایه</PageTitle>
+<TabTitle Text="جدول‌های پایه" />
 
 <MudText Typo="Typo.h5" Class="mb-1">جدول‌های پایه</MudText>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
@@ -167,7 +168,7 @@
     protected override async Task OnParametersSetAsync()
     {
         await LoadCategoriesAsync();
-        if (Code is null && _categories.Count > 0) { Nav.NavigateTo($"/base/lookups/{_categories[0].Code}", replace: true); return; }
+        if (Code is null && _categories.Count > 0) { Tabs.Go($"/base/lookups/{_categories[0].Code}"); return; }
         _parentFilter = null;
         await LoadItemsAsync();
     }
@@ -186,7 +187,7 @@
 
     private void SelectCategory(string? code)
     {
-        if (code is not null && code != Code) Nav.NavigateTo($"/base/lookups/{code}");
+        if (code is not null && code != Code) Tabs.Go($"/base/lookups/{code}");
     }
 
     private void ParentFilterChanged(int? id) => _parentFilter = id;

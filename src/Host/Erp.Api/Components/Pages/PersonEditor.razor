@@ -4,8 +4,9 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
+@inject TabService Tabs
 
-<PageTitle>@(IsNew ? "شخص جدید" : _model.DisplayName)</PageTitle>
+<TabTitle Text="@(IsNew ? "شخص جدید" : _model.DisplayName)" />
 
 @if (_loading)
 {
@@ -302,7 +303,7 @@
         if (Id is int id)
         {
             var r = await Backend.Run<PersonService, PersonDetailsDto>(s => s.GetAsync(id, default));
-            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); Nav.NavigateTo("/persons"); return; }
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); Tabs.CloseCurrentAndGo("/persons"); return; }
             _model = r.Value!;
         }
         else
@@ -380,7 +381,7 @@
                 var r = await Backend.Run<PersonService, int>(s => s.CreateAsync(_model, default));
                 if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
                 Snackbar.Add("شخص ثبت شد و تفصیلی آن ساخته شد.", Severity.Success);
-                Nav.NavigateTo($"/persons/{r.Value}");
+                Tabs.Go($"/persons/{r.Value}");
             }
             else
             {
@@ -404,7 +405,7 @@
         var r = await Backend.Run<PersonService>(s => s.DeleteAsync(Id!.Value, default));
         if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
         Snackbar.Add("شخص حذف شد.", Severity.Success);
-        Nav.NavigateTo("/persons");
+        Tabs.CloseCurrentAndGo("/persons");
     }
 
     private async Task UploadAsync(IBrowserFile? file)

@@ -21,6 +21,7 @@ public static class Titles
         [TaxPayerType.CivilPartnership] = "مشارکت مدنی", [TaxPayerType.Foreign] = "اتباع غیرایرانی",
         [TaxPayerType.FinalConsumer] = "مصرف‌کننده نهایی",
         [CostNature.Payroll] = "حقوق و دستمزد", [CostNature.Depreciation] = "استهلاک",
+        [CostNature.Personnel] = "هزینه کارکنان",
         [CostNature.OtherOperating] = "سایر هزینه‌های عملیاتی", [CostNature.Finance] = "هزینه‌های مالی (تأمین مالی)",
         [CostFunction.Production] = "تولیدی", [CostFunction.Service] = "خدماتی (پشتیبانی تولید)",
         [CostFunction.Admin] = "اداری", [CostFunction.Selling] = "فروش و توزیع",
@@ -40,6 +41,7 @@ public static class Titles
         OwnerModules.Assets => "دارایی‌های ثابت",
         OwnerModules.Manual => "دستی (پروژه، قرارداد، ...)",
         OwnerModules.CostFactors => "عوامل هزینه (بهای تمام‌شده)",
+        OwnerModules.Inventory => "انبارها (انبار و کالا)",
         OwnerModules.CostCenters => "مراکز هزینه (بهای تمام‌شده)",
         _ => ownerModule
     };
@@ -51,6 +53,7 @@ public static class Titles
         OwnerModules.Treasury => "صندوق‌ها، حساب‌های بانکی، اعتبارات اسنادی و تسهیلات؛ بعداً از ماژول خزانه ساخته می‌شوند.",
         OwnerModules.Assets => "دارایی‌هایی که جداگانه پیگیری می‌شوند؛ بعداً از ماژول دارایی ثابت ساخته می‌شوند.",
         OwnerModules.CostFactors => "تفصیلی خودکار از تعریف عامل هزینه ساخته می‌شود (بهای تمام‌شده ← عوامل هزینه).",
+        OwnerModules.Inventory => "انبارها؛ فعلاً دستی، بعداً از ماژول انبار ساخته می‌شوند.",
         OwnerModules.CostCenters => "تفصیلی خودکار از تعریف مرکز هزینه ساخته می‌شود (بهای تمام‌شده ← مراکز هزینه).",
         _ => "تفصیلی‌ها دستی در همین برنامه تعریف می‌شوند (پروژه، قرارداد، ...)."
     };

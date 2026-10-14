@@ -4,7 +4,7 @@
 @inject IDialogService Dialogs
 @inject NavigationManager Nav
 
-<PageTitle>گروه‌ها و حساب‌های تفصیلی</PageTitle>
+<TabTitle Text="گروه‌ها و حساب‌های تفصیلی" />
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
     <MudText Typo="Typo.h5">گروه‌های تفصیلی</MudText>
@@ -174,10 +174,12 @@
                     کد تفصیلی رشته‌ای هم‌طول با صفرهای ابتدایی است؛ هر گروه یک بازه از کدها را دارد و کد بعدی خودکار داده می‌شود.
                 </MudText>
                 <ul class="guide-list">
-                    <li><b>یک طول کد برای همه گروه‌ها</b> (مثلاً ۵ رقم) تا فهرست‌ها مرتب و قابل حدس بمانند.</li>
-                    <li><b>رقم‌های اول = پیشوند گروه</b>: مثلاً <span class="code">001xx</span> صندوق و بانک، <span class="code">002xx–004xx</span> کارکنان،
-                        <span class="code">009xx</span> مراکز هزینه، <span class="code">01001–03999</span> اشخاص حقیقی، <span class="code">04001–06999</span> اشخاص حقوقی،
-                        <span class="code">075xx</span> پروژه‌ها.</li>
+                    <li><b>یک طول کد برای همه گروه‌ها</b> (پیش‌فرض ۶ رقم) تا تایپ کد یکدست بماند؛ گروهی که بیش از ظرفیتش رکورد دارد ۷ رقمی شود.</li>
+                    <li><b>رقم‌های اول = پیشوند گروه</b>: <span class="code">100xxx</span> صندوق، <span class="code">101xxx</span> تنخواه، <span class="code">11xxxx</span> بانک،
+                        <span class="code">12xxxx</span> اعتبار اسنادی، <span class="code">13xxxx</span> تسهیلات، <span class="code">140xxx</span> انبار،
+                        <span class="code">2xxxxx</span> دارایی ثابت، <span class="code">300001–349999</span> کارکنان، <span class="code">40xxxx</span> مراکز هزینه،
+                        <span class="code">41xxxx</span> عوامل هزینه، <span class="code">5xxxxx</span> پروژه‌ها، <span class="code">600001–799999</span> اشخاص حقیقی،
+                        <span class="code">800001–999999</span> اشخاص حقوقی. فاصله‌های خالی برای گروه‌های جدید است.</li>
                     <li><b>ظرفیت آینده را در نظر بگیرید</b>: بزرگ کردن بازه بعداً ممکن است، ولی کوچک کردن فقط تا آخرین کد استفاده‌شده،
                         و طول کد گروهی که تفصیلی دارد عوض نمی‌شود.</li>
                     <li><b>اشخاص</b>: برای هر نوع شخص فقط یک گروه فعال «اشخاص»؛ همه نقش‌ها (مشتری، تأمین‌کننده، ...) همین یک کد را دارند.
@@ -197,7 +199,7 @@
         public string Title { get; set; } = "";
         public string OwnerModule { get; set; } = OwnerModules.Manual;
         public PersonKind? PersonKind { get; set; }
-        public int Length { get; set; } = 5;
+        public int Length { get; set; } = 6;
         public string From { get; set; } = "";
         public string To { get; set; } = "";
         public bool IsActive { get; set; } = true;
@@ -224,7 +226,7 @@
 
     private void New()
     {
-        var length = _types.GroupBy(t => t.CodeLength).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key ?? 5;
+        var length = _types.GroupBy(t => t.CodeLength).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key ?? 6;
         _edit = new EditModel { Length = length };
         var free = FreeRanges().FirstOrDefault();
         if (free != default) { _edit.From = free.From; _edit.To = Cap(free.From, free.To, 99); }
@@ -282,7 +284,7 @@
     /// <summary>فاصله‌های خالی بین بازه‌های گروه‌های هم‌طول.</summary>
     private IEnumerable<(string From, string To)> FreeRanges()
     {
-        var length = _edit?.Length ?? 5;
+        var length = _edit?.Length ?? 6;
         var max = long.Parse(new string('9', length));
         var used = _types.Where(t => t.CodeLength == length && t.Id != _edit?.Id)
             .Select(t => (From: long.Parse(t.CodeFrom), To: long.Parse(t.CodeTo))).OrderBy(r => r.From).ToList();

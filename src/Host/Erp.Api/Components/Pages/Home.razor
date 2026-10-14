@@ -1,6 +1,6 @@
 @page "/"
-@inject NavigationManager Nav
+@inject TabService Tabs
 
 @code {
-    protected override void OnInitialized() => Nav.NavigateTo("/vouchers", replace: true);
+    protected override void OnInitialized() => Tabs.CloseCurrentAndGo("/vouchers");
 }

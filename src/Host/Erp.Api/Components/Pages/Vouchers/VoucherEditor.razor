@@ -4,8 +4,9 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
+@inject TabService Tabs
 
-<PageTitle>@(Id is null ? "سند جدید" : $"سند {_tempNo}")</PageTitle>
+<TabTitle Text="@(Id is null ? "سند جدید" : $"سند {_tempNo}")" />
 
 @if (_loading)
 {
@@ -373,7 +374,7 @@ else
             var r = await Backend.Run<VoucherService>(s => s.DeleteAsync(Id!.Value, default));
             if (!r.Success) { _error = r.Error; return; }
             Snackbar.Add("سند حذف شد.", Severity.Success);
-            Nav.NavigateTo("/vouchers");
+            Tabs.CloseCurrentAndGo("/vouchers");
         });
     }
 
@@ -389,7 +390,7 @@ else
     private async Task ReloadOrNavigate(long id)
     {
         if (Id == id) await LoadAsync(id);
-        else Nav.NavigateTo($"/vouchers/{id}");
+        else Tabs.Go($"/vouchers/{id}");
     }
 
     private async Task Busy(Func<Task> action)

@@ -14,9 +14,10 @@ public static class OwnerModules
     public const string Manual = "manual";
     public const string CostFactors = "cost_factors";
     public const string CostCenters = "cost_centers";
+    public const string Inventory = "inventory";
 
     public static readonly IReadOnlySet<string> All =
-        new HashSet<string> { Persons, Treasury, Payroll, Assets, Manual, CostFactors, CostCenters };
+        new HashSet<string> { Persons, Treasury, Payroll, Assets, Manual, CostFactors, CostCenters, Inventory };
 
     /// <summary>تفصیلی این گروه‌ها فقط از ماژول مالک ساخته و مدیریت می‌شود، نه دستی.</summary>
     public static bool IsManagedByModule(string ownerModule) =>
