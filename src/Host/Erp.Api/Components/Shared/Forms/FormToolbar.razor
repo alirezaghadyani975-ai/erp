@@ -1,0 +1,127 @@
+@* نوار ابزار استاندارد فرم‌ها: جدید، اصلاح، حذف، ذخیره، انصراف و مشاهده سند؛ رکورد موجود در حالت نمایش باز می‌شود.
+   میانبرها (فقط در تب فعال): Ctrl+S ذخیره، F2 اصلاح، Esc انصراف، Alt+N جدید. *@
+@implements IDisposable
+@inject Shortcuts Keys
+@inject TabService Tabs
+@inject IDialogService Dialogs
+
+<div class="form-toolbar no-print">
+    <div class="form-toolbar-title">
+        <MudText Typo="Typo.h5">@Title</MudText>
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="ModeColor" Class="ma-0">@ModeText</MudChip>
+        @Chips
+    </div>
+    <div class="form-toolbar-buttons">
+        @if (OnNew.HasDelegate)
+        {
+            <MudTooltip Text="جدید (Alt+N)">
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="NewAsync" Disabled="Busy">جدید</MudButton>
+            </MudTooltip>
+        }
+        @if (!IsNew && !Editing && OnEdit.HasDelegate && CanEdit)
+        {
+            <MudTooltip Text="اصلاح (F2)">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Edit" OnClick="OnEdit" Disabled="Busy">اصلاح</MudButton>
+            </MudTooltip>
+        }
+        @if (!IsNew && !Editing && OnDelete.HasDelegate && CanDelete)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="OnDelete" Disabled="Busy">حذف</MudButton>
+        }
+        @if (Editing)
+        {
+            @if (OnCancel.HasDelegate)
+            {
+                <MudTooltip Text="انصراف (Esc)">
+                    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.Close" OnClick="OnCancel" Disabled="Busy">انصراف</MudButton>
+                </MudTooltip>
+            }
+            @if (OnSave.HasDelegate)
+            {
+                <MudTooltip Text="ذخیره (Ctrl+S)">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="OnSave" Disabled="Busy">
+                        @(SaveText ?? "ذخیره")
+                    </MudButton>
+                </MudTooltip>
+            }
+        }
+        @Extra
+        @if (VoucherId is long vid)
+        {
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.ReceiptLong" OnClick="() => Tabs.Go(VoucherUrl(vid))">مشاهده سند</MudButton>
+        }
+    </div>
+</div>
+@if (Busy)
+{
+    <MudProgressLinear Indeterminate="true" Class="mb-2" />
+}
+@if (LockReason is not null)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">@LockReason</MudAlert>
+}
+
+@code {
+    [CascadingParameter] public TabContext? Context { get; set; }
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public bool IsNew { get; set; }
+    /// <summary>فرم در حالت ویرایش است (رکورد جدید همیشه).</summary>
+    [Parameter] public bool Editing { get; set; }
+    [Parameter] public bool CanEdit { get; set; } = true;
+    [Parameter] public bool CanDelete { get; set; } = true;
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? SaveText { get; set; }
+    /// <summary>علت قفل بودن رکورد (مثلاً سند دائم یا چک عملیات‌خورده).</summary>
+    [Parameter] public string? LockReason { get; set; }
+    [Parameter] public long? VoucherId { get; set; }
+    [Parameter] public RenderFragment? Chips { get; set; }
+    [Parameter] public RenderFragment? Extra { get; set; }
+
+    [Parameter] public EventCallback OnNew { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+
+    private string ModeText => IsNew ? "جدید" : Editing ? "در حال اصلاح" : "نمایش";
+    private Color ModeColor => IsNew ? Color.Success : Editing ? Color.Warning : Color.Default;
+
+    private static string VoucherUrl(long id) => $"/vouchers/{id}";
+
+    protected override void OnInitialized() => Keys.Pressed += OnKeyAsync;
+
+    private bool IsActiveTab => Context is null || Context.Key == Tabs.ActiveKey;
+
+    private async Task OnKeyAsync(string action)
+    {
+        if (!IsActiveTab || Busy) return;
+        switch (action)
+        {
+            case "save" when Editing && OnSave.HasDelegate:
+                await OnSave.InvokeAsync();
+                break;
+            case "edit" when !IsNew && !Editing && CanEdit && OnEdit.HasDelegate:
+                await OnEdit.InvokeAsync();
+                break;
+            case "cancel" when Editing && OnCancel.HasDelegate:
+                if (await ConfirmDiscardAsync()) await OnCancel.InvokeAsync();
+                break;
+            case "new" when OnNew.HasDelegate:
+                await NewAsync();
+                break;
+        }
+    }
+
+    private async Task NewAsync()
+    {
+        if (Editing && !IsNew && !await ConfirmDiscardAsync()) return;
+        await OnNew.InvokeAsync();
+    }
+
+    private async Task<bool> ConfirmDiscardAsync() =>
+        await Dialogs.ShowMessageBoxAsync("تغییرات ذخیره نشده", "تغییرات این فرم ذخیره نشده است. کنار گذاشته شود؟",
+            yesText: "بله، کنار بگذار", cancelText: "ادامه ویرایش") == true;
+
+    public void Dispose() => Keys.Pressed -= OnKeyAsync;
+}

@@ -14,26 +14,20 @@
     return;
 }
 
-<FormWithList Title="مراکز هزینه" Load="LoadSideAsync" NewUrl="/costing/centers/new" CurrentUrl="@SelfUrl" Version="_listVersion">
+<FormWithList Title="مراکز هزینه" Load="LoadSideAsync" NewUrl="/costing/centers/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
+<FormToolbar Title="@(IsNew ? "مرکز هزینه جدید" : _model.Title)" IsNew="IsNew" Editing="_editing" Busy="_saving"
+             OnNew="@(() => Tabs.Go("/costing/centers/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="OnParametersSetAsync" OnDelete="DeleteAsync">
+    <Chips>
+        @if (_model.Code is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Tag"><span class="code">@_model.Code</span></MudChip>
+        }
+        <MudSwitch T="bool" @bind-Value="_model.IsActive" Color="Color.Success" Disabled="!_editing" Label="@(_model.IsActive ? "فعال" : "غیرفعال")" />
+    </Chips>
+</FormToolbar>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
-    <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Href="/costing/centers" aria-label="بازگشت" />
-    <MudText Typo="Typo.h5">@(IsNew ? "مرکز هزینه جدید" : _model.Title)</MudText>
-    @if (_model.Code is not null)
-    {
-        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Tag">
-            <span class="code">@_model.Code</span>
-        </MudChip>
-    }
-    <MudSpacer />
-    <MudSwitch T="bool" @bind-Value="_model.IsActive" Color="Color.Success" Label="@(_model.IsActive ? "فعال" : "غیرفعال")" />
-    @if (!IsNew)
-    {
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="DeleteAsync" Disabled="_saving">حذف</MudButton>
-    }
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_saving">ذخیره</MudButton>
-</MudStack>
-
+<fieldset class="plain-fieldset @(_editing ? null : "view-mode")" disabled="@(!_editing)">
+<MudForm Spacing="0" ReadOnly="!_editing">
 <MudGrid Spacing="3">
     <MudItem xs="12" md="6">
         <MudPaper Class="pa-4" Elevation="1">
@@ -163,6 +157,8 @@
         </MudPaper>
     </MudItem>
 </MudGrid>
+</MudForm>
+</fieldset>
 
 </FormWithList>
 
@@ -186,6 +182,8 @@
     private PersonListItemDto? _manager;
     private bool _loading = true;
     private bool _saving;
+    private bool _editing;
+    private bool Dirty => _editing && !IsNew;
 
     private CostFunction? Function => _types.FirstOrDefault(t => t.Id == _model.CenterTypeId)?.Function;
 
@@ -211,6 +209,7 @@
             _model = new CostCenterDetailsDto();
             _manager = null;
         }
+        _editing = IsNew;
         _loading = false;
     }
 

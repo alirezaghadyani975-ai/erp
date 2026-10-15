@@ -14,6 +14,22 @@
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script>
+        // میانبرهای فرم: Ctrl+S ذخیره، F2 اصلاح، Esc انصراف، Alt+N جدید (با هر چیدمان صفحه‌کلید)
+        window.erpShortcuts = {
+            attach(dotnet) {
+                document.addEventListener('keydown', e => {
+                    let action = null;
+                    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyS') action = 'save';
+                    else if (e.code === 'F2' && !e.ctrlKey && !e.altKey) action = 'edit';
+                    else if (e.altKey && !e.ctrlKey && e.code === 'KeyN') action = 'new';
+                    else if (e.code === 'Escape' && !document.querySelector('.mud-dialog-container, .mud-popover-open')) action = 'cancel';
+                    if (!action) return;
+                    e.preventDefault();
+                    if (document.activeElement && action === 'save') document.activeElement.blur(); // مقدار فیلد جاری ثبت شود
+                    setTimeout(() => dotnet.invokeMethodAsync('OnKey', action), action === 'save' ? 60 : 0);
+                });
+            }
+        };
         // Ctrl+K (روی صفحه‌کلید فارسی هم): رفتن به جستجوی سراسری
         document.addEventListener('keydown', e => {
             if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {

@@ -13,63 +13,47 @@
     return;
 }
 
-<FormWithList Title="انتقال وجه" Load="LoadSideAsync" NewUrl="/treasury/transfers/new" CurrentUrl="@SelfUrl" Version="_listVersion">
-<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
-    <MudText Typo="Typo.h5">@Heading</MudText>
-    @if (_voucher is not null)
-    {
-        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
-                 Color="@Format.StatusColor((VoucherStatus)_voucher.Status)" OnClick="OpenVoucher">
-            سند @_voucher.TempNo — @Format.Status((VoucherStatus)_voucher.Status)
-        </MudChip>
-    }
-    <MudSpacer />
-    @if (_voucher is not null)
-    {
-        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.ReceiptLong" OnClick="OpenVoucher">مشاهده سند</MudButton>
-    }
-    @if (!IsNew && !Locked)
-    {
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="DeleteAsync" Disabled="_saving">حذف</MudButton>
-    }
-    @if (!Locked)
-    {
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_saving">
-            @(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")
-        </MudButton>
-    }
-</MudStack>
+<FormWithList Title="انتقال وجه" Load="LoadSideAsync" NewUrl="/treasury/transfers/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
+<FormToolbar Title="@Heading" IsNew="IsNew" Editing="_editing" CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
+             SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId"
+             LockReason="@(Locked ? "سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است." : null)"
+             OnNew="@(() => Tabs.Go("/treasury/transfers/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
+    <Chips>
+        @if (_voucher is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                     Color="@Format.StatusColor((VoucherStatus)_voucher.Status)">سند @_voucher.TempNo — @Format.Status((VoucherStatus)_voucher.Status)</MudChip>
+        }
+    </Chips>
+</FormToolbar>
 
-@if (Locked)
-{
-    <MudAlert Severity="Severity.Info" Class="mb-3">سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است.</MudAlert>
-}
 @if (_error is not null)
 {
     <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
 }
 
+<div class="@(ReadOnly ? "view-mode" : null)">
 <MudPaper Class="pa-4 mb-3" Elevation="1">
     <MudGrid Spacing="2">
-        <MudItem xs="12" sm="6" md="4"><PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="Locked" /></MudItem>
+        <MudItem xs="12" sm="6" md="4"><PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" /></MudItem>
         <MudItem xs="12" sm="6" md="4">
             <MudNumericField T="decimal" @bind-Value="_amount" Label="مبلغ" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
-                             Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                             Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
-        <MudItem xs="12" sm="6" md="4"><MudTextField @bind-Value="_refNo" Label="شماره پیگیری" MaxLength="50" Class="code" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudTextField @bind-Value="_refNo" Label="شماره پیگیری" MaxLength="50" Class="code" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
         <MudItem xs="12" md="6">
-            <MudSelect T="string" @bind-Value="_from" Label="از (مبدأ)" Required="true" Disabled="Locked" Dense="true"
+            <MudSelect T="string" @bind-Value="_from" Label="از (مبدأ)" Required="true" Disabled="ReadOnly" Dense="true"
                        Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
                 @foreach (var f in FundItems(_from)) { <MudSelectItem T="string" Value="Key(f)">@KindTitle(f.Kind): @f.Display</MudSelectItem> }
             </MudSelect>
         </MudItem>
         <MudItem xs="12" md="6">
-            <MudSelect T="string" @bind-Value="_to" Label="به (مقصد)" Required="true" Disabled="Locked" Dense="true"
+            <MudSelect T="string" @bind-Value="_to" Label="به (مقصد)" Required="true" Disabled="ReadOnly" Dense="true"
                        Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
                 @foreach (var f in FundItems(_to).Where(f => Key(f) != _from)) { <MudSelectItem T="string" Value="Key(f)">@KindTitle(f.Kind): @f.Display</MudSelectItem> }
             </MudSelect>
         </MudItem>
-        <MudItem xs="12"><MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
     </MudGrid>
 </MudPaper>
 
@@ -78,21 +62,21 @@
     <MudGrid Spacing="2">
         <MudItem xs="12" sm="4" md="4">
             <MudNumericField T="decimal" @bind-Value="_fee" Label="مبلغ کارمزد" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
-                             Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                             Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
         @if (_fee > 0)
         {
             <MudItem xs="12" sm="8" md="8">
                 <MudAutocomplete T="CostFactorDto" Value="_feeFactor" ValueChanged="FactorChanged" SearchFunc="SearchFactors" Label="عامل هزینه"
                                  ToStringFunc="@(f => f is null ? null : $"{f.Code} - {f.Title}")" ResetValueOnEmptyText="true" Dense="true"
-                                 MaxItems="40" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense">
+                                 MaxItems="40" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense">
                     <ItemTemplate Context="f"><span class="code ml-2">@f.Code</span> @f.Title</ItemTemplate>
                 </MudAutocomplete>
             </MudItem>
             @if (_feeFactor?.Nature != CostNature.Finance)
             {
                 <MudItem xs="12" sm="6" md="6">
-                    <MudSelect T="int?" @bind-Value="_feeCenterId" Label="مرکز هزینه" Dense="true" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <MudSelect T="int?" @bind-Value="_feeCenterId" Label="مرکز هزینه" Dense="true" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense">
                         @foreach (var c in _centers.Where(c => c.IsActive || c.Id == _feeCenterId).OrderBy(c => c.Function).ThenBy(c => c.Title))
                         {
                             <MudSelectItem T="int?" Value="c.Id">@c.Title <span class="select-hint">(@Titles.Of(c.Function))</span></MudSelectItem>
@@ -106,6 +90,7 @@
         }
     </MudGrid>
 </MudPaper>
+</div>
 </FormWithList>
 
 @code {
@@ -115,6 +100,8 @@
     private string? SelfUrl => Id is long id ? $"/treasury/transfers/{id}" : null;
     private string Heading => IsNew ? "انتقال وجه جدید" : $"انتقال وجه {Format.No(_docNo)}";
     private bool Locked => _voucher?.Status == 3;
+    private bool ReadOnly => !_editing || Locked;
+    private bool Dirty => _editing && !IsNew;
 
     private List<FundOption> _funds = [];
     private List<CostFactorDto> _factors = [];
@@ -126,7 +113,7 @@
     private int? _feeCenterId;
     private int _docNo;
     private TreasuryVoucherDto? _voucher;
-    private bool _loading = true, _saving;
+    private bool _loading = true, _saving, _editing;
     private int _listVersion;
     private string? _error;
 
@@ -150,6 +137,8 @@
         _factors = (await Backend.Run<CostFactorService, List<CostFactorDto>>(s => s.SearchAsync(null, null, true, default))).Value ?? [];
         _centers = (await Backend.Run<CostCenterService, List<CostCenterListItemDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
         if (Id is long id) await LoadAsync(id);
+        else ResetNew();
+        _editing = IsNew;
         _loading = false;
     }
 
@@ -184,9 +173,16 @@
         if (f?.Nature == CostNature.Finance) _feeCenterId = null;
     }
 
-    private void OpenVoucher()
+    private void ResetNew()
     {
-        if (_voucher is not null) Tabs.Go($"/vouchers/{_voucher.VoucherId}");
+        (_from, _to, _amount, _fee, _feeFactor, _feeCenterId, _refNo, _description) = (null, null, 0, 0, null, null, null, null);
+    }
+
+    private async Task CancelAsync()
+    {
+        _error = null;
+        if (Id is long id) { await LoadAsync(id); _editing = false; }
+        else ResetNew();
     }
 
     private async Task SaveAsync()
@@ -208,6 +204,7 @@
             Snackbar.Add("فرم ذخیره شد و سند حسابداری‌اش اصلاح شد.", Severity.Success);
             _listVersion++;
             await LoadAsync(id);
+            _editing = false;
         }
         else
         {

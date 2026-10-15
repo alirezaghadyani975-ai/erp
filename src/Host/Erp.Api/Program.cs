@@ -45,6 +45,8 @@ builder.Services.AddScoped<Backend>();
 builder.Services.AddScoped<UiLookups>();
 builder.Services.AddScoped<Erp.Api.Components.Shared.Tabs.TabService>();
 builder.Services.AddScoped<Erp.Api.Components.Shared.Forms.UiPrefs>();
+builder.Services.AddScoped<Erp.Api.Components.Shared.Forms.Shortcuts>();
+builder.Services.AddScoped<Erp.Api.Components.Shared.Inputs.VatRateCache>();
 
 var app = builder.Build();
 

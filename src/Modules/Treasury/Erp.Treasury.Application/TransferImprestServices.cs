@@ -137,13 +137,15 @@ public class TransferService(ITreasuryDbContext db, IVoucherPosting posting, IUn
             TreasuryText.Voucher(v));
 }
 
-public sealed record ImprestLineRequest(int CostFactorId, int? CostCenterId, decimal Amount, string? Description = null);
+/// <summary>ردیف صورت‌هزینه: هزینه (عامل + مرکز + ارزش افزوده) یا پرداخت به طرف حساب (نوع پرداخت + شخص).</summary>
+public sealed record ImprestLineRequest(int? CostFactorId, int? CostCenterId, decimal Amount, string? Description = null,
+    decimal VatAmount = 0, ImprestLineKind Kind = ImprestLineKind.Expense, short? TypeId = null, int? PersonId = null);
 
-public sealed record SaveImprestSettlementRequest(string Date, int ImprestFundId, decimal VatAmount, string? Description,
-    List<ImprestLineRequest> Lines);
+public sealed record SaveImprestSettlementRequest(string Date, int ImprestFundId, string? Description, List<ImprestLineRequest> Lines);
 
-public sealed record ImprestLineDto(short RowNo, int CostFactorId, string FactorTitle, int? CostCenterId, string? CenterTitle,
-    decimal Amount, string? Description);
+public sealed record ImprestLineDto(short RowNo, ImprestLineKind Kind, int? CostFactorId, string? FactorTitle, int? CostCenterId,
+    string? CenterTitle, short? TypeId, string? TypeTitle, int? PersonId, string? PersonName, decimal Amount, decimal VatAmount,
+    string? Description);
 
 public sealed record ImprestSettlementDto(long Id, int DocNo, string Date, int ImprestFundId, string FundTitle, decimal VatAmount,
     string? Description, decimal LinesTotal, decimal Total, List<ImprestLineDto> Lines, TreasuryVoucherDto? Voucher);
@@ -151,7 +153,10 @@ public sealed record ImprestSettlementDto(long Id, int DocNo, string Date, int I
 public sealed record ImprestSettlementListItemDto(long Id, int DocNo, string Date, string FundTitle, decimal Total, string? Description,
     TreasuryVoucherDto? Voucher);
 
-/// <summary>صورت‌هزینه تنخواه: هزینه‌های پرداخت‌شده از تنخواه با عامل و مرکز هزینه؛ بستانکار تنخواه‌گردان.</summary>
+/// <summary>
+/// صورت‌هزینه تنخواه: پرداخت‌های تنخواه‌دار — هزینه (عامل + مرکز) یا پرداخت به طرف حساب (مثلاً بدهی یا مساعده)؛
+/// بستانکار تنخواه‌گردان.
+/// </summary>
 public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock)
 {
     public async Task<List<ImprestSettlementListItemDto>> ListAsync(string? fromDate, string? toDate, CancellationToken ct)
@@ -174,16 +179,24 @@ public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting pos
     public async Task<ImprestSettlementDto> GetAsync(long id, CancellationToken ct)
     {
         var s = await LoadAsync(id, false, ct);
-        var factorIds = s.Lines.Select(l => l.CostFactorId).ToList();
+        var factorIds = s.Lines.Select(l => l.CostFactorId).OfType<int>().ToList();
         var centerIds = s.Lines.Select(l => l.CostCenterId).OfType<int>().ToList();
+        var typeIds = s.Lines.Select(l => l.TypeId).OfType<short>().ToList();
+        var personIds = s.Lines.Select(l => l.PersonId).OfType<int>().ToList();
         var factors = await db.Factors.Where(f => factorIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, f => f.Title, ct);
         var centers = await db.Centers.Where(c => centerIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Title, ct);
+        var types = await db.TransactionTypes.Where(t => typeIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Title, ct);
+        var persons = await db.Persons.Where(p => personIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.DisplayName, ct);
         var fund = await db.ImprestFunds.Where(f => f.Id == s.ImprestFundId).Select(f => f.Title).FirstOrDefaultAsync(ct);
         var vouchers = await posting.FindAsync(TreasuryModule.Name, ImprestSettlement.DocType, [id], ct);
         return new ImprestSettlementDto(s.Id, s.DocNo, PersianDate.ToPersian(s.DocDate), s.ImprestFundId, fund ?? "?", s.VatAmount,
             s.Description, s.LinesTotal, s.Total,
-            s.Lines.OrderBy(l => l.RowNo).Select(l => new ImprestLineDto(l.RowNo, l.CostFactorId, factors.GetValueOrDefault(l.CostFactorId, "?"),
-                l.CostCenterId, l.CostCenterId is int c ? centers.GetValueOrDefault(c) : null, l.Amount, l.Description)).ToList(),
+            s.Lines.OrderBy(l => l.RowNo).Select(l => new ImprestLineDto(l.RowNo, l.LineKind,
+                l.CostFactorId, l.CostFactorId is int f ? factors.GetValueOrDefault(f, "?") : null,
+                l.CostCenterId, l.CostCenterId is int c ? centers.GetValueOrDefault(c) : null,
+                l.TypeId, l.TypeId is short t ? types.GetValueOrDefault(t) : null,
+                l.PersonId, l.PersonId is int p ? persons.GetValueOrDefault(p) : null,
+                l.Amount, l.VatAmount, l.Description)).ToList(),
             TreasuryText.Voucher(vouchers.GetValueOrDefault(id)));
     }
 
@@ -229,31 +242,59 @@ public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting pos
         var fund = await db.ImprestFunds.AsNoTracking().FirstOrDefaultAsync(f => f.Id == r.ImprestFundId, ct)
                    ?? throw new DomainException("تنخواه‌گردان را انتخاب کنید.");
         if (!fund.IsActive && fund.Id != s.ImprestFundId) throw new DomainException($"تنخواه‌گردان «{fund.Title}» غیرفعال است.");
-        var factorIds = r.Lines.Select(l => l.CostFactorId).Distinct().ToList();
+        var factorIds = r.Lines.Select(l => l.CostFactorId).OfType<int>().Distinct().ToList();
         var factors = await db.Factors.Where(f => factorIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, ct);
+        var typeIds = r.Lines.Select(l => l.TypeId).OfType<short>().Distinct().ToList();
+        var types = await db.TransactionTypes.AsNoTracking().Where(t => typeIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, ct);
+        var personIds = r.Lines.Select(l => l.PersonId).OfType<int>().Distinct().ToList();
+        var persons = await db.Persons.Where(p => personIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+
+        var inputs = new List<ImprestLineInput>();
         var row = 0;
         foreach (var l in r.Lines)
         {
             row++;
-            var f = factors.GetValueOrDefault(l.CostFactorId) ?? throw new DomainException($"ردیف {row}: عامل هزینه را انتخاب کنید.");
-            if (f.Nature != CostNature.Finance && l.CostCenterId is null)
-                throw new DomainException($"ردیف {row}: مرکز هزینه برای «{f.Title}» الزامی است.");
+            if (l.Kind == ImprestLineKind.Payment)
+            {
+                var type = l.TypeId is short tid ? types.GetValueOrDefault(tid) : null;
+                if (type is null) throw new DomainException($"ردیف {row}: نوع پرداخت را انتخاب کنید.");
+                if (type.Kind != TransactionKind.Payment) throw new DomainException($"ردیف {row}: «{type.Title}» نوع دریافت است، نه پرداخت.");
+                if (l.PersonId is not int pid || !persons.ContainsKey(pid)) throw new DomainException($"ردیف {row}: طرف حساب را انتخاب کنید.");
+                inputs.Add(new ImprestLineInput(l.Kind, null, null, type.Id, pid, type.AccountId, l.Amount, 0, l.Description));
+            }
+            else
+            {
+                var f = l.CostFactorId is int fid ? factors.GetValueOrDefault(fid) : null;
+                if (f is null) throw new DomainException($"ردیف {row}: عامل هزینه را انتخاب کنید.");
+                if (f.Nature != CostNature.Finance && l.CostCenterId is null)
+                    throw new DomainException($"ردیف {row}: مرکز هزینه برای «{f.Title}» الزامی است.");
+                inputs.Add(new ImprestLineInput(ImprestLineKind.Expense, f.Id, f.Nature == CostNature.Finance ? null : l.CostCenterId,
+                    null, null, null, l.Amount, l.VatAmount, l.Description));
+            }
         }
-        s.SetHeader(PersianDate.Parse(r.Date), fund.Id, r.VatAmount, r.Description);
-        s.SetLines(r.Lines.Select(l => (l.CostFactorId, factors[l.CostFactorId].Nature == CostNature.Finance ? null : l.CostCenterId,
-            l.Amount, l.Description)));
+        s.SetHeader(PersianDate.Parse(r.Date), fund.Id, r.Description);
+        s.SetLines(inputs);
         return fund;
     }
 
     private async Task<PostingRequest> PostingRequestAsync(ImprestSettlement s, ImprestFund fund, CancellationToken ct)
     {
-        var factorIds = s.Lines.Select(l => l.CostFactorId).ToList();
+        var factorIds = s.Lines.Select(l => l.CostFactorId).OfType<int>().ToList();
         var factors = await db.Factors.Where(f => factorIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, f => f.Title, ct);
-        var lines = s.Lines.OrderBy(l => l.RowNo).Select(l => new PostingLine("expense", l.Amount,
-            l.CostCenterId is int c
-                ? [new PostingDetail(PostingDetailKind.CostFactor, l.CostFactorId), new PostingDetail(PostingDetailKind.CostCenter, c)]
-                : [new PostingDetail(PostingDetailKind.CostFactor, l.CostFactorId)],
-            l.Description ?? factors.GetValueOrDefault(l.CostFactorId))).ToList();
+        var typeIds = s.Lines.Select(l => l.TypeId).OfType<short>().ToList();
+        var types = await db.TransactionTypes.Where(t => typeIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, t => t.Title, ct);
+        var personIds = s.Lines.Select(l => l.PersonId).OfType<int>().ToList();
+        var persons = await db.Persons.Where(p => personIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.DisplayName, ct);
+
+        var lines = s.Lines.OrderBy(l => l.RowNo).Select(l => l.LineKind == ImprestLineKind.Payment
+            ? new PostingLine("counter", l.Amount, [new PostingDetail(PostingDetailKind.Person, l.PersonId!.Value)],
+                l.Description ?? $"{types.GetValueOrDefault(l.TypeId!.Value)} - {persons.GetValueOrDefault(l.PersonId.Value)}",
+                AccountId: l.AccountId)
+            : new PostingLine("expense", l.Amount,
+                l.CostCenterId is int c
+                    ? [new PostingDetail(PostingDetailKind.CostFactor, l.CostFactorId!.Value), new PostingDetail(PostingDetailKind.CostCenter, c)]
+                    : [new PostingDetail(PostingDetailKind.CostFactor, l.CostFactorId!.Value)],
+                l.Description ?? factors.GetValueOrDefault(l.CostFactorId.Value))).ToList();
         if (s.VatAmount > 0) lines.Add(new PostingLine("vat", s.VatAmount, [], $"ارزش افزوده صورت‌هزینه {TreasuryText.No(s.DocNo)}"));
         lines.Add(new PostingLine("imprest", s.Total, [new PostingDetail(PostingDetailKind.Imprest, fund.Id)], $"صورت‌هزینه {fund.Title}"));
         var description = TreasuryText.Clip($"صورت‌هزینه تنخواه {TreasuryText.No(s.DocNo)} - {fund.Title}" + (s.Description is { } d ? $" - {d}" : ""));

@@ -26,6 +26,7 @@ public static class AppForms
         new("گزارش چک‌های پرداختنی", "خزانه‌داری", "/treasury/reports/cheques-out", Icons.Material.Outlined.FactCheck, "چک صادره"),
         new("سررسید ماهانه چک‌ها", "خزانه‌داری", "/treasury/reports/due", Icons.Material.Outlined.EventNote, "نقدینگی"),
         new("موجودی صندوق و بانک", "خزانه‌داری", "/treasury/reports/balances", Icons.Material.Outlined.AccountBalance, "مانده بانک صندوق"),
+        new("دسته‌چک، سفته و ضمانت‌نامه", "خزانه‌داری", "/treasury/instruments", Icons.Material.Outlined.MenuBook, "دسته چک برگ سفته ضمانت نامه بانکی"),
         new("تعاریف خزانه‌داری", "خزانه‌داری", "/treasury/setup", Icons.Material.Outlined.Tune, "صندوق حساب بانکی تنخواه‌گردان نوع دریافت پرداخت"),
         new("تراز آزمایشی", "گزارش‌ها", "/reports/trial-balance", Icons.Material.Outlined.TableChart, "تراز"),
         new("دفتر معین و تفصیلی", "گزارش‌ها", "/reports/ledger", Icons.Material.Outlined.MenuBook, "دفتر ریز گردش"),

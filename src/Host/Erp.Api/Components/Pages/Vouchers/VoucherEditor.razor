@@ -8,25 +8,46 @@
 
 <TabTitle Text="@(Id is null ? "سند جدید" : $"سند {_tempNo}")" />
 
-<FormWithList Title="اسناد حسابداری" Load="LoadSideAsync" NewUrl="/vouchers/new" CurrentUrl="@SelfUrl" Version="_listVersion">
+<FormWithList Title="اسناد حسابداری" Load="LoadSideAsync" NewUrl="/vouchers/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="@(_editing && Id is not null)">
 @if (_loading)
 {
     <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
 }
 else
 {
-    <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2" Class="mb-3">
-        <MudText Typo="Typo.h5">@(Id is null ? "سند جدید" : "سند حسابداری")</MudText>
-        @if (Id is not null)
-        {
-            <MudChip T="string" Color="Format.StatusColor(_status)" Size="Size.Small">@Format.Status(_status)</MudChip>
-            <MudText Typo="Typo.body2">شماره موقت <b class="code">@_tempNo</b></MudText>
-            @if (_voucherNo is not null)
+    <FormToolbar Title="@(Id is null ? "سند جدید" : $"سند حسابداری {_tempNo}")" IsNew="Id is null" Editing="_editing" Busy="_busy"
+                 CanEdit="CanChange" CanDelete="CanChange" SaveText="ذخیره پیش‌نویس"
+                 OnNew="NewVoucher" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
+        <Chips>
+            @if (Id is not null)
             {
-                <MudText Typo="Typo.body2">شماره قطعی <b class="code">@_voucherNo</b></MudText>
+                <MudChip T="string" Color="Format.StatusColor(_status)" Size="Size.Small">@Format.Status(_status)</MudChip>
+                @if (_voucherNo is not null)
+                {
+                    <MudText Typo="Typo.body2">شماره قطعی <b class="code">@_voucherNo</b></MudText>
+                }
             }
-        }
-    </MudStack>
+        </Chips>
+        <Extra>
+            @if (_status == VoucherStatus.Draft && !IsSystem)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Outlined.FactCheck"
+                           OnClick="MakeTemporaryAsync" Disabled="_busy">@(_editing ? "ذخیره و موقت کردن" : "موقت کردن")</MudButton>
+            }
+            @if (!_editing && _status == VoucherStatus.Temporary)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Lock" OnClick="MakePermanentAsync" Disabled="_busy">دائم کردن</MudButton>
+                @if (!IsSystem)
+                {
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Undo" OnClick="ReturnToDraftAsync" Disabled="_busy">برگشت به پیش‌نویس</MudButton>
+                }
+            }
+            @if (!_editing && Id is not null && (_status is VoucherStatus.Draft or VoucherStatus.Temporary) && !IsSystem)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Block" OnClick="VoidAsync" Disabled="_busy">باطل کردن</MudButton>
+            }
+        </Extra>
+    </FormToolbar>
 
     @if (_error is not null)
     {
@@ -157,37 +178,6 @@ else
         </table>
     </MudPaper>
 
-    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
-        @if (_status == VoucherStatus.Draft && !IsSystem)
-        {
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
-                       OnClick="SaveAsync" Disabled="_busy">ذخیره پیش‌نویس</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Outlined.FactCheck"
-                       OnClick="MakeTemporaryAsync" Disabled="_busy">ذخیره و موقت کردن</MudButton>
-        }
-        @if (_status == VoucherStatus.Temporary)
-        {
-            <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Lock"
-                       OnClick="MakePermanentAsync" Disabled="_busy">دائم کردن</MudButton>
-            @if (!IsSystem)
-            {
-                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Undo"
-                           OnClick="ReturnToDraftAsync" Disabled="_busy">برگشت به پیش‌نویس</MudButton>
-            }
-        }
-        @if (Id is not null && _status == VoucherStatus.Draft && !IsSystem)
-        {
-            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete"
-                       OnClick="DeleteAsync" Disabled="_busy">حذف پیش‌نویس</MudButton>
-        }
-        @if (Id is not null && (_status is VoucherStatus.Draft or VoucherStatus.Temporary) && !IsSystem)
-        {
-            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Block"
-                       OnClick="VoidAsync" Disabled="_busy">باطل کردن</MudButton>
-        }
-        <MudSpacer />
-        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="NewVoucher">سند جدید</MudButton>
-    </MudStack>
 }
 
 </FormWithList>
@@ -229,7 +219,9 @@ else
             $"سند {v.TempNo}{(v.VoucherNo is int n ? $" (قطعی {n})" : "")}", $"{v.Date} · {v.Description}", Format.Amount(v.TotalDebit),
             Format.Status(v.Status), Format.StatusColor(v.Status))).ToList();
     }
-    private bool ReadOnly => _status != VoucherStatus.Draft || IsSystem;
+    private bool _editing;
+    private bool CanChange => _status == VoucherStatus.Draft && !IsSystem;
+    private bool ReadOnly => !_editing || _status != VoucherStatus.Draft || IsSystem;
     private decimal TotalDebit => _lines.Sum(l => l.Debit);
     private decimal TotalCredit => _lines.Sum(l => l.Credit);
     private decimal Difference => TotalDebit - TotalCredit;
@@ -264,6 +256,7 @@ else
         _tempNo = 0;
         _voucherNo = null;
         _lines = [new LineModel(), new LineModel()];
+        _editing = true;
         if (_years.Count == 0)
             _error = "هنوز سال مالی تعریف نشده است. ابتدا از صفحه «سال و دوره مالی» یک سال بسازید.";
     }
@@ -290,6 +283,7 @@ else
         _sourceDocId = v.SourceDocumentId;
         _tempNo = v.TempNo;
         _voucherNo = v.VoucherNo;
+        _editing = false;
         _lines = v.Lines.Select(l =>
         {
             var model = new LineModel
@@ -401,6 +395,13 @@ else
         Snackbar.Add("سند موقت شد.", Severity.Success);
         await ReloadOrNavigate(id.Value);
     });
+
+    private async Task CancelAsync()
+    {
+        _error = null;
+        if (Id is long id) await LoadAsync(id);
+        else ResetNew();
+    }
 
     private async Task MakePermanentAsync() => await Change(s => s.MarkPermanentAsync(Id!.Value, default), "سند دائم شد.");
 

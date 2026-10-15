@@ -214,12 +214,15 @@ public class ChequeOperationService(ITreasuryDbContext db, IVoucherPosting posti
 // اسناد تضمینی
 // ----------------------------------------------------------------------
 
+/// <param name="LeafId">پرداختی چک/سفته: برگ دسته‌چک یا دفتر سفته (الزامی).</param>
+/// <param name="BankGuaranteeId">پرداختی ضمانت‌نامه بانکی: ضمانت‌نامه تعریف‌شده (الزامی)؛ مبلغ، شماره و بانک از همان.</param>
 public sealed record SaveGuaranteeRequest(GuaranteeDirection Direction, GuaranteeKind Kind, string Date, int PersonId, int? BankAccountId,
-    string? Number, decimal Amount, string? DueDate, string? Subject, string? Description);
+    string? Number, decimal Amount, string? DueDate, string? Subject, string? Description, long? LeafId = null, int? BankGuaranteeId = null);
 
 public sealed record GuaranteeDto(long Id, int DocNo, GuaranteeDirection Direction, GuaranteeKind Kind, string Date, int PersonId,
     string PersonName, int? BankAccountId, string? BankTitle, string? Number, decimal Amount, string? DueDate, string? Subject,
-    string? Description, bool IsReturned, string? ReturnDate, TreasuryVoucherDto? Voucher, TreasuryVoucherDto? ReturnVoucher);
+    string? Description, bool IsReturned, string? ReturnDate, TreasuryVoucherDto? Voucher, TreasuryVoucherDto? ReturnVoucher,
+    long? LeafId = null, int? BankGuaranteeId = null);
 
 /// <summary>اسناد تضمینی دریافتی و پرداختی؛ ثبت و استرداد هر کدام سند انتظامی جدا دارد.</summary>
 public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock)
@@ -270,6 +273,7 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
         var g = await db.Guarantees.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("سند تضمینی پیدا نشد.");
         if (g.IsReturned) throw new DomainException("سند مسترد شده؛ ابتدا استرداد را لغو کنید.");
         await posting.UnpostAsync(TreasuryModule.Name, Guarantee.DocType, id, ct);
+        await ReleaseSourceAsync(g, ct);
         db.Remove(g);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -282,6 +286,7 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
         var g = await db.Guarantees.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("سند تضمینی پیدا نشد.");
         var d = PersianDate.Parse(date);
         g.MarkReturned(d);
+        if (g.BankGuaranteeId is int bgId) (await db.BankGuarantees.FirstAsync(x => x.Id == bgId, ct)).TakeBack();
         await db.SaveChangesAsync(ct);
         var person = await db.Persons.FirstAsync(p => p.Id == g.PersonId, ct);
         await posting.PostAsync(PostingRequest(g, person, Guarantee.ReturnDocType, d), ct);
@@ -293,6 +298,7 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
         await using var tx = await uow.BeginAsync(ct);
         var g = await db.Guarantees.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("سند تضمینی پیدا نشد.");
         g.UndoReturn();
+        if (g.BankGuaranteeId is int bgId) (await db.BankGuarantees.FirstAsync(x => x.Id == bgId, ct)).Deliver(g.DocDate);
         await posting.UnpostAsync(TreasuryModule.Name, Guarantee.ReturnDocType, id, ct);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -301,9 +307,53 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
     private async Task<PersonRef> ApplyAsync(Guarantee g, SaveGuaranteeRequest r, CancellationToken ct)
     {
         var person = await db.Persons.FirstOrDefaultAsync(p => p.Id == r.PersonId, ct) ?? throw new DomainException("شخص را انتخاب کنید.");
-        g.Set(PersianDate.Parse(r.Date), r.Kind, person.Id, r.BankAccountId, r.Number, r.Amount,
+        var date = PersianDate.Parse(r.Date);
+        var (number, bank, amount) = (r.Number, r.BankAccountId, r.Amount);
+        long? leafId = null;
+        int? bgId = null;
+        var issued = r.Direction == GuaranteeDirection.Issued;
+
+        if (issued && r.Kind is GuaranteeKind.Cheque or GuaranteeKind.PromissoryNote)
+        {
+            var leaf = r.LeafId is long lid ? await db.InstrumentLeaves.FirstOrDefaultAsync(x => x.Id == lid, ct) : null;
+            if (leaf is null)
+                throw new DomainException(r.Kind == GuaranteeKind.Cheque
+                    ? "برگ چک تضمینی را از دسته‌چک‌های تعریف‌شده انتخاب کنید."
+                    : "برگ سفته را از دفترهای سفته تعریف‌شده انتخاب کنید.");
+            var book = await db.InstrumentBooks.AsNoTracking().FirstAsync(b => b.Id == leaf.BookId, ct);
+            var wanted = r.Kind == GuaranteeKind.Cheque ? InstrumentKind.ChequeBook : InstrumentKind.PromissoryNoteBook;
+            if (book.Kind != wanted)
+                throw new DomainException(r.Kind == GuaranteeKind.Cheque ? "برگ انتخاب‌شده از دسته‌چک نیست." : "برگ انتخاب‌شده از دفتر سفته نیست.");
+            if (book.MaxAmount is decimal max && amount > max)
+                throw new DomainException($"مبلغ از سقف سفته‌های «{book.Title}» ({max:#,0}) بیشتر است.");
+            if (leaf.Id != g.LeafId) leaf.Use();
+            (leafId, number, bank) = (leaf.Id, leaf.SerialNo, book.BankAccountId);
+        }
+        else if (issued && r.Kind == GuaranteeKind.BankGuarantee)
+        {
+            var bg = r.BankGuaranteeId is int id ? await db.BankGuarantees.FirstOrDefaultAsync(x => x.Id == id, ct) : null;
+            if (bg is null) throw new DomainException("ضمانت‌نامه را از ضمانت‌نامه‌های بانکی تعریف‌شده انتخاب کنید.");
+            if (bg.Id != g.BankGuaranteeId) bg.Deliver(date);
+            (bgId, number, bank, amount) = (bg.Id, bg.Number, bg.BankAccountId, bg.Amount);
+            if (string.IsNullOrWhiteSpace(r.DueDate) && bg.ExpiryDate is { } e) r = r with { DueDate = PersianDate.ToPersian(e) };
+        }
+
+        // منبع قبلی (اگر عوض شده) آزاد شود
+        if (g.LeafId is long oldLeaf && oldLeaf != leafId)
+            (await db.InstrumentLeaves.FirstAsync(x => x.Id == oldLeaf, ct)).Release();
+        if (g.BankGuaranteeId is int oldBg && oldBg != bgId)
+            (await db.BankGuarantees.FirstAsync(x => x.Id == oldBg, ct)).TakeBack();
+
+        g.Set(date, r.Kind, person.Id, bank, number, amount,
             string.IsNullOrWhiteSpace(r.DueDate) ? null : PersianDate.Parse(r.DueDate), r.Subject, r.Description);
+        g.LinkSource(leafId, bgId, number, bank);
         return person;
+    }
+
+    private async Task ReleaseSourceAsync(Guarantee g, CancellationToken ct)
+    {
+        if (g.LeafId is long leaf) (await db.InstrumentLeaves.FirstAsync(x => x.Id == leaf, ct)).Release();
+        if (g.BankGuaranteeId is int bg) (await db.BankGuarantees.FirstAsync(x => x.Id == bg, ct)).TakeBack();
     }
 
     private static PostingRequest PostingRequest(Guarantee g, PersonRef person, string docType, DateOnly date)
@@ -319,7 +369,7 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
         var text = $"{kind} تضمینی {g.Number} {person.DisplayName}" + (g.Subject is { } s ? $" بابت {s}" : "");
         var lines = g.Direction == GuaranteeDirection.Received
             ? new List<PostingLine> { new("received", g.Amount, [party], text), new("received_party", g.Amount, [party], text) }
-            : g.BankAccountId is int bank
+            : g.Kind == GuaranteeKind.BankGuarantee && g.BankAccountId is int bank
                 ? [new("issued_bank", g.Amount, [new PostingDetail(PostingDetailKind.BankAccount, bank)], text), new("issued_party", g.Amount, [party], text)]
                 : [new("issued", g.Amount, [party], text), new("issued_party", g.Amount, [party], text)];
         var title = docType == Guarantee.ReturnDocType ? "استرداد" : "ثبت";
@@ -339,6 +389,6 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
             persons.GetValueOrDefault(g.PersonId, "?"), g.BankAccountId, g.BankAccountId is int b ? banks.GetValueOrDefault(b) : null,
             g.Number, g.Amount, g.DueDate is { } d ? PersianDate.ToPersian(d) : null, g.Subject, g.Description, g.IsReturned,
             g.ReturnDate is { } rd ? PersianDate.ToPersian(rd) : null, TreasuryText.Voucher(vouchers.GetValueOrDefault(g.Id)),
-            TreasuryText.Voucher(returns.GetValueOrDefault(g.Id)))).ToList();
+            TreasuryText.Voucher(returns.GetValueOrDefault(g.Id)), g.LeafId, g.BankGuaranteeId)).ToList();
     }
 }

@@ -1,0 +1,370 @@
+@page "/treasury/instruments"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="دسته‌چک، سفته و ضمانت‌نامه" />
+
+<MudText Typo="Typo.h5" Class="mb-1">دسته‌چک، سفته و ضمانت‌نامه</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    اسناد پرداختنی شرکت از قبل اینجا تعریف می‌شوند تا مصرف هر برگ کنترل شود: چک صادره فقط از برگ سفید دسته‌چک،
+    سفته و چک تضمینی از دفترچه‌ها و ضمانت‌نامه پرداختی از ضمانت‌نامه‌های تعریف‌شده. برگ مخدوش یا مفقود را باطل کنید.
+</MudText>
+
+<MudTabs Elevation="1" Rounded="true" TabPanelsClass="pa-3" @bind-ActivePanelIndex="_tab">
+    @foreach (var kind in new[] { InstrumentKind.ChequeBook, InstrumentKind.PromissoryNoteBook })
+    {
+        var k = kind;
+        <MudTabPanel Text="@(k == InstrumentKind.ChequeBook ? "دسته‌چک‌ها" : "دفترهای سفته")"
+                     Icon="@(k == InstrumentKind.ChequeBook ? Icons.Material.Outlined.MenuBook : Icons.Material.Outlined.Description)">
+            <MudStack Row="true" Class="mb-2" AlignItems="AlignItems.Center">
+                <MudSwitch T="bool" @bind-Value="_showInactive" Color="Color.Primary" Label="نمایش غیرفعال‌ها" />
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => NewBook(k)">
+                    @(k == InstrumentKind.ChequeBook ? "دسته‌چک جدید" : "دفتر سفته جدید")
+                </MudButton>
+            </MudStack>
+            <MudTable T="InstrumentBookDto" Items="@(_books.Where(b => b.Kind == k && (_showInactive || b.IsActive)).ToList())" Dense="true" Hover="true" Elevation="0"
+                      OnRowClick="@(a => OpenLeaves(a.Item!))" RowStyle="cursor:pointer">
+                <HeaderContent>
+                    <MudTh>عنوان</MudTh>
+                    @if (k == InstrumentKind.ChequeBook) { <MudTh>حساب بانکی</MudTh> }
+                    <MudTh>بازه برگ‌ها</MudTh><MudTh>تاریخ دریافت</MudTh>
+                    @if (k == InstrumentKind.PromissoryNoteBook) { <MudTh Style="text-align:left">سقف مبلغ</MudTh> }
+                    <MudTh>مصرف</MudTh><MudTh>برگ بعدی</MudTh><MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Title @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }</MudTd>
+                    @if (k == InstrumentKind.ChequeBook) { <MudTd>@context.BankTitle</MudTd> }
+                    <MudTd><span class="code">@context.Range</span></MudTd>
+                    <MudTd><span class="code">@context.ReceivedDate</span></MudTd>
+                    @if (k == InstrumentKind.PromissoryNoteBook) { <MudTd Class="num">@(context.MaxAmount is decimal m ? Format.Amount(m) : "—")</MudTd> }
+                    <MudTd Style="min-width:180px">
+                        <MudProgressLinear Value="@(100.0 * (context.Used + context.Void) / context.Total)" Color="Color.Primary" Size="Size.Small" Rounded="true" />
+                        <MudText Typo="Typo.caption">@context.Blank سفید · @context.Used استفاده · @context.Void باطل از @context.Total</MudText>
+                    </MudTd>
+                    <MudTd><span class="code">@(context.NextSerial ?? "تمام شده")</span></MudTd>
+                    <MudTd Style="text-align:left; white-space:nowrap" @onclick:stopPropagation="true">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small" OnClick="() => EditBook(context)" aria-label="اصلاح" />
+                        <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteBook(context)" aria-label="حذف" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Class="pa-4">هنوز تعریف نشده است.</MudText></NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+    }
+    <MudTabPanel Text="ضمانت‌نامه‌های بانکی" Icon="@Icons.Material.Outlined.VerifiedUser">
+        <MudStack Row="true" Class="mb-2" AlignItems="AlignItems.Center">
+            <MudSwitch T="bool" @bind-Value="_showCancelled" Color="Color.Primary" Label="نمایش باطل‌شده‌ها" />
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => EditGuarantee(null)">ضمانت‌نامه جدید</MudButton>
+        </MudStack>
+        <MudTable T="BankGuaranteeDto" Items="@(_guarantees.Where(g => _showCancelled || g.Status != BankGuaranteeStatus.Cancelled).ToList())" Dense="true" Hover="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>شماره</MudTh><MudTh>بانک</MudTh><MudTh Style="text-align:left">مبلغ</MudTh><MudTh>صدور</MudTh><MudTh>اعتبار تا</MudTh>
+                <MudTh>موضوع</MudTh><MudTh>وضعیت</MudTh><MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><span class="code">@context.Number</span></MudTd>
+                <MudTd>@context.BankTitle</MudTd>
+                <MudTd Class="num">@Format.Amount(context.Amount)</MudTd>
+                <MudTd><span class="code">@context.IssueDate</span></MudTd>
+                <MudTd><span class="code">@context.ExpiryDate</span> @if (context.IsExpired) { <MudChip T="string" Size="Size.Small" Color="Color.Warning">منقضی</MudChip> }</MudTd>
+                <MudTd>@context.Subject</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@BgColor(context.Status)">@context.StatusTitle</MudChip>
+                    @if (context.GuaranteeId is long gid)
+                    {
+                        <MudLink Typo="Typo.caption" OnClick="@(() => Tabs.Go($"/treasury/guarantees/{gid}"))">@context.HolderName</MudLink>
+                    }
+                </MudTd>
+                <MudTd Style="text-align:left; white-space:nowrap">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small" OnClick="() => EditGuarantee(context)" aria-label="اصلاح" />
+                    @if (context.Status == BankGuaranteeStatus.Available)
+                    {
+                        <MudTooltip Text="ابطال / عودت به بانک"><MudIconButton Icon="@Icons.Material.Outlined.Block" Size="Size.Small" OnClick="() => CancelGuarantee(context)" aria-label="ابطال" /></MudTooltip>
+                    }
+                    else if (context.Status == BankGuaranteeStatus.Cancelled)
+                    {
+                        <MudTooltip Text="لغو ابطال"><MudIconButton Icon="@Icons.Material.Outlined.Undo" Size="Size.Small" OnClick="() => UndoCancelGuarantee(context)" aria-label="لغو ابطال" /></MudTooltip>
+                    }
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteGuarantee(context)" aria-label="حذف" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Class="pa-4">ضمانت‌نامه‌ای تعریف نشده است.</MudText></NoRecordsContent>
+        </MudTable>
+    </MudTabPanel>
+</MudTabs>
+
+@* دفترچه جدید / اصلاح *@
+<MudDialog @bind-Visible="_bookOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_bookId is null ? (_bookKind == InstrumentKind.ChequeBook ? "دسته‌چک جدید" : "دفتر سفته جدید") : "اصلاح دفترچه")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            @if (_bookKind == InstrumentKind.ChequeBook)
+            {
+                <MudItem xs="12">
+                    <MudSelect T="int?" @bind-Value="_bookBank" Label="حساب بانکی" Disabled="_bookId is not null" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var b in _banks.Where(b => b.IsActive || b.Id == _bookBank)) { <MudSelectItem T="int?" Value="b.Id">@b.Title <span class="select-hint code">@b.AccountNo</span></MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+            }
+            <MudItem xs="12"><MudTextField @bind-Value="_bookTitle" Label="عنوان" MaxLength="100" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                           Placeholder="@(_bookKind == InstrumentKind.ChequeBook ? "مثلاً دسته‌چک ۵۰ برگی ملت" : "مثلاً سفته ۵۰ میلیونی")" /></MudItem>
+            <MudItem xs="4"><MudTextField @bind-Value="_bookSeries" Label="سری" MaxLength="20" Disabled="_bookId is not null" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="4"><MudNumericField T="long" @bind-Value="_bookFrom" Label="از شماره" Disabled="_bookId is not null" HideSpinButtons="true" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="4"><MudNumericField T="long" @bind-Value="_bookTo" Label="تا شماره" Disabled="_bookId is not null" HideSpinButtons="true" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="4"><MudNumericField T="byte" @bind-Value="_bookDigits" Label="تعداد رقم" Disabled="_bookId is not null" HelperText="صفر پیشرو؛ ۰ = بدون" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="8"><PersianDateField @bind-Value="_bookDate" Label="تاریخ دریافت" Required="true" /></MudItem>
+            @if (_bookKind == InstrumentKind.PromissoryNoteBook)
+            {
+                <MudItem xs="12"><MudNumericField T="decimal?" @bind-Value="_bookMax" Label="سقف مبلغ سفته" Format="#,0" HideSpinButtons="true" Class="num" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            }
+            @if (_bookId is null && _bookTo >= _bookFrom && _bookFrom > 0)
+            {
+                <MudItem xs="12"><MudText Typo="Typo.caption" Color="Color.Secondary">@(_bookTo - _bookFrom + 1) برگ: @SamplesText</MudText></MudItem>
+            }
+            <MudItem xs="12"><MudTextField @bind-Value="_bookNotes" Label="توضیحات" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            @if (_bookId is not null)
+            {
+                <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_bookActive" Color="Color.Success" Label="فعال" /></MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _bookOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveBookAsync" Disabled="string.IsNullOrWhiteSpace(_bookTitle)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* برگ‌های یک دفترچه *@
+<MudDialog @bind-Visible="_leavesOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">برگ‌های «@_leavesBook?.Title»</MudText></TitleContent>
+    <DialogContent>
+        <MudChipSet T="LeafStatus?" @bind-SelectedValue="_leafFilter" SelectionMode="SelectionMode.ToggleSelection" CheckMark="true" Class="mb-2">
+            <MudChip T="LeafStatus?" Value="LeafStatus.Blank">سفید</MudChip>
+            <MudChip T="LeafStatus?" Value="LeafStatus.Used">استفاده‌شده</MudChip>
+            <MudChip T="LeafStatus?" Value="LeafStatus.Void">باطل</MudChip>
+        </MudChipSet>
+        <MudTable T="InstrumentLeafDto" Items="@_leaves.Where(l => _leafFilter is null || l.Status == _leafFilter)" Dense="true" Hover="true" Elevation="0" Height="420px" FixedHeader="true">
+            <HeaderContent><MudTh>شماره</MudTh><MudTh>وضعیت</MudTh><MudTh>محل مصرف / علت ابطال</MudTh><MudTh></MudTh></HeaderContent>
+            <RowTemplate>
+                <MudTd><span class="code">@context.SerialNo</span></MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@LeafColor(context.Status)">@context.StatusTitle</MudChip></MudTd>
+                <MudTd>
+                    @if (context.UsedUrl is { } url) { <MudLink Typo="Typo.body2" OnClick="() => GoFromLeaves(url)">@context.UsedIn</MudLink> }
+                    @if (context.Status == LeafStatus.Void) { <span>@context.VoidDate @context.VoidReason</span> }
+                </MudTd>
+                <MudTd Style="text-align:left">
+                    @if (context.Status == LeafStatus.Blank)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="() => VoidLeaf(context)">ابطال</MudButton>
+                    }
+                    else if (context.Status == LeafStatus.Void)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => UndoVoidLeaf(context)">لغو ابطال</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </DialogContent>
+</MudDialog>
+
+@* ضمانت‌نامه بانکی *@
+<MudDialog @bind-Visible="_bgOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_bgId is null ? "ضمانت‌نامه بانکی جدید" : "اصلاح ضمانت‌نامه")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="7">
+                <MudSelect T="int?" @bind-Value="_bgBank" Label="بانک صادرکننده (حساب)" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var b in _banks.Where(b => b.IsActive || b.Id == _bgBank)) { <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem> }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_bgNumber" Label="شماره ضمانت‌نامه" MaxLength="50" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12">
+                <MudNumericField T="decimal" @bind-Value="_bgAmount" Label="مبلغ" Format="#,0" HideSpinButtons="true" Class="num" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 HelperText="@(_bgAmount > 0 ? PersianWords.Rial(_bgAmount) : null)" />
+            </MudItem>
+            <MudItem xs="6"><PersianDateField @bind-Value="_bgIssue" Label="تاریخ صدور" Required="true" /></MudItem>
+            <MudItem xs="6"><PersianDateField @bind-Value="_bgExpiry" Label="اعتبار تا" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_bgSubject" Label="موضوع (مناقصه، حسن انجام کار، پیش‌پرداخت، ...)" MaxLength="300" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_bgNotes" Label="توضیحات" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _bgOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveGuaranteeAsync" Disabled="@(_bgBank is null || string.IsNullOrWhiteSpace(_bgNumber) || _bgIssue is null)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private int _tab;
+    private bool _showInactive, _showCancelled;
+    private List<InstrumentBookDto> _books = [];
+    private List<BankGuaranteeDto> _guarantees = [];
+    private List<TreasuryBankAccountDto> _banks = [];
+
+    private bool _bookOpen;
+    private int? _bookId, _bookBank;
+    private InstrumentKind _bookKind;
+    private string? _bookTitle, _bookSeries, _bookNotes, _bookDate;
+    private long _bookFrom, _bookTo;
+    private byte _bookDigits;
+    private decimal? _bookMax;
+    private bool _bookActive = true;
+
+    private bool _leavesOpen;
+    private InstrumentBookDto? _leavesBook;
+    private List<InstrumentLeafDto> _leaves = [];
+    private LeafStatus? _leafFilter;
+
+    private bool _bgOpen;
+    private int? _bgId, _bgBank;
+    private string? _bgNumber, _bgIssue, _bgExpiry, _bgSubject, _bgNotes;
+    private decimal _bgAmount;
+
+    private string SamplesText
+    {
+        get
+        {
+            string S(long n) { var x = _bookDigits > 0 ? n.ToString().PadLeft(_bookDigits, '0') : n.ToString(); return string.IsNullOrWhiteSpace(_bookSeries) ? x : $"{_bookSeries}/{x}"; }
+            return $"{S(_bookFrom)} تا {S(_bookTo)}";
+        }
+    }
+
+    private static Color LeafColor(LeafStatus s) => s switch { LeafStatus.Blank => Color.Success, LeafStatus.Used => Color.Primary, _ => Color.Error };
+    private static Color BgColor(BankGuaranteeStatus s) => s switch { BankGuaranteeStatus.Available => Color.Success, BankGuaranteeStatus.Delivered => Color.Primary, _ => Color.Default };
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _books = (await Backend.Run<InstrumentService, List<InstrumentBookDto>>(s => s.GetBooksAsync(null, default))).Value ?? [];
+        _guarantees = (await Backend.Run<InstrumentService, List<BankGuaranteeDto>>(s => s.GetBankGuaranteesAsync(null, default))).Value ?? [];
+        _banks = (await Backend.Run<TreasurySetupService, List<TreasuryBankAccountDto>>(s => s.GetBankAccountsAsync(true, default))).Value ?? [];
+    }
+
+    // ---------------------------------------------------------------- دفترچه
+
+    private void NewBook(InstrumentKind kind)
+    {
+        (_bookId, _bookKind, _bookTitle, _bookSeries, _bookNotes, _bookDate, _bookFrom, _bookTo, _bookDigits, _bookMax, _bookActive) =
+            (null, kind, null, null, null, Format.Today(), 0, 0, 0, null, true);
+        _bookBank = _banks.Count(b => b.IsActive) == 1 ? _banks.First(b => b.IsActive).Id : null;
+        _bookOpen = true;
+    }
+
+    private void EditBook(InstrumentBookDto b)
+    {
+        (_bookId, _bookKind, _bookBank, _bookTitle, _bookSeries, _bookNotes, _bookDate, _bookFrom, _bookTo, _bookDigits, _bookMax, _bookActive) =
+            (b.Id, b.Kind, b.BankAccountId, b.Title, b.Series, b.Notes, b.ReceivedDate, b.FromNo, b.ToNo, b.Digits, b.MaxAmount, b.IsActive);
+        _bookOpen = true;
+    }
+
+    private async Task SaveBookAsync()
+    {
+        if (_bookDate is null) { Snackbar.Add("تاریخ دریافت الزامی است.", Severity.Warning); return; }
+        Result<bool> r;
+        if (_bookId is int id)
+            r = await Backend.Run<InstrumentService>(s => s.UpdateBookAsync(id, new UpdateInstrumentBookRequest(_bookTitle!, _bookDate, _bookMax, _bookActive, _bookNotes), default));
+        else
+        {
+            var c = await Backend.Run<InstrumentService, int>(s => s.CreateBookAsync(new CreateInstrumentBookRequest(_bookKind, _bookBank, _bookTitle!, _bookSeries,
+                _bookFrom, _bookTo, _bookDigits, _bookDate, _bookMax, _bookNotes), default));
+            r = c.Success ? Result<bool>.Ok(true) : Result<bool>.Fail(c.Error!);
+        }
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _bookOpen = false;
+        Snackbar.Add("ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteBook(InstrumentBookDto b)
+    {
+        if (!await Dialogs.DeleteAsync($"«{b.Title}»", "همه برگ‌های آن هم حذف می‌شود.")) return;
+        var r = await Backend.Run<InstrumentService>(s => s.DeleteBookAsync(b.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+
+    private async Task OpenLeaves(InstrumentBookDto b)
+    {
+        _leavesBook = b;
+        _leafFilter = null;
+        _leaves = (await Backend.Run<InstrumentService, List<InstrumentLeafDto>>(s => s.GetLeavesAsync(b.Id, default))).Value ?? [];
+        _leavesOpen = true;
+    }
+
+    private void GoFromLeaves(string url)
+    {
+        _leavesOpen = false;
+        Tabs.Go(url);
+    }
+
+    private async Task VoidLeaf(InstrumentLeafDto leaf)
+    {
+        var reason = await Dialogs.ShowMessageBoxAsync("ابطال برگ", $"برگ {leaf.SerialNo} باطل شود؟ (مخدوش، مفقود، ...)", yesText: "ابطال", cancelText: "انصراف");
+        if (reason != true) return;
+        var r = await Backend.Run<InstrumentService>(s => s.VoidLeafAsync(leaf.Id, Format.Today(), "ابطال دستی", default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await OpenLeaves(_leavesBook!);
+        await LoadAsync();
+    }
+
+    private async Task UndoVoidLeaf(InstrumentLeafDto leaf)
+    {
+        var r = await Backend.Run<InstrumentService>(s => s.UndoVoidLeafAsync(leaf.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await OpenLeaves(_leavesBook!);
+        await LoadAsync();
+    }
+
+    // ---------------------------------------------------------------- ضمانت‌نامه
+
+    private void EditGuarantee(BankGuaranteeDto? g)
+    {
+        if (g is null)
+        {
+            (_bgId, _bgNumber, _bgAmount, _bgIssue, _bgExpiry, _bgSubject, _bgNotes) = (null, null, 0, Format.Today(), null, null, null);
+            _bgBank = _banks.Count(b => b.IsActive) == 1 ? _banks.First(b => b.IsActive).Id : null;
+        }
+        else
+            (_bgId, _bgBank, _bgNumber, _bgAmount, _bgIssue, _bgExpiry, _bgSubject, _bgNotes) =
+                (g.Id, g.BankAccountId, g.Number, g.Amount, g.IssueDate, g.ExpiryDate, g.Subject, g.Notes);
+        _bgOpen = true;
+    }
+
+    private async Task SaveGuaranteeAsync()
+    {
+        var r = await Backend.Run<InstrumentService, int>(s => s.SaveBankGuaranteeAsync(_bgId,
+            new SaveBankGuaranteeRequest(_bgBank!.Value, _bgNumber!, _bgAmount, _bgIssue!, _bgExpiry, _bgSubject, _bgNotes), default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _bgOpen = false;
+        Snackbar.Add("ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task CancelGuarantee(BankGuaranteeDto g)
+    {
+        if (await Dialogs.ShowMessageBoxAsync("ابطال ضمانت‌نامه", $"ضمانت‌نامه {g.Number} باطل (عودت به بانک) شود؟", yesText: "ابطال", cancelText: "انصراف") != true) return;
+        var r = await Backend.Run<InstrumentService>(s => s.CancelBankGuaranteeAsync(g.Id, Format.Today(), default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+
+    private async Task UndoCancelGuarantee(BankGuaranteeDto g)
+    {
+        var r = await Backend.Run<InstrumentService>(s => s.UndoCancelBankGuaranteeAsync(g.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+
+    private async Task DeleteGuarantee(BankGuaranteeDto g)
+    {
+        if (!await Dialogs.DeleteAsync($"ضمانت‌نامه {g.Number}")) return;
+        var r = await Backend.Run<InstrumentService>(s => s.DeleteBankGuaranteeAsync(g.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

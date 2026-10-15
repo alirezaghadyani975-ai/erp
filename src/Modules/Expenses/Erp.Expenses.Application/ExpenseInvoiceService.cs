@@ -9,7 +9,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Expenses.Application;
 
-public sealed record ExpenseLineRequest(int CostFactorId, int? CostCenterId, decimal Amount, string? Description = null);
+/// <param name="VatAmount">ارزش افزوده ردیف (صفر = معاف).</param>
+public sealed record ExpenseLineRequest(int CostFactorId, int? CostCenterId, decimal Amount, string? Description = null, decimal VatAmount = 0);
 
 /// <summary>تاریخ‌ها شمسی، مثل 1405/07/21.</summary>
 public sealed record SaveExpenseInvoiceRequest(
@@ -18,7 +19,6 @@ public sealed record SaveExpenseInvoiceRequest(
     PayableKind PayableKind,
     string? InvoiceNo,
     string? InvoiceDate,
-    decimal VatAmount,
     string? Description,
     List<ExpenseLineRequest> Lines);
 
@@ -30,7 +30,7 @@ public sealed record ExpenseInvoiceListItemDto(
     decimal LinesTotal, decimal VatAmount, decimal Total, string? Description, ExpenseVoucherDto? Voucher);
 
 public sealed record ExpenseLineDto(short RowNo, int CostFactorId, string FactorTitle, int? CostCenterId, string? CenterTitle,
-    decimal Amount, string? Description);
+    decimal Amount, string? Description, decimal VatAmount);
 
 public sealed record ExpenseInvoiceDto(
     long Id, int DocNo, string Date, int SupplierId, string SupplierName, PayableKind PayableKind,
@@ -87,7 +87,7 @@ public class ExpenseInvoiceService(IExpensesDbContext db, IVoucherPosting postin
             invoice.LinesTotal, invoice.Total,
             invoice.Lines.OrderBy(l => l.RowNo).Select(l => new ExpenseLineDto(l.RowNo, l.CostFactorId,
                 factors.GetValueOrDefault(l.CostFactorId, "?"), l.CostCenterId,
-                l.CostCenterId is int c ? centers.GetValueOrDefault(c) : null, l.Amount, l.Description)).ToList(),
+                l.CostCenterId is int c ? centers.GetValueOrDefault(c) : null, l.Amount, l.Description, l.VatAmount)).ToList(),
             ToDto(vouchers.GetValueOrDefault(id)));
     }
 
@@ -166,10 +166,10 @@ public class ExpenseInvoiceService(IExpensesDbContext db, IVoucherPosting postin
 
         var date = PersianDate.Parse(request.Date);
         DateOnly? invoiceDate = string.IsNullOrWhiteSpace(request.InvoiceDate) ? null : PersianDate.Parse(request.InvoiceDate);
-        invoice.SetHeader(date, supplier.Id, request.PayableKind, request.InvoiceNo, invoiceDate, request.VatAmount, request.Description);
+        invoice.SetHeader(date, supplier.Id, request.PayableKind, request.InvoiceNo, invoiceDate, request.Description);
         // هزینه مالی مرکز ندارد؛ مرکز انتخاب‌شده برایش نگه داشته نمی‌شود
         invoice.SetLines(request.Lines.Select(l => (l.CostFactorId,
-            factors[l.CostFactorId].Nature == CostNature.Finance ? null : l.CostCenterId, l.Amount, l.Description)));
+            factors[l.CostFactorId].Nature == CostNature.Finance ? null : l.CostCenterId, l.Amount, l.VatAmount, l.Description)));
 
         if (invoice.InvoiceNo is { } no
             && await db.ExpenseInvoices.AnyAsync(i => i.Id != invoice.Id && i.SupplierId == supplier.Id && i.InvoiceNo == no, ct))

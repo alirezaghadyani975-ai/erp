@@ -1,0 +1,64 @@
+@* ارزش افزوده یک ردیف: کلید مشمول/معاف و مبلغ خودکار از نرخ سال تاریخ فرم (قابل اصلاح دستی). *@
+@inject VatRateCache Rates
+
+<div class="line-vat">
+    <MudTooltip Text="@(_subject ? "مشمول ارزش افزوده" : "معاف از ارزش افزوده")">
+        <MudCheckBox T="bool" Value="_subject" ValueChanged="SubjectChanged" Disabled="Disabled" Dense="true" Size="Size.Small"
+                     Color="Color.Primary" aria-label="مشمول ارزش افزوده" />
+    </MudTooltip>
+    @if (_subject)
+    {
+        <MudNumericField T="decimal" Value="Value" ValueChanged="ManualChanged" Format="#,0" HideSpinButtons="true" Min="0" Class="num"
+                         Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense"
+                         Error="@(_rate is null)" ErrorText="نرخ سال تعریف نشده" />
+    }
+    else
+    {
+        <span class="select-hint">معاف</span>
+    }
+</div>
+
+@code {
+    [Parameter] public decimal Value { get; set; }
+    [Parameter] public EventCallback<decimal> ValueChanged { get; set; }
+    [Parameter] public string? Date { get; set; }
+    /// <summary>مبلغ ردیف (پایه محاسبه).</summary>
+    [Parameter] public decimal Amount { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private bool _subject, _manual, _initialized;
+    private VatCalculation? _rate;
+    private (string?, decimal) _last;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var changed = _last != (Date, Amount);
+        _last = (Date, Amount);
+        _rate = await Rates.ForDateAsync(Date);
+        if (!_initialized)
+        {
+            _initialized = true;
+            _subject = Value > 0;
+            _manual = Value > 0 && (_rate is null || VatRateCache.Calc(_rate, Amount) != Value);
+            return;
+        }
+        if (changed && _subject && !_manual && _rate is not null)
+        {
+            var v = VatRateCache.Calc(_rate, Amount);
+            if (v != Value) await ValueChanged.InvokeAsync(v);
+        }
+    }
+
+    private async Task SubjectChanged(bool subject)
+    {
+        _subject = subject;
+        _manual = false;
+        await ValueChanged.InvokeAsync(subject && _rate is not null ? VatRateCache.Calc(_rate, Amount) : 0);
+    }
+
+    private async Task ManualChanged(decimal value)
+    {
+        _manual = _rate is null || VatRateCache.Calc(_rate, Amount) != value;
+        await ValueChanged.InvokeAsync(value);
+    }
+}

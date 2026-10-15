@@ -21,6 +21,9 @@ public interface ITreasuryDbContext
     IQueryable<ChequeOperation> ChequeOperations { get; }
     IQueryable<ChequeOperationLine> ChequeOperationLines { get; }
     IQueryable<Guarantee> Guarantees { get; }
+    IQueryable<InstrumentBook> InstrumentBooks { get; }
+    IQueryable<InstrumentLeaf> InstrumentLeaves { get; }
+    IQueryable<BankGuarantee> BankGuarantees { get; }
 
     /// <summary>فقط‌خواندنی: اشخاص (اطلاعات پایه).</summary>
     IQueryable<PersonRef> Persons { get; }
@@ -94,6 +97,7 @@ public static class DependencyInjection
         services.AddScoped<ChequeOperationService>();
         services.AddScoped<GuaranteeService>();
         services.AddScoped<TreasuryReportService>();
+        services.AddScoped<InstrumentService>();
         return services;
     }
 }

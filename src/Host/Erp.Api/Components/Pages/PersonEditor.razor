@@ -14,34 +14,25 @@
     return;
 }
 
-<FormWithList Title="اشخاص" Load="LoadSideAsync" NewUrl="/persons/new" CurrentUrl="@SelfUrl" Version="_listVersion">
+<FormWithList Title="اشخاص" Load="LoadSideAsync" NewUrl="/persons/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
+<FormToolbar Title="@(IsNew ? "شخص جدید" : _model.DisplayName)" IsNew="IsNew" Editing="_editing" Busy="_saving"
+             OnNew="@(() => Tabs.Go("/persons/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
+    <Chips>
+        @foreach (var l in _model.Links)
+        {
+            <MudTooltip Text="@($"{l.GroupTitle} ({l.Module})")">
+                <MudChip T="string" Size="Size.Small" Color="@(l.Kind == "employee" ? Color.Secondary : Color.Info)" Variant="Variant.Outlined"
+                         Icon="@(l.Kind == "employee" ? Icons.Material.Outlined.Badge : Icons.Material.Outlined.Tag)">
+                    <span class="code">@l.Code</span>
+                </MudChip>
+            </MudTooltip>
+        }
+        <MudSwitch T="bool" @bind-Value="_model.IsActive" Color="Color.Success" Disabled="!_editing" Label="@(_model.IsActive ? "فعال" : "غیرفعال")" />
+    </Chips>
+</FormToolbar>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
-    <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Href="/persons" aria-label="بازگشت" />
-    <MudText Typo="Typo.h5">@(IsNew ? "شخص جدید" : _model.DisplayName)</MudText>
-    @foreach (var l in _model.Links)
-    {
-        <MudTooltip Text="@($"{l.GroupTitle} ({l.Module})")">
-            <MudChip T="string" Size="Size.Small" Color="@(l.Kind == "employee" ? Color.Secondary : Color.Info)" Variant="Variant.Outlined"
-                     Icon="@(l.Kind == "employee" ? Icons.Material.Outlined.Badge : Icons.Material.Outlined.Tag)">
-                <span class="code">@l.Code</span>
-            </MudChip>
-        </MudTooltip>
-    }
-    <MudSpacer />
-    <MudSwitch T="bool" @bind-Value="_model.IsActive" Color="Color.Success" Label="@(_model.IsActive ? "فعال" : "غیرفعال")" />
-    @if (!IsNew)
-    {
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="DeleteAsync" Disabled="_saving">
-            حذف
-        </MudButton>
-    }
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_saving">
-        ذخیره
-    </MudButton>
-</MudStack>
-
-<MudForm @ref="_form" Spacing="0">
+<fieldset class="plain-fieldset @(_editing ? null : "view-mode")" disabled="@(!_editing)">
+<MudForm @ref="_form" Spacing="0" ReadOnly="!_editing">
     <MudPaper Class="pa-3 mb-3" Elevation="1">
         <MudGrid Spacing="2" Class="align-center">
             <MudItem xs="12" md="2">
@@ -279,6 +270,7 @@
         </MudTabPanel>
     </MudTabs>
 </MudForm>
+</fieldset>
 
 </FormWithList>
 
@@ -302,6 +294,8 @@
     private MudForm _form = null!;
     private bool _loading = true;
     private bool _saving;
+    private bool _editing;
+    private bool Dirty => _editing && !IsNew;
     private bool _uploading;
     private string? _attachmentTitle;
 
@@ -325,7 +319,19 @@
             if (_roles.FirstOrDefault(x => x.Code == RoleCodes.Customer) is { } customer)
                 _model.RoleIds.Add(customer.Id);
         }
+        _editing = IsNew;
         _loading = false;
+    }
+
+    private async Task CancelAsync()
+    {
+        if (IsNew)
+        {
+            _model = new PersonDetailsDto();
+            if (_roles.FirstOrDefault(x => x.Code == RoleCodes.Customer) is { } customer) _model.RoleIds.Add(customer.Id);
+            return;
+        }
+        await OnParametersSetAsync();
     }
 
     private static string Counted(string title, int count) => count == 0 ? title : $"{title} ({count})";

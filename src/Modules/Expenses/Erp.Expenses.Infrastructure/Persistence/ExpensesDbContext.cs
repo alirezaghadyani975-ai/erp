@@ -55,6 +55,7 @@ internal class ExpenseInvoiceLineConfiguration : IEntityTypeConfiguration<Expens
         b.ToTable("ExpenseInvoiceLines", "exp");
         b.HasKey(l => l.Id);
         b.Property(l => l.Amount).HasPrecision(24, 4);
+        b.Property(l => l.VatAmount).HasPrecision(24, 4);
         b.Property(l => l.Description).HasMaxLength(500);
         b.HasIndex(l => new { l.InvoiceId, l.RowNo }).IsUnique();
     }

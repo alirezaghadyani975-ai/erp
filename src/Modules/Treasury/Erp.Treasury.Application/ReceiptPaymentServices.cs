@@ -12,11 +12,12 @@ namespace Erp.Treasury.Application;
 public sealed record TreasuryVoucherDto(long VoucherId, int TempNo, int? VoucherNo, byte Status);
 
 /// <summary>مشخصات چک در درخواست (تاریخ سررسید شمسی).</summary>
+/// <param name="LeafId">چک صادره: برگ دسته‌چک (الزامی)؛ شماره و حساب بانکی از همان برگ می‌آید.</param>
 public sealed record ChequeInput(string SerialNo, string? SayadId, string DueDate, short? BankId = null, string? Branch = null,
-    string? DrawerName = null, string? AccountNo = null);
+    string? DrawerName = null, string? AccountNo = null, long? LeafId = null);
 
 public sealed record ChequeDto(long Id, string SerialNo, string? SayadId, string DueDate, short? BankId, string? BankTitle,
-    string? Branch, string? DrawerName, string? AccountNo, decimal Amount, byte Status, string StatusTitle);
+    string? Branch, string? DrawerName, string? AccountNo, decimal Amount, byte Status, string StatusTitle, long? LeafId = null);
 
 public sealed record TreasuryLineRequest(Instrument Instrument, int? CashBoxId, int? BankAccountId, decimal Amount,
     string? RefNo = null, string? Description = null, ChequeInput? Cheque = null, long? ReceivedChequeId = null);
@@ -262,7 +263,7 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
                 l.ReceivedChequeId, l.Amount, l.RefNo, l.Description,
                 l.Cheque is { } c
                     ? new ChequeDto(c.Id, c.SerialNo, c.SayadId, PersianDate.ToPersian(c.DueDate), null, null, null, null, null, c.Amount,
-                        (byte)c.Status, ChequeTitles.Of(c.Status))
+                        (byte)c.Status, ChequeTitles.Of(c.Status), c.LeafId)
                     : l.ReceivedChequeId is long rc && spent.TryGetValue(rc, out var s) ? ReceiptService.ToDto(s, banks) : null)).ToList(),
             TreasuryText.Voucher(vouchers.GetValueOrDefault(id)), await LockReasonAsync(p, ct));
     }
@@ -296,6 +297,7 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var payment = await LoadAsync(id, tracking: true, ct);
         if (await LockReasonAsync(payment, ct) is { } reason) throw new DomainException(reason);
         await ReleaseSpentAsync(payment, ct);
+        await ReleaseLeavesAsync(payment, ct);
         payment.ClearLines();
         await db.SaveChangesAsync(ct);
         var (person, type, spent) = await ApplyAsync(payment, request, ct);
@@ -312,12 +314,20 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         if (await LockReasonAsync(payment, ct) is { } reason) throw new DomainException(reason);
         await posting.UnpostAsync(TreasuryModule.Name, Payment.DocType, id, ct);
         await ReleaseSpentAsync(payment, ct);
+        await ReleaseLeavesAsync(payment, ct);
         db.Remove(payment);
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
     }
 
     // ------------------------------------------------------------------
+
+    /// <summary>برگ‌های دسته‌چک چک‌های این فرم دوباره سفید می‌شوند (پیش از بازنویسی یا حذف).</summary>
+    private async Task ReleaseLeavesAsync(Payment payment, CancellationToken ct)
+    {
+        var ids = payment.Lines.Select(l => l.Cheque?.LeafId).OfType<long>().ToList();
+        foreach (var leaf in await db.InstrumentLeaves.Where(x => ids.Contains(x.Id)).ToListAsync(ct)) leaf.Release();
+    }
 
     private async Task ReleaseSpentAsync(Payment payment, CancellationToken ct)
     {
@@ -348,12 +358,40 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         if (spentIds.Count != spentIds.Distinct().Count()) throw new DomainException("یک چک دو بار خرج شده است.");
         var spent = await db.ReceivedCheques.Where(c => spentIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
 
+        // چک صادره فقط از برگ سفید دسته‌چک همان حساب بانکی
+        var leafIds = r.Lines.Where(l => l.Instrument == Instrument.Cheque).Select(l => l.Cheque?.LeafId).OfType<long>().ToList();
+        if (leafIds.Count != leafIds.Distinct().Count()) throw new DomainException("یک برگ چک دو بار انتخاب شده است.");
+        var leaves = await db.InstrumentLeaves.Where(x => leafIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        var bookIds = leaves.Values.Select(x => x.BookId).Distinct().ToList();
+        var books = await db.InstrumentBooks.AsNoTracking().Where(b => bookIds.Contains(b.Id)).ToDictionaryAsync(b => b.Id, ct);
+
         payment.SetHeader(PersianDate.Parse(r.Date), person.Id, type.Id, r.Description);
+        var row = 0;
         foreach (var l in r.Lines)
         {
+            row++;
             ReceivedCheque? cheque = l.ReceivedChequeId is long rc ? spent.GetValueOrDefault(rc) : null;
-            payment.AddLine(l.Instrument, l.CashBoxId, l.BankAccountId, cheque, l.Amount, l.RefNo, l.Description,
-                l.Cheque is { } c ? TreasuryText.Info(c) : null, type.AccountId);
+            var info = l.Cheque is { } c ? TreasuryText.Info(c) : null;
+            var bankAccountId = l.BankAccountId;
+            InstrumentLeaf? leaf = null;
+            if (l.Instrument == Instrument.Cheque)
+            {
+                leaf = l.Cheque?.LeafId is long lid ? leaves.GetValueOrDefault(lid) : null;
+                if (leaf is null) throw new DomainException($"ردیف {row}: برگ چک را از دسته‌چک انتخاب کنید.");
+                var book = books[leaf.BookId];
+                if (book.Kind != InstrumentKind.ChequeBook) throw new DomainException($"ردیف {row}: برگ انتخاب‌شده از دسته‌چک نیست.");
+                if (bankAccountId is int ba && ba != book.BankAccountId)
+                    throw new DomainException($"ردیف {row}: برگ {leaf.SerialNo} از دسته‌چک حساب بانکی دیگری است.");
+                bankAccountId = book.BankAccountId;
+                info = (info ?? throw new DomainException($"ردیف {row}: مشخصات چک لازم است.")) with { SerialNo = leaf.SerialNo };
+            }
+            var line = payment.AddLine(l.Instrument, l.CashBoxId, bankAccountId, cheque, l.Amount, l.RefNo, l.Description, info,
+                type.AccountId);
+            if (leaf is not null)
+            {
+                leaf.Use();
+                line.Cheque!.LinkLeaf(leaf.Id);
+            }
             if (l.Instrument == Instrument.SpendCheque) cheque!.MoveTo(ReceivedChequeStatus.Spent, cheque.CashBoxId, null);
         }
 

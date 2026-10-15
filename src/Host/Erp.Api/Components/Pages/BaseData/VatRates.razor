@@ -1,5 +1,6 @@
 @page "/base/vat-rates"
 @inject Backend Backend
+@inject VatRateCache RateCache
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
 
@@ -69,6 +70,7 @@
     {
         if (_year is not int year) return;
         var r = await Backend.Run<VatRateService>(s => s.SaveAsync(year, _tax, _toll, default));
+        RateCache.Invalidate();
         if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
         Snackbar.Add($"نرخ سال {year} ذخیره شد.", Severity.Success);
         await LoadAsync();

@@ -1,6 +1,7 @@
 @* فرم با فهرست رکوردهای همان فرم در کنار (جستجو، رفتن به رکورد دیگر در همان تب، رکورد جدید). *@
 @inject TabService Tabs
 @inject UiPrefs Prefs
+@inject IDialogService Dialogs
 
 <div class="form-with-list @(Prefs.SideListOpen ? "" : "list-closed")">
     <aside class="side-list no-print">
@@ -11,7 +12,7 @@
                 <MudSpacer />
                 @if (NewUrl is not null)
                 {
-                    <MudTooltip Text="جدید"><MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" OnClick="() => Tabs.Go(NewUrl)" aria-label="جدید" /></MudTooltip>
+                    <MudTooltip Text="جدید"><MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" OnClick="New" aria-label="جدید" /></MudTooltip>
                 }
                 <MudTooltip Text="به‌روزرسانی"><MudIconButton Icon="@Icons.Material.Outlined.Refresh" Size="Size.Small" OnClick="LoadAsync" aria-label="به‌روزرسانی" /></MudTooltip>
                 <MudTooltip Text="بستن فهرست"><MudIconButton Icon="@Icons.Material.Outlined.KeyboardDoubleArrowRight" Size="Size.Small" OnClick="Toggle" aria-label="بستن فهرست" /></MudTooltip>
@@ -74,6 +75,8 @@
     /// <summary>با تغییر این عدد (مثلاً بعد از ذخیره) فهرست دوباره خوانده می‌شود.</summary>
     [Parameter] public int Version { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>فرم در حال ویرایش است؛ رفتن به رکورد دیگر تأیید می‌خواهد.</summary>
+    [Parameter] public bool Editing { get; set; }
 
     private List<SideItem> _items = [];
     private string? _term;
@@ -107,11 +110,22 @@
 
     private bool IsCurrent(SideItem item) => CurrentUrl is not null && item.Url == CurrentUrl;
 
-    private void Open(SideItem item)
+    private async Task Open(SideItem item)
     {
         if (IsCurrent(item)) return;
+        if (!await ConfirmLeaveAsync()) return;
         Tabs.Go(item.Url);
     }
+
+    private async Task New()
+    {
+        if (!await ConfirmLeaveAsync()) return;
+        Tabs.Go(NewUrl!);
+    }
+
+    private async Task<bool> ConfirmLeaveAsync() =>
+        !Editing || await Dialogs.ShowMessageBoxAsync("تغییرات ذخیره نشده", "تغییرات این فرم ذخیره نشده است. کنار گذاشته شود؟",
+            yesText: "بله، کنار بگذار", cancelText: "ادامه ویرایش") == true;
 
     private void Toggle() => Prefs.SideListOpen = !Prefs.SideListOpen;
 }

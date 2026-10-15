@@ -1,0 +1,22 @@
+@* جمع‌های پایین فرم با مبلغ کل به حروف *@
+<div class="totals-bar">
+    @foreach (var (label, value) in Items.Where(i => i.Value != 0 || ShowZero))
+    {
+        <div class="totals-item"><span class="totals-label">@label</span><span class="num">@Format.Amount(value)</span></div>
+    }
+    <div class="totals-item totals-main">
+        <span class="totals-label">@TotalLabel</span>
+        <b class="num">@Format.Amount(Total)</b>
+        @if (Total != 0)
+        {
+            <span class="amount-words">@PersianWords.Rial(Total)</span>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public IEnumerable<(string Label, decimal Value)> Items { get; set; } = [];
+    [Parameter] public decimal Total { get; set; }
+    [Parameter] public string TotalLabel { get; set; } = "جمع کل";
+    [Parameter] public bool ShowZero { get; set; } = true;
+}

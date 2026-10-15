@@ -5,7 +5,7 @@
 @inject IDialogService Dialogs
 @inject TabService Tabs
 
-<TabTitle Text="@(IsNew ? "شناسایی هزینه جدید" : $"شناسایی هزینه {Format.No(_docNo)}")" />
+<TabTitle Text="@Heading" />
 
 @if (_loading)
 {
@@ -13,88 +13,68 @@
     return;
 }
 
-<FormWithList Title="شناسایی هزینه" Load="LoadSideAsync" NewUrl="/expenses/new" CurrentUrl="@SelfUrl" Version="_listVersion">
-<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
-    <MudText Typo="Typo.h5">@(IsNew ? "شناسایی هزینه جدید" : $"شناسایی هزینه {Format.No(_docNo)}")</MudText>
-    @if (_voucher is not null)
-    {
-        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
-                 Color="@Format.StatusColor((VoucherStatus)_voucher.Status)" Href="@($"/vouchers/{_voucher.VoucherId}")">
-            سند @_voucher.TempNo — @Format.Status((VoucherStatus)_voucher.Status)
-        </MudChip>
-    }
-    <MudSpacer />
-    @if (_voucher is not null)
-    {
-        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.ReceiptLong" Href="@($"/vouchers/{_voucher.VoucherId}")">مشاهده سند</MudButton>
-    }
-    @if (!IsNew && !Locked)
-    {
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="DeleteAsync" Disabled="_saving">حذف</MudButton>
-    }
-    @if (!Locked)
-    {
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_saving">
-            @(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")
-        </MudButton>
-    }
-</MudStack>
+<FormWithList Title="شناسایی هزینه" Load="LoadSideAsync" NewUrl="/expenses/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
+<FormToolbar Title="@Heading" IsNew="IsNew" Editing="_editing" CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
+             SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId"
+             LockReason="@(Locked ? "سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است (اصلاح فقط با سند اصلاحی)." : null)"
+             OnNew="@(() => Tabs.Go("/expenses/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
+    <Chips>
+        @if (_voucher is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                     Color="@Format.StatusColor((VoucherStatus)_voucher.Status)">سند @_voucher.TempNo — @Format.Status((VoucherStatus)_voucher.Status)</MudChip>
+        }
+    </Chips>
+</FormToolbar>
 
-@if (Locked)
-{
-    <MudAlert Severity="Severity.Info" Class="mb-3">سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است (اصلاح فقط با سند اصلاحی).</MudAlert>
-}
 @if (_error is not null)
 {
     <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
 }
 
+<div class="@(ReadOnly ? "view-mode" : null)">
 <MudPaper Class="pa-4 mb-3" Elevation="1">
     <MudGrid Spacing="2">
         <MudItem xs="12" sm="6" md="3">
-            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="Locked" />
+            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" />
         </MudItem>
         <MudItem xs="12" sm="6" md="4">
-            <MudAutocomplete T="PersonListItemDto" Value="_supplier" ValueChanged="p => _supplier = p" SearchFunc="SearchPersons"
-                             ToStringFunc="@(p => p?.DisplayName)" Label="تأمین‌کننده (طرف حساب)" Required="true"
-                             ResetValueOnEmptyText="true" DebounceInterval="250" Dense="true" Disabled="Locked"
-                             HelperText="@(_supplier?.DetailCode is { } c ? $"تفصیلی {c}" : "نام، کد ملی یا کد تفصیلی")"
-                             Variant="Variant.Outlined" Margin="Margin.Dense">
-                <ItemTemplate Context="p">
-                    @p.DisplayName
-                    @if (p.DetailCode is not null) { <span class="code mr-2">@p.DetailCode</span> }
-                </ItemTemplate>
-            </MudAutocomplete>
+            <PersonPicker @bind-PersonId="_supplierId" PersonName="@_supplierName" Label="تأمین‌کننده (طرف حساب)" Required="true" Disabled="ReadOnly" />
         </MudItem>
         <MudItem xs="12" sm="6" md="2">
-            <MudTextField @bind-Value="_invoiceNo" Label="شماره فاکتور فروشنده" MaxLength="50" Disabled="Locked"
+            <MudTextField @bind-Value="_invoiceNo" Label="ش. فاکتور فروشنده" MaxLength="50" Disabled="ReadOnly"
                           Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <PersianDateField @bind-Value="_invoiceDate" Label="تاریخ فاکتور" Disabled="Locked" />
+            <PersianDateField @bind-Value="_invoiceDate" Label="تاریخ فاکتور" Disabled="ReadOnly" />
         </MudItem>
-        <MudItem xs="12" md="6">
-            <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudItem xs="12" md="7">
+            <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
-        <MudItem xs="12" md="6">
+        <MudItem xs="12" md="5">
             <MudText Typo="Typo.caption" Color="Color.Secondary">طرف بستانکار</MudText>
-            <MudRadioGroup T="PayableKind" @bind-Value="_payable" Disabled="Locked">
-                <MudRadio T="PayableKind" Value="PayableKind.Trade" Color="Color.Primary" Dense="true">حساب‌های پرداختنی تجاری</MudRadio>
-                <MudRadio T="PayableKind" Value="PayableKind.Other" Color="Color.Primary" Dense="true">سایر حساب‌های پرداختنی</MudRadio>
+            <MudRadioGroup T="PayableKind" @bind-Value="_payable" Disabled="ReadOnly">
+                <MudRadio T="PayableKind" Value="PayableKind.Trade" Color="Color.Primary" Dense="true">پرداختنی تجاری</MudRadio>
+                <MudRadio T="PayableKind" Value="PayableKind.Other" Color="Color.Primary" Dense="true">سایر پرداختنی‌ها</MudRadio>
             </MudRadioGroup>
         </MudItem>
     </MudGrid>
 </MudPaper>
 
 <MudPaper Class="pa-3 mb-3" Elevation="1">
-    <MudText Typo="Typo.subtitle1" Class="mb-2"><b>ردیف‌های هزینه</b></MudText>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudText Typo="Typo.subtitle1"><b>ردیف‌های هزینه</b></MudText>
+        <MudSpacer />
+        <VatRateHint Date="@_date" />
+    </MudStack>
     <table class="voucher-grid">
         <thead>
             <tr>
                 <th style="width:3%">#</th>
-                <th style="width:30%">عامل هزینه</th>
-                <th style="width:24%">مرکز هزینه</th>
-                <th style="width:15%">مبلغ</th>
+                <th style="width:27%">عامل هزینه</th>
+                <th style="width:20%">مرکز هزینه</th>
+                <th style="width:14%">مبلغ</th>
+                <th style="width:15%">ارزش افزوده</th>
                 <th>شرح</th>
                 <th style="width:4%"></th>
             </tr>
@@ -107,7 +87,7 @@
                     <td>
                         <MudAutocomplete T="CostFactorDto" Value="line.Factor" ValueChanged="f => FactorChanged(line, f)" SearchFunc="SearchFactors"
                                          ToStringFunc="@(f => f is null ? null : $"{f.Code} - {f.Title}")" Placeholder="کد یا نام عامل"
-                                         ResetValueOnEmptyText="true" Dense="true" MaxItems="40" Disabled="Locked"
+                                         ResetValueOnEmptyText="true" Dense="true" MaxItems="40" Disabled="ReadOnly"
                                          Variant="Variant.Outlined" Margin="Margin.Dense">
                             <ItemTemplate Context="f">
                                 <span class="code ml-2">@f.Code</span> @f.Title
@@ -127,7 +107,7 @@
                         else
                         {
                             <MudSelect T="int?" Value="line.CenterId" ValueChanged="c => line.CenterId = c" Placeholder="مرکز هزینه" Dense="true"
-                                       Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense">
+                                       Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense">
                                 @foreach (var c in _centers.Where(c => c.IsActive || c.Id == line.CenterId).OrderBy(c => c.Function).ThenBy(c => c.Title))
                                 {
                                     <MudSelectItem T="int?" Value="c.Id">@c.Title <span class="select-hint">(@Titles.Of(c.Function))</span></MudSelectItem>
@@ -137,13 +117,14 @@
                     </td>
                     <td>
                         <MudNumericField T="decimal" @bind-Value="line.Amount" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
-                                         Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                         Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    </td>
+                    <td><LineVat @bind-Value="line.Vat" Date="@_date" Amount="line.Amount" Disabled="ReadOnly" /></td>
+                    <td>
+                        <MudTextField @bind-Value="line.Description" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </td>
                     <td>
-                        <MudTextField @bind-Value="line.Description" MaxLength="500" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                    </td>
-                    <td>
-                        @if (!Locked)
+                        @if (!ReadOnly)
                         {
                             <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error"
                                            Disabled="_lines.Count == 1" OnClick="() => _lines.Remove(line)" aria-label="حذف ردیف" />
@@ -153,24 +134,15 @@
             }
         </tbody>
     </table>
-    @if (!Locked)
+    @if (!ReadOnly)
     {
-        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="() => _lines.Add(new LineModel())" Class="mt-1">ردیف جدید</MudButton>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="AddLine" Class="mt-1">ردیف جدید</MudButton>
     }
 
     <MudDivider Class="my-3" />
-    <MudGrid Spacing="2" Justify="Justify.FlexEnd">
-        <MudItem xs="12" sm="4" md="3">
-            <MudField Label="جمع ردیف‌ها" Variant="Variant.Text" Margin="Margin.Dense"><span class="num">@Format.Amount(LinesTotal)</span></MudField>
-        </MudItem>
-        <MudItem xs="12" sm="4" md="4">
-            <VatBox @bind-Value="_vat" Date="@_date" BaseAmount="LinesTotal" Disabled="Locked" />
-        </MudItem>
-        <MudItem xs="12" sm="4" md="3">
-            <MudField Label="مبلغ کل (بدهی به تأمین‌کننده)" Variant="Variant.Text" Margin="Margin.Dense"><b class="num">@Format.Amount(LinesTotal + _vat)</b></MudField>
-        </MudItem>
-    </MudGrid>
+    <TotalsBar Items="Totals" Total="LinesTotal + VatTotal" TotalLabel="مبلغ کل (بدهی به تأمین‌کننده)" />
 </MudPaper>
+</div>
 </FormWithList>
 
 @code {
@@ -181,37 +153,42 @@
         public CostFactorDto? Factor { get; set; }
         public int? CenterId { get; set; }
         public decimal Amount { get; set; }
+        public decimal Vat { get; set; }
         public string? Description { get; set; }
     }
 
     private bool IsNew => Id is null;
     private string? SelfUrl => Id is long id ? $"/expenses/{id}" : null;
+    private string Heading => IsNew ? "شناسایی هزینه جدید" : $"شناسایی هزینه {Format.No(_docNo)}";
     private bool Locked => _voucher?.Status == 3;
+    private bool ReadOnly => !_editing || Locked;
+    private bool Dirty => _editing && !IsNew;
     private decimal LinesTotal => _lines.Sum(l => l.Amount);
+    private decimal VatTotal => _lines.Sum(l => l.Vat);
+    private (string, decimal)[] Totals => [("جمع هزینه‌ها", LinesTotal), ("ارزش افزوده", VatTotal)];
 
     private List<CostFactorDto> _factors = [];
     private List<CostCenterListItemDto> _centers = [];
     private List<LineModel> _lines = [new()];
-    private PersonListItemDto? _supplier;
+    private int? _supplierId;
+    private string? _supplierName;
     private string? _date = Format.Today();
-    private string? _invoiceNo;
-    private string? _invoiceDate;
-    private string? _description;
+    private string? _invoiceNo, _invoiceDate, _description;
     private PayableKind _payable = PayableKind.Trade;
-    private decimal _vat;
     private int _docNo;
     private ExpenseVoucherDto? _voucher;
-    private bool _loading = true;
+    private bool _loading = true, _saving, _editing;
     private int _listVersion;
-    private bool _saving;
     private string? _error;
 
     protected override async Task OnParametersSetAsync()
     {
         _loading = true;
+        _error = null;
         _factors = (await Backend.Run<CostFactorService, List<CostFactorDto>>(s => s.SearchAsync(null, null, true, default))).Value ?? [];
         _centers = (await Backend.Run<CostCenterService, List<CostCenterListItemDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
         if (Id is long id) await LoadAsync(id);
+        _editing = IsNew;
         _loading = false;
     }
 
@@ -220,21 +197,14 @@
         var r = await Backend.Run<ExpenseInvoiceService, ExpenseInvoiceDto>(s => s.GetAsync(id, default));
         if (!r.Success) { _error = r.Error; return; }
         var x = r.Value!;
-        _docNo = x.DocNo;
-        _date = x.Date;
-        _invoiceNo = x.InvoiceNo;
-        _invoiceDate = x.InvoiceDate;
-        _description = x.Description;
-        _payable = x.PayableKind;
-        _vat = x.VatAmount;
-        _voucher = x.Voucher;
-        var people = await Backend.Run<PersonService, List<PersonListItemDto>>(s => s.SearchAsync(x.SupplierName, null, null, true, default));
-        _supplier = people.Value?.FirstOrDefault(p => p.Id == x.SupplierId);
+        (_docNo, _date, _invoiceNo, _invoiceDate, _description, _payable, _voucher, _supplierId, _supplierName) =
+            (x.DocNo, x.Date, x.InvoiceNo, x.InvoiceDate, x.Description, x.PayableKind, x.Voucher, x.SupplierId, x.SupplierName);
         _lines = x.Lines.Select(l => new LineModel
         {
             Factor = _factors.FirstOrDefault(f => f.Id == l.CostFactorId),
             CenterId = l.CostCenterId,
             Amount = l.Amount,
+            Vat = l.VatAmount,
             Description = l.Description
         }).ToList();
     }
@@ -254,11 +224,10 @@
         return Task.FromResult(list);
     }
 
-    private async Task<IEnumerable<PersonListItemDto>> SearchPersons(string? term, CancellationToken ct)
+    private void AddLine()
     {
-        if (string.IsNullOrWhiteSpace(term)) return [];
-        var r = await Backend.Run<PersonService, List<PersonListItemDto>>(s => s.SearchAsync(term, null, null, false, ct));
-        return r.Value ?? [];
+        var last = _lines.LastOrDefault();
+        _lines.Add(new LineModel { CenterId = last?.CenterId });
     }
 
     private static void FactorChanged(LineModel line, CostFactorDto? factor)
@@ -276,16 +245,27 @@
         return center is null ? $"در {Titles.Of(line.Factor.Nature)}" : $"در {Titles.Of(line.Factor.Nature)} - {Titles.Of(center.Function)}";
     }
 
+    private async Task CancelAsync()
+    {
+        _error = null;
+        if (Id is long id) { await LoadAsync(id); _editing = false; }
+        else
+        {
+            (_supplierId, _supplierName, _invoiceNo, _invoiceDate, _description, _payable) = (null, null, null, null, null, PayableKind.Trade);
+            _lines = [new()];
+        }
+    }
+
     private async Task SaveAsync()
     {
         _error = null;
         if (_date is null) { _error = "تاریخ الزامی است."; return; }
-        if (_supplier is null) { _error = "تأمین‌کننده را انتخاب کنید."; return; }
+        if (_supplierId is null) { _error = "تأمین‌کننده را انتخاب کنید."; return; }
         var empty = _lines.FindIndex(l => l.Factor is null);
         if (empty >= 0) { _error = $"ردیف {empty + 1}: عامل هزینه را انتخاب کنید."; return; }
 
-        var request = new SaveExpenseInvoiceRequest(_date, _supplier.Id, _payable, _invoiceNo, _invoiceDate, _vat, _description,
-            _lines.Select(l => new ExpenseLineRequest(l.Factor!.Id, l.CenterId, l.Amount, l.Description)).ToList());
+        var request = new SaveExpenseInvoiceRequest(_date, _supplierId.Value, _payable, _invoiceNo, _invoiceDate, _description,
+            _lines.Select(l => new ExpenseLineRequest(l.Factor!.Id, l.CenterId, l.Amount, l.Description, l.Vat)).ToList());
 
         _saving = true;
         if (Id is long id)
@@ -296,6 +276,7 @@
             Snackbar.Add("فرم ذخیره شد و سند حسابداری‌اش اصلاح شد.", Severity.Success);
             _listVersion++;
             await LoadAsync(id);
+            _editing = false;
         }
         else
         {
@@ -310,7 +291,7 @@
     private async Task DeleteAsync()
     {
         if (Id is not long id) return;
-        if (!await Dialogs.DeleteAsync($"شناسایی هزینه شماره {_docNo}", "سند حسابداری آن هم حذف می‌شود.")) return;
+        if (!await Dialogs.DeleteAsync($"شناسایی هزینه شماره {Format.No(_docNo)}", "سند حسابداری آن هم حذف می‌شود.")) return;
         var r = await Backend.Run<ExpenseInvoiceService>(s => s.DeleteAsync(id, default));
         if (!r.Success) { _error = r.Error; return; }
         Snackbar.Add("فرم و سند حسابداری‌اش حذف شد.", Severity.Success);

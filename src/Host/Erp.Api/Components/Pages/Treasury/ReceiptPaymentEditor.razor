@@ -12,38 +12,21 @@
     return;
 }
 
-<FormWithList Title="@Noun" Load="LoadSideAsync" NewUrl="@($"{BaseUrl}/new")" CurrentUrl="@SelfUrl" Version="_listVersion">
-<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
-    <MudText Typo="Typo.h5">@Heading</MudText>
-    @if (_voucher is not null)
-    {
-        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
-                 Color="@Format.StatusColor((VoucherStatus)_voucher.Status)" OnClick="OpenVoucher">
-            سند @_voucher.TempNo — @Format.Status((VoucherStatus)_voucher.Status)
-        </MudChip>
-    }
-    <MudSpacer />
-    @if (_voucher is not null)
-    {
-        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.ReceiptLong" OnClick="OpenVoucher">مشاهده سند</MudButton>
-    }
-    @if (!IsNew && !Locked)
-    {
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="DeleteAsync" Disabled="_saving">حذف</MudButton>
-    }
-    @if (!Locked)
-    {
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_saving">
-            @(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")
-        </MudButton>
-    }
-</MudStack>
+<FormWithList Title="@Noun" Load="LoadSideAsync" NewUrl="@($"{BaseUrl}/new")" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
+<FormToolbar Title="@Heading" IsNew="IsNew" Editing="_editing" CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
+             SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId"
+             LockReason="@(Locked ? _lockReason ?? "سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است." : null)"
+             OnNew="@(() => Tabs.Go($"{BaseUrl}/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
+    <Chips>
+        @if (_voucher is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                     Color="@Format.StatusColor((VoucherStatus)_voucher.Status)">سند @_voucher.TempNo — @Format.Status((VoucherStatus)_voucher.Status)</MudChip>
+        }
+    </Chips>
+</FormToolbar>
 
-@if (Locked)
-{
-    <MudAlert Severity="Severity.Info" Class="mb-3">@(_lockReason ?? "سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است.")</MudAlert>
-}
-@if (!Locked && (_boxes.All(b => !b.IsActive) || _banks.All(b => !b.IsActive) || _types.All(t => !t.IsActive)))
+@if (_editing && (_boxes.All(b => !b.IsActive) || _banks.All(b => !b.IsActive) || _types.All(t => !t.IsActive)))
 {
     <MudAlert Severity="Severity.Warning" Class="mb-3">
         @(MissingSetup) — از <MudLink OnClick="@(() => Tabs.Go("/treasury/setup"))">تعاریف خزانه‌داری</MudLink> تعریف کنید.
@@ -54,17 +37,18 @@
     <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
 }
 
+<div class="@(ReadOnly ? "view-mode" : null)">
 <MudPaper Class="pa-4 mb-3" Elevation="1">
     <MudGrid Spacing="2">
         <MudItem xs="12" sm="6" md="3">
-            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="Locked" />
+            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" />
         </MudItem>
         <MudItem xs="12" sm="6" md="5">
             <PersonPicker @bind-PersonId="_personId" PersonName="@_personName" Label="@(IsPayment ? "دریافت‌کننده (طرف حساب)" : "پرداخت‌کننده (طرف حساب)")"
-                          Required="true" Disabled="Locked" />
+                          Required="true" Disabled="ReadOnly" />
         </MudItem>
         <MudItem xs="12" sm="6" md="4">
-            <MudSelect T="short?" @bind-Value="_typeId" Label="@(IsPayment ? "نوع پرداخت" : "نوع دریافت")" Required="true" Disabled="Locked"
+            <MudSelect T="short?" @bind-Value="_typeId" Label="@(IsPayment ? "نوع پرداخت" : "نوع دریافت")" Required="true" Disabled="ReadOnly"
                        Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
                 @foreach (var t in _types.Where(t => t.IsActive || t.Id == _typeId))
                 {
@@ -77,7 +61,7 @@
             }
         </MudItem>
         <MudItem xs="12">
-            <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -102,7 +86,7 @@
                 <tr>
                     <td class="code">@(i + 1)</td>
                     <td>
-                        <MudSelect T="Instrument" Value="line.Instrument" ValueChanged="v => InstrumentChanged(line, v)" Dense="true" Disabled="Locked"
+                        <MudSelect T="Instrument" Value="line.Instrument" ValueChanged="v => InstrumentChanged(line, v)" Dense="true" Disabled="ReadOnly"
                                    Variant="Variant.Outlined" Margin="Margin.Dense">
                             @foreach (var ins in Instruments)
                             {
@@ -113,7 +97,7 @@
                     <td>
                         @if (UsesBox(line.Instrument))
                         {
-                            <MudSelect T="int?" @bind-Value="line.CashBoxId" Placeholder="صندوق" Dense="true" Disabled="Locked"
+                            <MudSelect T="int?" @bind-Value="line.CashBoxId" Placeholder="صندوق" Dense="true" Disabled="ReadOnly"
                                        Variant="Variant.Outlined" Margin="Margin.Dense">
                                 @foreach (var b in _boxes.Where(b => b.IsActive || b.Id == line.CashBoxId))
                                 {
@@ -124,7 +108,7 @@
                         else if (line.Instrument == Instrument.SpendCheque)
                         {
                             <MudSelect T="long?" Value="line.ReceivedChequeId" ValueChanged="v => ChequeChosen(line, v)" Placeholder="چک در صندوق"
-                                       Dense="true" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense">
+                                       Dense="true" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense">
                                 @foreach (var c in SpendOptions(line))
                                 {
                                     <MudSelectItem T="long?" Value="c.Id">@ChequeText(c)</MudSelectItem>
@@ -133,8 +117,8 @@
                         }
                         else
                         {
-                            <MudSelect T="int?" @bind-Value="line.BankAccountId" Placeholder="حساب بانکی" Dense="true" Disabled="Locked"
-                                       Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <MudSelect T="int?" Value="line.BankAccountId" ValueChanged="v => BankChanged(line, v)" Placeholder="حساب بانکی" Dense="true"
+                                       Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense">
                                 @foreach (var b in _banks.Where(b => b.IsActive || b.Id == line.BankAccountId))
                                 {
                                     <MudSelectItem T="int?" Value="b.Id">@b.Title <span class="select-hint code">@b.AccountNo</span></MudSelectItem>
@@ -144,19 +128,19 @@
                     </td>
                     <td>
                         <MudNumericField T="decimal" @bind-Value="line.Amount" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
-                                         Disabled="@(Locked || line.Instrument == Instrument.SpendCheque)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                         Disabled="@(ReadOnly || line.Instrument == Instrument.SpendCheque)" Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </td>
                     <td>
                         @if (line.Instrument is Instrument.Cash or Instrument.Bank)
                         {
-                            <MudTextField @bind-Value="line.RefNo" MaxLength="50" Disabled="Locked" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            <MudTextField @bind-Value="line.RefNo" MaxLength="50" Disabled="ReadOnly" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
                         }
                     </td>
                     <td>
-                        <MudTextField @bind-Value="line.Description" MaxLength="500" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <MudTextField @bind-Value="line.Description" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </td>
                     <td>
-                        @if (!Locked)
+                        @if (!ReadOnly)
                         {
                             <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error"
                                            Disabled="_lines.Count == 1" OnClick="() => _lines.Remove(line)" aria-label="حذف ردیف" />
@@ -169,15 +153,35 @@
                         <td></td>
                         <td colspan="6">
                             <MudGrid Spacing="1">
-                                <MudItem xs="6" md="2"><MudTextField @bind-Value="line.Serial" Label="سریال چک" MaxLength="30" Disabled="Locked" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
-                                <MudItem xs="6" md="3"><MudTextField @bind-Value="line.Sayad" Label="شناسه صیاد (۱۶ رقم)" MaxLength="16" Disabled="Locked" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
-                                <MudItem xs="6" md="3"><PersianDateField @bind-Value="line.Due" Label="سررسید" Required="true" Disabled="Locked" /></MudItem>
+                                @if (IsPayment)
+                                {
+                                    <MudItem xs="6" md="4">
+                                        <MudSelect T="long?" Value="line.LeafId" ValueChanged="v => LeafChosen(line, v)" Label="برگ دسته‌چک" Dense="true"
+                                                   Disabled="@(ReadOnly || line.BankAccountId is null)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                   HelperText="@(line.BankAccountId is null ? "اول حساب بانکی را انتخاب کنید" : null)">
+                                            @foreach (var leaf in LeafOptions(line))
+                                            {
+                                                <MudSelectItem T="long?" Value="leaf.Id"><span class="code">@leaf.SerialNo</span> <span class="select-hint">@leaf.BookTitle</span></MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                        @if (!ReadOnly && line.BankAccountId is int ba && LeafOptions(line).Count == 0)
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Warning">برگ سفیدی برای این حساب نیست؛ <MudLink Typo="Typo.caption" OnClick="@(() => Tabs.Go("/treasury/instruments"))">تعریف دسته‌چک</MudLink></MudText>
+                                        }
+                                    </MudItem>
+                                }
+                                else
+                                {
+                                    <MudItem xs="6" md="2"><MudTextField @bind-Value="line.Serial" Label="سریال چک" MaxLength="30" Disabled="ReadOnly" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                }
+                                <MudItem xs="6" md="3"><MudTextField @bind-Value="line.Sayad" Label="شناسه صیاد (۱۶ رقم)" MaxLength="16" Disabled="ReadOnly" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                <MudItem xs="6" md="3"><PersianDateField @bind-Value="line.Due" Label="سررسید" Required="true" Disabled="ReadOnly" /></MudItem>
                                 @if (!IsPayment)
                                 {
                                     <MudItem xs="6" md="2"><BankSelect @bind-Value="line.ChequeBankId" /></MudItem>
-                                    <MudItem xs="6" md="2"><MudTextField @bind-Value="line.Branch" Label="شعبه" MaxLength="100" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
-                                    <MudItem xs="6" md="5"><MudTextField @bind-Value="line.Drawer" Label="صادرکننده" MaxLength="200" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
-                                    <MudItem xs="6" md="3"><MudTextField @bind-Value="line.AccountNo" Label="شماره حساب صادرکننده" MaxLength="30" Disabled="Locked" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                    <MudItem xs="6" md="2"><MudTextField @bind-Value="line.Branch" Label="شعبه" MaxLength="100" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                    <MudItem xs="6" md="5"><MudTextField @bind-Value="line.Drawer" Label="صادرکننده" MaxLength="200" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                    <MudItem xs="6" md="3"><MudTextField @bind-Value="line.AccountNo" Label="شماره حساب صادرکننده" MaxLength="30" Disabled="ReadOnly" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
                                 }
                                 @if (line.Status is { } st)
                                 {
@@ -190,7 +194,7 @@
             }
         </tbody>
     </table>
-    @if (!Locked)
+    @if (!ReadOnly)
     {
         <MudStack Row="true" Spacing="1" Class="mt-1" Wrap="Wrap.Wrap">
             @foreach (var ins in Instruments)
@@ -201,14 +205,10 @@
     }
 
     <MudDivider Class="my-3" />
-    <MudStack Row="true" Spacing="4" Justify="Justify.FlexEnd" Wrap="Wrap.Wrap">
-        @foreach (var g in _lines.GroupBy(l => l.Instrument).OrderBy(g => g.Key))
-        {
-            <MudText Typo="Typo.body2" Color="Color.Secondary">@InstrumentTitle(g.Key): <span class="num">@Format.Amount(g.Sum(l => l.Amount))</span></MudText>
-        }
-        <MudText Typo="Typo.subtitle1"><b>جمع: <span class="num">@Format.Amount(_lines.Sum(l => l.Amount))</span></b></MudText>
-    </MudStack>
+    <TotalsBar Items="@(_lines.GroupBy(l => l.Instrument).OrderBy(g => g.Key).Select(g => (InstrumentTitle(g.Key), g.Sum(l => l.Amount))).ToList())"
+               Total="_lines.Sum(l => l.Amount)" TotalLabel="@($"جمع {Noun}")" />
 </MudPaper>
+</div>
 </FormWithList>
 
 @code {
@@ -232,6 +232,7 @@
         public string? Drawer { get; set; }
         public string? AccountNo { get; set; }
         public string? Status { get; set; }
+        public long? LeafId { get; set; }
     }
 
     private bool IsNew => Id is null;
@@ -246,6 +247,8 @@
     private string? SelfUrl => Id is long id ? $"{BaseUrl}/{id}" : null;
     private string Heading => IsNew ? $"{Noun} جدید" : $"{Noun} {Format.No(_docNo)}";
     private bool Locked => _lockReason is not null || _voucher?.Status == 3;
+    private bool ReadOnly => !_editing || Locked;
+    private bool Dirty => _editing && !IsNew;
     private Instrument[] Instruments => IsPayment
         ? [Instrument.Cash, Instrument.Bank, Instrument.Cheque, Instrument.SpendCheque]
         : [Instrument.Cash, Instrument.Bank, Instrument.Cheque];
@@ -265,12 +268,19 @@
     private string? _lockReason;
     private bool _loading = true;
     private bool _saving;
+    private bool _editing;
+    /// <summary>برگ‌های سفید دسته‌چک هر حساب بانکی (پرداخت).</summary>
+    private readonly Dictionary<int, List<LeafOption>> _leaves = [];
+    /// <summary>برگ چک‌های ذخیره‌شده همین فرم (دیگر سفید نیستند).</summary>
+    private readonly List<LeafOption> _ownLeaves = [];
     private int _listVersion;
     private string? _error;
 
     protected override async Task OnParametersSetAsync()
     {
         _loading = true;
+        _error = null;
+        _leaves.Clear();
         var kind = IsPayment ? TransactionKind.Payment : TransactionKind.Receipt;
         _types = (await Backend.Run<TreasurySetupService, List<TransactionTypeDto>>(s => s.GetTypesAsync(kind, true, default))).Value ?? [];
         _boxes = (await Backend.Run<TreasurySetupService, List<CashBoxDto>>(s => s.GetCashBoxesAsync(true, default))).Value ?? [];
@@ -278,12 +288,17 @@
         if (IsPayment)
             _spendable = (await Backend.Run<PaymentService, List<ChequeDto>>(s => s.GetSpendableChequesAsync(default))).Value ?? [];
         if (Id is long id) await LoadAsync(id);
-        else
-        {
-            _lines = [NewLine(Instrument.Cash)];
-            _typeId ??= _types.FirstOrDefault(t => t.IsActive)?.Id;
-        }
+        else ResetNew();
+        _editing = IsNew;
         _loading = false;
+    }
+
+    private void ResetNew()
+    {
+        (_personId, _personName, _description) = (null, null, null);
+        _lines = [];
+        _lines.Add(NewLine(Instrument.Cash));
+        _typeId = _types.FirstOrDefault(t => t.IsActive)?.Id;
     }
 
     private async Task LoadAsync(long id)
@@ -301,8 +316,16 @@
             Amount = l.Amount, RefNo = l.RefNo, Description = l.Description,
             Serial = l.Cheque?.SerialNo, Sayad = l.Cheque?.SayadId, Due = l.Cheque?.DueDate, ChequeBankId = l.Cheque?.BankId,
             Branch = l.Cheque?.Branch, Drawer = l.Cheque?.DrawerName, AccountNo = l.Cheque?.AccountNo,
-            Status = l.Instrument == Instrument.Cheque ? l.Cheque?.StatusTitle : null
+            Status = l.Instrument == Instrument.Cheque ? l.Cheque?.StatusTitle : null,
+            LeafId = l.Cheque?.LeafId
         }).ToList();
+        _ownLeaves.Clear();
+        if (IsPayment)
+            foreach (var l in _lines.Where(l => l.Instrument == Instrument.Cheque && l.LeafId is not null))
+            {
+                _ownLeaves.Add(new LeafOption(l.LeafId!.Value, 0, "همین فرم", l.Serial ?? "?", l.BankAccountId, null));
+                if (l.BankAccountId is int b) await EnsureLeavesAsync(b);
+            }
         // چک خرج‌شده همین فرم دیگر در صندوق نیست؛ برای نمایش به فهرست اضافه می‌شود.
         foreach (var c in x.Lines.Where(l => l.Instrument == Instrument.SpendCheque && l.Cheque is not null).Select(l => l.Cheque!))
             if (_spendable.All(s => s.Id != c.Id)) _spendable.Add(c);
@@ -344,13 +367,52 @@
         return line;
     }
 
-    private void AddLine(Instrument ins) => _lines.Add(NewLine(ins));
+    private async Task AddLine(Instrument ins)
+    {
+        var line = NewLine(ins);
+        _lines.Add(line);
+        if (IsPayment && ins == Instrument.Cheque && line.BankAccountId is int b) await BankChanged(line, b);
+    }
 
-    private void InstrumentChanged(LineModel line, Instrument ins)
+    private async Task InstrumentChanged(LineModel line, Instrument ins)
     {
         line.Instrument = ins;
         if (ins != Instrument.SpendCheque) line.ReceivedChequeId = null;
         else line.Amount = 0;
+        if (IsPayment && ins == Instrument.Cheque && line.BankAccountId is int b) await BankChanged(line, b);
+        if (ins != Instrument.Cheque) line.LeafId = null;
+    }
+
+    private async Task EnsureLeavesAsync(int bankAccountId)
+    {
+        if (_leaves.ContainsKey(bankAccountId)) return;
+        var r = await Backend.Run<InstrumentService, List<LeafOption>>(s => s.GetBlankLeavesAsync(InstrumentKind.ChequeBook, bankAccountId, default));
+        _leaves[bankAccountId] = r.Value ?? [];
+    }
+
+    /// <summary>برگ‌های قابل انتخاب ردیف: سفیدهای همان حساب + برگ خود ردیف، بدون برگ‌هایی که ردیف دیگر برداشته.</summary>
+    private List<LeafOption> LeafOptions(LineModel line)
+    {
+        if (line.BankAccountId is not int b) return [];
+        var list = _ownLeaves.Where(o => o.BankAccountId == b).Concat(_leaves.GetValueOrDefault(b) ?? []);
+        return list.Where(o => o.Id == line.LeafId || _lines.All(l => l == line || l.LeafId != o.Id)).DistinctBy(o => o.Id).ToList();
+    }
+
+    private async Task BankChanged(LineModel line, int? bankAccountId)
+    {
+        line.BankAccountId = bankAccountId;
+        if (!IsPayment || line.Instrument != Instrument.Cheque) return;
+        line.LeafId = null;
+        if (bankAccountId is not int b) return;
+        await EnsureLeavesAsync(b);
+        var next = LeafOptions(line).FirstOrDefault(o => o.BookId != 0);
+        if (next is not null) LeafChosen(line, next.Id);
+    }
+
+    private void LeafChosen(LineModel line, long? leafId)
+    {
+        line.LeafId = leafId;
+        line.Serial = LeafOptions(line).FirstOrDefault(o => o.Id == leafId)?.SerialNo;
     }
 
     private void ChequeChosen(LineModel line, long? id)
@@ -359,9 +421,11 @@
         line.Amount = _spendable.FirstOrDefault(c => c.Id == id)?.Amount ?? 0;
     }
 
-    private void OpenVoucher()
+    private async Task CancelAsync()
     {
-        if (_voucher is not null) Tabs.Go($"/vouchers/{_voucher.VoucherId}");
+        _error = null;
+        if (Id is long id) { await LoadAsync(id); _editing = false; }
+        else ResetNew();
     }
 
     private async Task SaveAsync()
@@ -373,6 +437,8 @@
         for (var i = 0; i < _lines.Count; i++)
         {
             var l = _lines[i];
+            if (IsPayment && l.Instrument == Instrument.Cheque && l.LeafId is null)
+            { _error = $"ردیف {i + 1}: برگ دسته‌چک را انتخاب کنید."; return; }
             if (l.Instrument == Instrument.Cheque && (string.IsNullOrWhiteSpace(l.Serial) || l.Due is null))
             { _error = $"ردیف {i + 1}: سریال و سررسید چک الزامی است."; return; }
         }
@@ -382,7 +448,7 @@
                 UsesBox(l.Instrument) ? l.CashBoxId : null,
                 l.Instrument is Instrument.Bank || (l.Instrument == Instrument.Cheque && IsPayment) ? l.BankAccountId : null,
                 l.Amount, l.Instrument is Instrument.Cash or Instrument.Bank ? l.RefNo : null, l.Description,
-                l.Instrument == Instrument.Cheque ? new ChequeInput(l.Serial!.Trim(), l.Sayad, l.Due!, l.ChequeBankId, l.Branch, l.Drawer, l.AccountNo) : null,
+                l.Instrument == Instrument.Cheque ? new ChequeInput(l.Serial!.Trim(), l.Sayad, l.Due!, l.ChequeBankId, l.Branch, l.Drawer, l.AccountNo, IsPayment ? l.LeafId : null) : null,
                 l.Instrument == Instrument.SpendCheque ? l.ReceivedChequeId : null)).ToList());
 
         _saving = true;
@@ -395,7 +461,9 @@
             if (!r.Success) { _error = r.Error; return; }
             Snackbar.Add("فرم ذخیره شد و سند حسابداری‌اش اصلاح شد.", Severity.Success);
             _listVersion++;
+            _leaves.Clear();
             await LoadAsync(id);
+            _editing = false;
         }
         else
         {

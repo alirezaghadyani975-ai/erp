@@ -53,7 +53,21 @@ public class Transfer : TreasuryDocument
     public void Touch(DateTime nowUtc) => UpdatedAt = nowUtc;
 }
 
-/// <summary>صورت‌هزینه تنخواه (trs.ImprestSettlements): هزینه‌های پرداخت‌شده از تنخواه با عامل و مرکز هزینه.</summary>
+/// <summary>نوع ردیف صورت‌هزینه تنخواه.</summary>
+public enum ImprestLineKind : byte
+{
+    Expense = 1,   // هزینه: عامل + مرکز هزینه
+    Payment = 2    // پرداخت به طرف حساب: نوع پرداخت (معین) + شخص؛ مثل پرداخت بدهی یا مساعده
+}
+
+/// <summary>ورودی یک ردیف صورت‌هزینه تنخواه.</summary>
+public sealed record ImprestLineInput(ImprestLineKind Kind, int? FactorId, int? CenterId, short? TypeId, int? PersonId,
+    int? AccountId, decimal Amount, decimal VatAmount, string? Description);
+
+/// <summary>
+/// صورت‌هزینه تنخواه (trs.ImprestSettlements): پرداخت‌های تنخواه‌دار؛ هر ردیف یا هزینه (عامل + مرکز، با ارزش افزوده)
+/// یا پرداخت به طرف حساب (نوع پرداخت + شخص). بستانکار: تنخواه‌گردان به جمع کل.
+/// </summary>
 public class ImprestSettlement : TreasuryDocument
 {
     public const string DocType = "trs_imprest";
@@ -65,6 +79,7 @@ public class ImprestSettlement : TreasuryDocument
     public ImprestSettlement(int docNo, int createdBy, DateTime nowUtc) => Init(docNo, createdBy, nowUtc);
 
     public int ImprestFundId { get; private set; }
+    /// <summary>جمع ارزش افزوده ردیف‌ها.</summary>
     public decimal VatAmount { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
 
@@ -72,31 +87,47 @@ public class ImprestSettlement : TreasuryDocument
     public decimal LinesTotal => _lines.Sum(l => l.Amount);
     public decimal Total => LinesTotal + VatAmount;
 
-    public void SetHeader(DateOnly date, int imprestFundId, decimal vatAmount, string? description)
+    public void SetHeader(DateOnly date, int imprestFundId, string? description)
     {
         if (imprestFundId <= 0) throw new DomainException("تنخواه‌گردان را انتخاب کنید.");
-        if (vatAmount < 0) throw new DomainException("مبلغ ارزش افزوده منفی نیست.");
         SetBase(date, description);
         ImprestFundId = imprestFundId;
-        VatAmount = Math.Round(vatAmount, 4);
     }
 
     public void ClearLines() => _lines.Clear();
 
-    public void SetLines(IEnumerable<(int FactorId, int? CenterId, decimal Amount, string? Description)> lines)
+    public void SetLines(IEnumerable<ImprestLineInput> lines)
     {
         var list = lines.ToList();
-        if (list.Count == 0) throw new DomainException("حداقل یک ردیف هزینه لازم است.");
+        if (list.Count == 0) throw new DomainException("حداقل یک ردیف لازم است.");
         _lines.Clear();
         short row = 0;
         foreach (var l in list)
         {
             row++;
-            if (l.FactorId <= 0) throw new DomainException($"ردیف {row}: عامل هزینه الزامی است.");
             if (l.Amount <= 0) throw new DomainException($"ردیف {row}: مبلغ باید بزرگتر از صفر باشد.");
-            _lines.Add(new ImprestSettlementLine(row, l.FactorId, l.CenterId, Math.Round(l.Amount, 4),
-                Texts.Optional(l.Description, $"شرح ردیف {row}", 500)));
+            if (l.VatAmount < 0) throw new DomainException($"ردیف {row}: ارزش افزوده نمی‌تواند منفی باشد.");
+            var description = Texts.Optional(l.Description, $"شرح ردیف {row}", 500);
+            switch (l.Kind)
+            {
+                case ImprestLineKind.Expense:
+                    if (l.FactorId is not int f || f <= 0) throw new DomainException($"ردیف {row}: عامل هزینه الزامی است.");
+                    _lines.Add(new ImprestSettlementLine(row, l.Kind, f, l.CenterId, null, null, null,
+                        Math.Round(l.Amount, 4), Math.Round(l.VatAmount, 4), description));
+                    break;
+                case ImprestLineKind.Payment:
+                    if (l.TypeId is null) throw new DomainException($"ردیف {row}: نوع پرداخت را انتخاب کنید.");
+                    if (l.PersonId is null) throw new DomainException($"ردیف {row}: طرف حساب را انتخاب کنید.");
+                    if (l.AccountId is null) throw new DomainException($"ردیف {row}: معین نوع پرداخت پیدا نشد.");
+                    if (l.VatAmount != 0) throw new DomainException($"ردیف {row}: پرداخت به طرف حساب ارزش افزوده ندارد.");
+                    _lines.Add(new ImprestSettlementLine(row, l.Kind, null, null, l.TypeId, l.PersonId, l.AccountId,
+                        Math.Round(l.Amount, 4), 0, description));
+                    break;
+                default:
+                    throw new DomainException($"ردیف {row}: نوع ردیف معتبر نیست.");
+            }
         }
+        VatAmount = _lines.Sum(l => l.VatAmount);
     }
 
     public void Touch(DateTime nowUtc) => UpdatedAt = nowUtc;
@@ -106,21 +137,32 @@ public class ImprestSettlementLine
 {
     private ImprestSettlementLine() { } // EF
 
-    internal ImprestSettlementLine(short rowNo, int factorId, int? centerId, decimal amount, string? description)
+    internal ImprestSettlementLine(short rowNo, ImprestLineKind kind, int? factorId, int? centerId, short? typeId, int? personId,
+        int? accountId, decimal amount, decimal vatAmount, string? description)
     {
         RowNo = rowNo;
+        LineKind = kind;
         CostFactorId = factorId;
         CostCenterId = centerId;
+        TypeId = typeId;
+        PersonId = personId;
+        AccountId = accountId;
         Amount = amount;
+        VatAmount = vatAmount;
         Description = description;
     }
 
     public long Id { get; private set; }
     public long SettlementId { get; private set; }
     public short RowNo { get; private set; }
-    public int CostFactorId { get; private set; }
+    public ImprestLineKind LineKind { get; private set; }
+    public int? CostFactorId { get; private set; }
     public int? CostCenterId { get; private set; }
+    public short? TypeId { get; private set; }
+    public int? PersonId { get; private set; }
+    public int? AccountId { get; private set; }
     public decimal Amount { get; private set; }
+    public decimal VatAmount { get; private set; }
     public string? Description { get; private set; }
 }
 
@@ -325,6 +367,34 @@ public class Guarantee : TreasuryDocument
     public string? Subject { get; private set; }
     public bool IsReturned { get; private set; }
     public DateOnly? ReturnDate { get; private set; }
+    /// <summary>برگ دسته‌چک یا دفتر سفته (چک/سفته تضمینی پرداختی).</summary>
+    public long? LeafId { get; private set; }
+    /// <summary>ضمانت‌نامه بانکی تعریف‌شده (ضمانت‌نامه پرداختی).</summary>
+    public int? BankGuaranteeId { get; private set; }
+
+    /// <summary>
+    /// منبع سند تضمینی پرداختی: چک و سفته از برگ دفترچه، ضمانت‌نامه بانکی از ضمانت‌نامه تعریف‌شده؛ شماره از همان می‌آید.
+    /// </summary>
+    public void LinkSource(long? leafId, int? bankGuaranteeId, string? number, int? bankAccountId)
+    {
+        if (Direction != GuaranteeDirection.Issued) { LeafId = null; BankGuaranteeId = null; return; }
+        switch (Kind)
+        {
+            case GuaranteeKind.Cheque or GuaranteeKind.PromissoryNote when leafId is null:
+                throw new DomainException(Kind == GuaranteeKind.Cheque
+                    ? "برگ چک را از دسته‌چک‌های تعریف‌شده انتخاب کنید."
+                    : "برگ سفته را از دفترهای سفته تعریف‌شده انتخاب کنید.");
+            case GuaranteeKind.BankGuarantee when bankGuaranteeId is null:
+                throw new DomainException("ضمانت‌نامه را از ضمانت‌نامه‌های بانکی تعریف‌شده انتخاب کنید.");
+        }
+        LeafId = Kind is GuaranteeKind.Cheque or GuaranteeKind.PromissoryNote ? leafId : null;
+        BankGuaranteeId = Kind == GuaranteeKind.BankGuarantee ? bankGuaranteeId : null;
+        if (LeafId is not null || BankGuaranteeId is not null)
+        {
+            Number = number;
+            BankAccountId = bankAccountId;
+        }
+    }
 
     public void Set(DateOnly date, GuaranteeKind kind, int personId, int? bankAccountId, string? number, decimal amount,
         DateOnly? dueDate, string? subject, string? description)

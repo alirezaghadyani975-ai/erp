@@ -1,0 +1,24 @@
+@* نرخ ارزش افزوده سال تاریخ فرم، بالای جدول ردیف‌ها *@
+@inject VatRateCache Rates
+
+@if (_rate is { } r)
+{
+    <MudText Typo="Typo.caption" Color="Color.Secondary">ارزش افزوده سال @r.PersianYear: مالیات @(r.TaxPercent.ToString("0.##"))٪ + عوارض @(r.TollPercent.ToString("0.##"))٪</MudText>
+}
+else if (_year is int y)
+{
+    <MudText Typo="Typo.caption" Color="Color.Warning">نرخ ارزش افزوده سال @y تعریف نشده است؛ <MudLink Href="/base/vat-rates" Typo="Typo.caption">تعریف نرخ</MudLink></MudText>
+}
+
+@code {
+    [Parameter] public string? Date { get; set; }
+
+    private VatCalculation? _rate;
+    private int? _year;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _rate = await Rates.ForDateAsync(Date);
+        _year = _rate is null && PersianDate.TryParse(Date, out var d) ? PersianDate.PersianYear(d) : null;
+    }
+}

@@ -53,9 +53,11 @@ public class ExpenseTests(SqlFixture db)
         }
     }
 
+    /// <summary>ارزش افزوده روی ردیف اول (بقیه معاف).</summary>
     private static SaveExpenseInvoiceRequest Request(Seed s, string? invoiceNo, decimal vat, PayableKind kind,
         params ExpenseLineRequest[] lines) =>
-        new("1407/02/15", s.Supplier, kind, invoiceNo, "1407/02/10", vat, "تست شناسایی هزینه", [.. lines]);
+        new("1407/02/15", s.Supplier, kind, invoiceNo, "1407/02/10", "تست شناسایی هزینه",
+            [lines[0] with { VatAmount = vat }, .. lines.Skip(1)]);
 
     private Task<ExpenseInvoiceDto> Get(long id) => db.Run<ExpenseInvoiceService, ExpenseInvoiceDto>(s => s.GetAsync(id, default));
 
@@ -73,6 +75,7 @@ public class ExpenseTests(SqlFixture db)
 
         var invoice = await Get(id);
         Assert.Equal((1050m, 1140m), (invoice.LinesTotal, invoice.Total));
+        Assert.Equal([90m, 0m, 0m], invoice.Lines.OrderBy(l => l.RowNo).Select(l => l.VatAmount)); // مشمول و معاف در یک فرم
         Assert.Null(invoice.Lines.Single(l => l.CostFactorId == s.Interest).CostCenterId); // هزینه مالی مرکز ندارد
         var posted = Assert.IsType<ExpenseVoucherDto>(invoice.Voucher);
         Assert.Equal((byte)VoucherStatus.Temporary, posted.Status);

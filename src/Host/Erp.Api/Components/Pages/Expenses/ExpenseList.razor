@@ -1,6 +1,6 @@
 @page "/expenses"
 @inject Backend Backend
-@inject NavigationManager Nav
+@inject TabService Tabs
 @inject ISnackbar Snackbar
 
 <TabTitle Text="شناسایی هزینه" />
@@ -9,7 +9,7 @@
     <MudText Typo="Typo.h5">شناسایی هزینه</MudText>
     <MudSpacer />
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/expenses/new">فرم جدید</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/expenses/new"))">شناسایی هزینه جدید</MudButton>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
     فاکتورهای خدماتی تأمین‌کنندگان: هزینه با عامل و مرکز هزینه شناسایی و بدهی به تأمین‌کننده ثبت می‌شود؛ پرداخت بعداً از خزانه‌داری.
@@ -27,7 +27,7 @@
     </MudStack>
 
     <MudTable T="ExpenseInvoiceListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
-              OnRowClick="@(a => Nav.NavigateTo($"/expenses/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+              OnRowClick="@(a => Tabs.Go($"/expenses/{a.Item!.Id}"))" RowStyle="cursor:pointer">
         <HeaderContent>
             <MudTh>شماره</MudTh>
             <MudTh>تاریخ</MudTh>

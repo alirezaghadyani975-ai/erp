@@ -30,6 +30,9 @@ public class TreasuryDbContext : DbContext, ITreasuryDbContext
     public IQueryable<ChequeOperation> ChequeOperations => Set<ChequeOperation>();
     public IQueryable<ChequeOperationLine> ChequeOperationLines => Set<ChequeOperationLine>();
     public IQueryable<Guarantee> Guarantees => Set<Guarantee>();
+    public IQueryable<InstrumentBook> InstrumentBooks => Set<InstrumentBook>();
+    public IQueryable<InstrumentLeaf> InstrumentLeaves => Set<InstrumentLeaf>();
+    public IQueryable<BankGuarantee> BankGuarantees => Set<BankGuarantee>();
     public IQueryable<PersonRef> Persons => Set<PersonRef>().AsNoTracking();
     public IQueryable<BankRef> Banks => Set<BankRef>().AsNoTracking();
     public IQueryable<AccountRef> Accounts => Set<AccountRef>().AsNoTracking();
@@ -220,6 +223,7 @@ internal class ImprestSettlementLineConfiguration : IEntityTypeConfiguration<Imp
         b.ToTable("ImprestSettlementLines", "trs");
         b.HasKey(x => x.Id);
         b.Money(x => x.Amount);
+        b.Money(x => x.VatAmount);
         b.Property(x => x.Description).HasMaxLength(500);
         b.HasIndex(x => new { x.SettlementId, x.RowNo }).IsUnique();
     }
@@ -255,6 +259,45 @@ internal class GuaranteeConfiguration : IEntityTypeConfiguration<Guarantee>
         b.Property(x => x.Subject).HasMaxLength(300);
         b.Property(x => x.IsReturned).HasColumnName("Status")
             .HasConversion(v => v ? (byte)2 : (byte)1, v => v == 2);
+    }
+}
+
+internal class InstrumentBookConfiguration : IEntityTypeConfiguration<InstrumentBook>
+{
+    public void Configure(EntityTypeBuilder<InstrumentBook> b)
+    {
+        b.ToTable("InstrumentBooks", "trs");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Title).HasMaxLength(100);
+        b.Property(x => x.Series).HasMaxLength(20);
+        b.Property(x => x.MaxAmount).HasPrecision(24, 4);
+        b.Property(x => x.Notes).HasMaxLength(500);
+        b.HasMany(x => x.Leaves).WithOne().HasForeignKey(l => l.BookId).OnDelete(DeleteBehavior.Cascade);
+        b.Navigation(x => x.Leaves).UsePropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+internal class InstrumentLeafConfiguration : IEntityTypeConfiguration<InstrumentLeaf>
+{
+    public void Configure(EntityTypeBuilder<InstrumentLeaf> b)
+    {
+        b.ToTable("InstrumentLeaves", "trs");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.SerialNo).HasMaxLength(30);
+        b.Property(x => x.VoidReason).HasMaxLength(200);
+    }
+}
+
+internal class BankGuaranteeConfiguration : IEntityTypeConfiguration<BankGuarantee>
+{
+    public void Configure(EntityTypeBuilder<BankGuarantee> b)
+    {
+        b.ToTable("BankGuarantees", "trs");
+        b.HasKey(x => x.Id);
+        b.Money(x => x.Amount);
+        b.Property(x => x.Number).HasMaxLength(50);
+        b.Property(x => x.Subject).HasMaxLength(300);
+        b.Property(x => x.Notes).HasMaxLength(500);
     }
 }
 

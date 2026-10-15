@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@inject Erp.Api.Components.Shared.Forms.Shortcuts Shortcuts
+@inject IJSRuntime JS
 
 <MudRTLProvider RightToLeft="true">
     <MudThemeProvider Theme="_theme" />
@@ -51,6 +53,7 @@
                             <MudNavLink Href="/treasury/reports/due" Icon="@Icons.Material.Outlined.EventNote">سررسید ماهانه چک‌ها</MudNavLink>
                             <MudNavLink Href="/treasury/reports/balances" Icon="@Icons.Material.Outlined.AccountBalance">موجودی صندوق و بانک</MudNavLink>
                         </MudNavGroup>
+                        <MudNavLink Href="/treasury/instruments" Icon="@Icons.Material.Outlined.MenuBook">دسته‌چک، سفته و ضمانت‌نامه</MudNavLink>
                         <MudNavLink Href="/treasury/setup" Icon="@Icons.Material.Outlined.Tune">تعاریف خزانه‌داری</MudNavLink>
                     </MudNavGroup>
                     <MudNavGroup Title="بهای تمام‌شده" Icon="@Icons.Material.Outlined.Factory" Expanded="false">
@@ -80,6 +83,11 @@
 
 @code {
     private bool _drawerOpen = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await Shortcuts.AttachAsync(JS);
+    }
 
     private readonly MudTheme _theme = new()
     {

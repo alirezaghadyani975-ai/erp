@@ -22,7 +22,7 @@ public class TreasuryTests(SqlFixture db)
     private static Seed? _seed;
 
     private sealed record Seed(int Customer, int Supplier, int Box, int Bank, int Imprest, short ReceiptType, short PaymentType,
-        int Center, int RentFactor, int BankFeeFactor);
+        int Center, int RentFactor, int BankFeeFactor, int ChequeBook, int NoteBook);
 
     private async Task<Seed> SeedAsync()
     {
@@ -50,9 +50,15 @@ public class TreasuryTests(SqlFixture db)
                 new SaveCostCenterRequest { Title = "اداری خزانه", CenterTypeId = types2.First(t => t.Function == CostFunction.Admin && t.IsSystem).Id }, default));
             var factors = await db.Run<CostFactorService, List<CostFactorDto>>(s => s.SearchAsync(null, null, true, default));
 
+            var chequeBook = await db.Run<InstrumentService, int>(s => s.CreateBookAsync(new CreateInstrumentBookRequest(
+                InstrumentKind.ChequeBook, bank, "دسته‌چک تست", null, 900100, 900149, 0, "1406/01/05", null, null), default));
+            var noteBook = await db.Run<InstrumentService, int>(s => s.CreateBookAsync(new CreateInstrumentBookRequest(
+                InstrumentKind.PromissoryNoteBook, null, "سفته ۵۰ میلیونی", "الف", 1, 20, 4, "1406/01/05", 50_000_000, null), default));
+
             return _seed = new Seed(customer, supplier, box, bank, imprest,
                 types.Single(t => t.Title == "دریافت از مشتری").Id, types.Single(t => t.Title == "پرداخت به تأمین‌کننده").Id,
-                center, factors.Single(f => f.Title == "اجاره مکان").Id, factors.Single(f => f.Title == "کارمزدهای بانکی").Id);
+                center, factors.Single(f => f.Title == "اجاره مکان").Id, factors.Single(f => f.Title == "کارمزدهای بانکی").Id,
+                chequeBook, noteBook);
         }
         finally
         {
@@ -76,6 +82,12 @@ public class TreasuryTests(SqlFixture db)
         (await db.Run<TreasuryReportService, List<ChequeRowDto>>(x => x.ReceivedChequesAsync(new ChequeFilter(Ids: [id]), default))).Single();
 
     private static ChequeInput Cheque(string serial, string due, string? sayad = null) => new(serial, sayad, due);
+
+    private async Task<long> LeafAsync(int bookId, string serial) =>
+        (await db.Run<InstrumentService, List<InstrumentLeafDto>>(x => x.GetLeavesAsync(bookId, default))).Single(l => l.SerialNo == serial).Id;
+
+    private async Task<LeafStatus> LeafStatusAsync(int bookId, string serial) =>
+        (await db.Run<InstrumentService, List<InstrumentLeafDto>>(x => x.GetLeavesAsync(bookId, default))).Single(l => l.SerialNo == serial).Status;
 
     [Fact]
     public async Task Receipt_posts_cash_bank_and_cheque_against_customer()
@@ -175,10 +187,15 @@ public class TreasuryTests(SqlFixture db)
         var spendable = await db.Run<PaymentService, List<ChequeDto>>(x => x.GetSpendableChequesAsync(default));
         Assert.Contains(spendable, c => c.Id == received);
 
+        var leaf = await LeafAsync(s.ChequeBook, "900100");
+        // چک صادره بدون برگ دسته‌چک پذیرفته نمی‌شود
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<PaymentService, long>(x => x.CreateAsync(new SaveReceiptPaymentRequest(
+            "1406/02/10", s.Supplier, s.PaymentType, null, [new TreasuryLineRequest(Instrument.Cheque, null, s.Bank, 5, Cheque: Cheque("1", "1406/05/10"))]), default)));
+
         var pid = await db.Run<PaymentService, long>(x => x.CreateAsync(new SaveReceiptPaymentRequest("1406/02/10", s.Supplier, s.PaymentType, null,
         [
             new TreasuryLineRequest(Instrument.Bank, null, s.Bank, 100),
-            new TreasuryLineRequest(Instrument.Cheque, null, s.Bank, 900, Cheque: Cheque("900100", "1406/05/10")),
+            new TreasuryLineRequest(Instrument.Cheque, null, null, 900, Cheque: Cheque("", "1406/05/10") with { LeafId = leaf }),
             new TreasuryLineRequest(Instrument.SpendCheque, null, null, 0, ReceivedChequeId: received)
         ]), default));
         var p = await db.Run<PaymentService, ReceiptPaymentDto>(x => x.GetAsync(pid, default));
@@ -188,9 +205,13 @@ public class TreasuryTests(SqlFixture db)
         Assert.Equal("150005", v.Lines[2].Details.Single()!.Code); // ماه سررسید مرداد
         Assert.Equal("خرج‌شده", (await Received(received)).StatusTitle);
 
-        // شماره چک تکراری از همان حساب
+        Assert.Equal("900100", p.Lines[1].Cheque!.SerialNo);
+        Assert.Equal(LeafStatus.Used, await LeafStatusAsync(s.ChequeBook, "900100"));
+
+        // برگ مصرف‌شده دوباره استفاده نمی‌شود
         await Assert.ThrowsAsync<DomainException>(() => db.Run<PaymentService, long>(x => x.CreateAsync(new SaveReceiptPaymentRequest(
-            "1406/02/11", s.Supplier, s.PaymentType, null, [new TreasuryLineRequest(Instrument.Cheque, null, s.Bank, 5, Cheque: Cheque("900100", "1406/05/10"))]), default)));
+            "1406/02/11", s.Supplier, s.PaymentType, null,
+            [new TreasuryLineRequest(Instrument.Cheque, null, s.Bank, 5, Cheque: Cheque("", "1406/05/10") with { LeafId = leaf })]), default)));
 
         var issued = p.Lines[1].Cheque!.Id;
         var clear = await Op(ChequeOperationType.Clear, "1406/05/10", null, null, issued);
@@ -201,6 +222,7 @@ public class TreasuryTests(SqlFixture db)
         await db.Run<ChequeOperationService>(x => x.DeleteAsync(clear, default));
         await db.Run<PaymentService>(x => x.DeleteAsync(pid, default));
         Assert.Equal("در صندوق", (await Received(received)).StatusTitle);
+        Assert.Equal(LeafStatus.Blank, await LeafStatusAsync(s.ChequeBook, "900100")); // با حذف فرم برگ آزاد شد
     }
 
     [Fact]
@@ -218,13 +240,22 @@ public class TreasuryTests(SqlFixture db)
         await Assert.ThrowsAsync<DomainException>(() => db.Run<TransferService, long>(x => x.CreateAsync(new SaveTransferRequest("1406/02/12",
             FundKind.BankAccount, s.Bank, FundKind.Imprest, s.Imprest, 10, 5, s.BankFeeFactor, null, null, null), default))); // مرکز لازم
 
-        var sid = await db.Run<ImprestSettlementService, long>(x => x.CreateAsync(new SaveImprestSettlementRequest("1406/02/20", s.Imprest, 0, null,
-            [new ImprestLineRequest(s.RentFactor, s.Center, 1200, "اجاره انباری")]), default));
+        // صورت‌هزینه: یک هزینه مشمول ارزش افزوده و یک پرداخت بدهی به تأمین‌کننده از تنخواه
+        var sid = await db.Run<ImprestSettlementService, long>(x => x.CreateAsync(new SaveImprestSettlementRequest("1406/02/20", s.Imprest, null,
+        [
+            new ImprestLineRequest(s.RentFactor, s.Center, 1200, "اجاره انباری", VatAmount: 108),
+            new ImprestLineRequest(null, null, 300, null, Kind: ImprestLineKind.Payment, TypeId: s.PaymentType, PersonId: s.Supplier)
+        ]), default));
         var st = await db.Run<ImprestSettlementService, ImprestSettlementDto>(x => x.GetAsync(sid, default));
-        Assert.Equal(["8480+", "2821-"], Codes(await Voucher(st.Voucher!.VoucherId)));
+        Assert.Equal((1608m, 108m), (st.Total, st.VatAmount));
+        Assert.Equal(["8480+", "5011+", "2541+", "2821-"], Codes(await Voucher(st.Voucher!.VoucherId)));
+
+        // ردیف پرداخت به طرف حساب ارزش افزوده ندارد و طرف حساب می‌خواهد
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<ImprestSettlementService, long>(x => x.CreateAsync(new SaveImprestSettlementRequest(
+            "1406/02/20", s.Imprest, null, [new ImprestLineRequest(null, null, 10, Kind: ImprestLineKind.Payment, TypeId: s.PaymentType)]), default)));
 
         var balances = await db.Run<TreasuryReportService, List<FundBalanceDto>>(x => x.BalancesAsync(null, default));
-        Assert.Equal(3800m, balances.Single(b => b.Kind == FundKind.Imprest && b.Id == s.Imprest).Balance);
+        Assert.Equal(3392m, balances.Single(b => b.Kind == FundKind.Imprest && b.Id == s.Imprest).Balance);
         var asOf = await db.Run<TreasuryReportService, List<FundBalanceDto>>(x => x.BalancesAsync("1406/02/15", default));
         Assert.Equal(5000m, asOf.Single(b => b.Kind == FundKind.Imprest && b.Id == s.Imprest).Balance);
     }
@@ -249,10 +280,56 @@ public class TreasuryTests(SqlFixture db)
         g = await db.Run<GuaranteeService, GuaranteeDto>(x => x.GetAsync(gid, default));
         Assert.Null(g.ReturnVoucher);
 
+        // ضمانت‌نامه بانکی پرداختی فقط از ضمانت‌نامه تعریف‌شده
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<GuaranteeService, long>(x => x.CreateAsync(new SaveGuaranteeRequest(
+            GuaranteeDirection.Issued, GuaranteeKind.BankGuarantee, "1406/02/01", s.Customer, s.Bank, "ض-1", 50000, null, null, null), default)));
+        var bg = await db.Run<InstrumentService, int>(x => x.SaveBankGuaranteeAsync(null,
+            new SaveBankGuaranteeRequest(s.Bank, "ض-1", 50000, "1406/01/20", "1407/01/01", "مناقصه", null), default));
         var issued = await db.Run<GuaranteeService, long>(x => x.CreateAsync(new SaveGuaranteeRequest(GuaranteeDirection.Issued, GuaranteeKind.BankGuarantee,
-            "1406/02/01", s.Customer, s.Bank, "ض-1", 50000, "1407/01/01", "مناقصه", null), default));
+            "1406/02/01", s.Customer, null, null, 0, null, "مناقصه", null, BankGuaranteeId: bg), default));
         var ig = await db.Run<GuaranteeService, GuaranteeDto>(x => x.GetAsync(issued, default));
+        Assert.Equal(("ض-1", 50000m, "1407/01/01"), (ig.Number, ig.Amount, ig.DueDate));
         Assert.Equal(["9152+", "9251-"], Codes(await Voucher(ig.Voucher!.VoucherId)));
+        async Task<BankGuaranteeStatus> BgStatus() =>
+            (await db.Run<InstrumentService, List<BankGuaranteeDto>>(x => x.GetBankGuaranteesAsync(null, default))).Single(x => x.Id == bg).Status;
+        Assert.Equal(BankGuaranteeStatus.Delivered, await BgStatus());
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<InstrumentService>(x => x.CancelBankGuaranteeAsync(bg, "1406/03/01", default)));
+        await db.Run<GuaranteeService>(x => x.ReturnAsync(issued, "1406/03/01", default));
+        Assert.Equal(BankGuaranteeStatus.Available, await BgStatus());
+        await db.Run<InstrumentService>(x => x.CancelBankGuaranteeAsync(bg, "1406/03/02", default));
+        Assert.Equal(BankGuaranteeStatus.Cancelled, await BgStatus());
+
+        // سفته پرداختی از دفتر سفته، با سقف مبلغ
+        var note = await LeafAsync(s.NoteBook, "الف/0001");
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<GuaranteeService, long>(x => x.CreateAsync(new SaveGuaranteeRequest(
+            GuaranteeDirection.Issued, GuaranteeKind.PromissoryNote, "1406/02/01", s.Customer, null, null, 60_000_000, null, null, null, LeafId: note), default)));
+        var ng = await db.Run<GuaranteeService, long>(x => x.CreateAsync(new SaveGuaranteeRequest(
+            GuaranteeDirection.Issued, GuaranteeKind.PromissoryNote, "1406/02/01", s.Customer, null, null, 40_000_000, null, null, null, LeafId: note), default));
+        Assert.Equal("الف/0001", (await db.Run<GuaranteeService, GuaranteeDto>(x => x.GetAsync(ng, default))).Number);
+        Assert.Equal(LeafStatus.Used, await LeafStatusAsync(s.NoteBook, "الف/0001"));
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<InstrumentService>(x => x.DeleteBookAsync(s.NoteBook, default)));
+        await db.Run<GuaranteeService>(x => x.DeleteAsync(ng, default));
+        Assert.Equal(LeafStatus.Blank, await LeafStatusAsync(s.NoteBook, "الف/0001"));
+    }
+
+    [Fact]
+    public async Task Instrument_books_leaves_and_overlap()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var books = await db.Run<InstrumentService, List<InstrumentBookDto>>(x => x.GetBooksAsync(InstrumentKind.ChequeBook, default));
+        var book = books.Single(b => b.Id == s.ChequeBook);
+        Assert.Equal(50, book.Total);
+        // هم‌پوشانی بازه با دسته‌چک دیگر همان حساب
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<InstrumentService, int>(x => x.CreateBookAsync(new CreateInstrumentBookRequest(
+            InstrumentKind.ChequeBook, s.Bank, "تکراری", null, 900140, 900160, 0, "1406/01/05", null, null), default)));
+
+        var leaf = await LeafAsync(s.ChequeBook, "900149");
+        await db.Run<InstrumentService>(x => x.VoidLeafAsync(leaf, "1406/01/06", "مخدوش", default));
+        var blank = await db.Run<InstrumentService, List<LeafOption>>(x => x.GetBlankLeavesAsync(InstrumentKind.ChequeBook, s.Bank, default));
+        Assert.DoesNotContain(blank, l => l.Id == leaf);
+        await db.Run<InstrumentService>(x => x.UndoVoidLeafAsync(leaf, default));
+        Assert.Equal(LeafStatus.Blank, await LeafStatusAsync(s.ChequeBook, "900149"));
     }
 
     [Fact]

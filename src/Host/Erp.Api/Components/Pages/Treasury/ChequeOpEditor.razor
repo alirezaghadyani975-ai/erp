@@ -16,33 +16,16 @@
 }
 
 <FormWithList Title="@SideTitle" Load="LoadSideAsync" NewUrl="@($"{SideUrl}/new")" CurrentUrl="@SelfUrl">
-<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
-    <MudText Typo="Typo.h5">@Heading</MudText>
-    @if (_view?.Voucher is { } v)
-    {
-        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
-                 Color="@Format.StatusColor((VoucherStatus)v.Status)" OnClick="OpenVoucher">
-            سند @v.TempNo — @Format.Status((VoucherStatus)v.Status)
-        </MudChip>
-    }
-    <MudSpacer />
-    @if (_view is not null)
-    {
-        @if (_view.Voucher is not null)
+<FormToolbar Title="@Heading" IsNew="_view is null" Editing="_view is null" CanDelete="@(_view?.LockReason is null)" Busy="_saving"
+             SaveText="ثبت عملیات و صدور سند" VoucherId="_view?.Voucher?.VoucherId" LockReason="@_view?.LockReason"
+             OnNew="@(() => Tabs.Go($"{SideUrl}/new"))" OnSave="SaveAsync" OnCancel="ResetAsync" OnDelete="DeleteAsync">
+    <Chips>
+        @if (_view?.Voucher is { } v)
         {
-            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.ReceiptLong" OnClick="OpenVoucher">مشاهده سند</MudButton>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@Format.StatusColor((VoucherStatus)v.Status)">سند @v.TempNo — @Format.Status((VoucherStatus)v.Status)</MudChip>
         }
-        @if (_view.LockReason is null)
-        {
-            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Undo" OnClick="DeleteAsync">حذف و برگرداندن عملیات</MudButton>
-        }
-    }
-    else
-    {
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync"
-                   Disabled="@(_saving || _selected.Count == 0)">ثبت عملیات و صدور سند</MudButton>
-    }
-</MudStack>
+    </Chips>
+</FormToolbar>
 
 @if (_error is not null)
 {
@@ -51,10 +34,6 @@
 
 @if (_view is not null)
 {
-    @if (_view.LockReason is not null)
-    {
-        <MudAlert Severity="Severity.Info" Class="mb-3">@_view.LockReason</MudAlert>
-    }
     <MudPaper Class="pa-4 mb-3" Elevation="1">
         <MudGrid Spacing="2">
             <MudItem xs="6" md="2"><MudField Label="تاریخ" Variant="Variant.Text" Margin="Margin.Dense"><span class="code">@_view.Date</span></MudField></MudItem>
@@ -211,15 +190,17 @@ else
             $"{x.Date} · {x.ChequeCount} چک{(x.TargetTitle is null ? "" : $" · {x.TargetTitle}")}", Format.Amount(x.Total))).ToList();
     }
 
-    private void OpenVoucher()
+    private async Task ResetAsync()
     {
-        if (_view?.Voucher is { } v) Tabs.Go($"/vouchers/{v.VoucherId}");
+        _description = null;
+        await OperationChanged(_op);
     }
 
     private async Task SaveAsync()
     {
         _error = null;
         if (_date is null) { _error = "تاریخ الزامی است."; return; }
+        if (_selected.Count == 0) { _error = "حداقل یک چک را از فهرست انتخاب کنید."; return; }
         var request = new SaveChequeOperationRequest(_op, _date,
             _op is ChequeOperationType.Collect or ChequeOperationType.Withdraw ? _boxId : null,
             _op is ChequeOperationType.Deposit or ChequeOperationType.Collect ? _bankId : null,

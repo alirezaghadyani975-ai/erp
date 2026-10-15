@@ -305,6 +305,10 @@ public class IssuedCheque
     public decimal Amount { get; private set; }
     public IssuedChequeStatus Status { get; private set; }
     public string? Description { get; private set; }
+    /// <summary>برگ دسته‌چکی که این چک از آن صادر شده است.</summary>
+    public long? LeafId { get; private set; }
+
+    public void LinkLeaf(long leafId) => LeafId = leafId;
 
     public void MoveTo(IssuedChequeStatus status) => Status = status;
 }
