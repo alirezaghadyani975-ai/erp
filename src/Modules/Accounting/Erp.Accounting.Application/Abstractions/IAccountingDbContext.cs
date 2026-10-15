@@ -2,6 +2,7 @@ using Erp.Accounting.Domain.BaseData;
 using Erp.Accounting.Domain.ChartOfAccounts;
 using Erp.Accounting.Domain.Details;
 using Erp.Accounting.Domain.FiscalYears;
+using Erp.Accounting.Domain.Posting;
 using Erp.Accounting.Domain.Vouchers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -23,6 +24,7 @@ public interface IAccountingDbContext
     DbSet<FiscalYear> FiscalYears { get; }
     DbSet<Voucher> Vouchers { get; }
     DbSet<VoucherLine> VoucherLines { get; }
+    DbSet<PostingTemplate> PostingTemplates { get; }
 
     DatabaseFacade Database { get; }
 

@@ -21,6 +21,9 @@ public sealed class TabService(NavigationManager nav)
 {
     public const int MaxTabs = 15;
 
+    /// <summary>تب صفحه نخست: همیشه اول و بسته نمی‌شود.</summary>
+    public const string HomeKey = "";
+
     private readonly List<TabItem> _tabs = [];
     private string? _replaceKey;
 
@@ -41,6 +44,9 @@ public sealed class TabService(NavigationManager nav)
     public void Open(Microsoft.AspNetCore.Components.RouteData route, string uri)
     {
         var key = KeyOf(nav, uri);
+        if (key != HomeKey && _tabs.All(t => t.Key != HomeKey))
+            _tabs.Insert(0, new TabItem { Key = HomeKey, PageType = typeof(Pages.Home), Parameters = new Dictionary<string, object?>(), Title = "صفحه نخست" });
+
         var existing = _tabs.FirstOrDefault(t => t.Key == key);
         if (existing is null)
         {
@@ -50,8 +56,12 @@ public sealed class TabService(NavigationManager nav)
                 PageType = route.PageType,
                 Parameters = new Dictionary<string, object?>(route.RouteValues)
             };
-            var replace = _replaceKey is null ? null : _tabs.FirstOrDefault(t => t.Key == _replaceKey);
-            if (replace is not null)
+            var replace = _replaceKey is null or HomeKey ? null : _tabs.FirstOrDefault(t => t.Key == _replaceKey);
+            if (key == HomeKey)
+            {
+                _tabs.Insert(0, item);
+            }
+            else if (replace is not null)
             {
                 item.Version = replace.Version + 1;
                 _tabs[_tabs.IndexOf(replace)] = item;
@@ -79,7 +89,7 @@ public sealed class TabService(NavigationManager nav)
     public void CloseCurrentAndGo(string uri)
     {
         var current = ActiveKey;
-        if (current is not null) _tabs.RemoveAll(t => t.Key == current);
+        if (current is not null and not HomeKey) _tabs.RemoveAll(t => t.Key == current);
         ActiveKey = null;
         nav.NavigateTo(uri);
     }
@@ -92,6 +102,7 @@ public sealed class TabService(NavigationManager nav)
 
     public void Close(string key)
     {
+        if (key == HomeKey) return;
         var index = _tabs.FindIndex(t => t.Key == key);
         if (index < 0) return;
         _tabs.RemoveAt(index);
@@ -99,7 +110,7 @@ public sealed class TabService(NavigationManager nav)
         {
             ActiveKey = null;
             var next = _tabs.Count == 0 ? null : _tabs[Math.Min(index, _tabs.Count - 1)];
-            nav.NavigateTo(next is null ? "/vouchers" : "/" + next.Key);
+            nav.NavigateTo(next is null ? "/" : "/" + next.Key);
             return;
         }
         Changed?.Invoke();
@@ -107,7 +118,7 @@ public sealed class TabService(NavigationManager nav)
 
     public void CloseOthers(string key)
     {
-        _tabs.RemoveAll(t => t.Key != key);
+        _tabs.RemoveAll(t => t.Key != key && t.Key != HomeKey);
         if (ActiveKey != key) nav.NavigateTo("/" + key);
         else Changed?.Invoke();
     }
@@ -124,7 +135,7 @@ public sealed class TabService(NavigationManager nav)
     {
         while (_tabs.Count > MaxTabs)
         {
-            var oldest = _tabs.First(t => t != keep && t.Key != ActiveKey);
+            var oldest = _tabs.First(t => t != keep && t.Key != ActiveKey && t.Key != HomeKey);
             _tabs.Remove(oldest);
         }
     }

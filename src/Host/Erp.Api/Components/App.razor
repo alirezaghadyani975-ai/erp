@@ -13,5 +13,14 @@
     <Routes @rendermode="InteractiveServer" />
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script>
+        // Ctrl+K (روی صفحه‌کلید فارسی هم): رفتن به جستجوی سراسری
+        document.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
+                const box = document.querySelector('#global-search input');
+                if (box) { e.preventDefault(); box.focus(); box.select(); }
+            }
+        });
+    </script>
 </body>
 </html>

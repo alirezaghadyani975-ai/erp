@@ -9,13 +9,21 @@
         {
             var key = tab.Key;
             var active = key == Tabs.ActiveKey;
-            <div class="tab-item @(active ? "active" : "")" title="@tab.Title"
+            var home = key == TabService.HomeKey;
+            <div class="tab-item @(active ? "active" : "") @(home ? "tab-home" : "")" title="@tab.Title"
                  @onclick="() => Tabs.Activate(key)" @onmouseup="e => { if (e.Button == 1) Tabs.Close(key); }">
+                @if (home)
+                {
+                    <MudIcon Icon="@Icons.Material.Outlined.Home" Size="Size.Small" />
+                }
                 <span class="tab-title">@tab.Title</span>
-                <span class="tab-close" @onclick="() => Tabs.Close(key)" @onclick:stopPropagation="true" aria-label="بستن">×</span>
+                @if (!home)
+                {
+                    <span class="tab-close" @onclick="() => Tabs.Close(key)" @onclick:stopPropagation="true" aria-label="بستن">×</span>
+                }
             </div>
         }
-        @if (Tabs.Tabs.Count > 1)
+        @if (Tabs.Tabs.Count > 2)
         {
             <MudTooltip Text="بستن بقیه تب‌ها">
                 <MudIconButton Icon="@Icons.Material.Outlined.ClearAll" Size="Size.Small" Class="tab-close-others"

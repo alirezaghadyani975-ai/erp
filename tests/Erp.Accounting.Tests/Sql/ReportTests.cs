@@ -41,7 +41,7 @@ public class ReportTests(SqlFixture db)
             var roles = await db.Run<PersonService, List<PersonRoleTypeDto>>(s => s.GetRoleTypesAsync(false, default));
             var customerRole = roles.Single(r => r.Code == RoleCodes.Customer).Id;
 
-            var account = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("1211", default));
+            var account = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("2411", default));
             await db.Run<AccountService>(s => s.SetDetailLevelAsync(account.Id, 1,
                 new SetDetailLevelRequest(true, [customerType], [customerRole]), default));
 
@@ -49,18 +49,18 @@ public class ReportTests(SqlFixture db)
             var p1 = await db.Run<PersonService, int>(s => s.CreateAsync(Customer("مشتری", "یک", customerRole), default));
             var p2 = await db.Run<PersonService, int>(s => s.CreateAsync(Customer("مشتری", "دو", customerRole), default));
             var details = await db.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(customerType, null, default));
-            // صندوق تفصیلی صندوق می‌خواهد (قاعده پیش‌فرض معین 1001)
+            // صندوق تفصیلی صندوق می‌خواهد (قاعده پیش‌فرض معین 2801)
             var cashType = types.Single(t => t.CodeFrom == "100001").Id;
             await db.Run<DetailService, int>(s => s.CreateAccountAsync(new CreateDetailAccountRequest(cashType, "صندوق مرکزی", null), default));
             var (c1, code1) = details.Where(d => d.PersonId == p1).Select(d => (d.Id, d.Code)).Single();
             var (c2, code2) = details.Where(d => d.PersonId == p2).Select(d => (d.Id, d.Code)).Single();
 
             var opening = await Voucher(yearId, "1405/01/01", VoucherType.Opening,
-                Line("1001", "100001", 5000, 0), Line("1211", code1, 500, 0), Line("5001", null, 0, 5500));
-            var sale1 = await Voucher(yearId, "1405/02/10", VoucherType.Normal, Line("1211", code1, 1000, 0), Line("6001", null, 0, 1000));
-            var sale2 = await Voucher(yearId, "1405/03/05", VoucherType.Normal, Line("1211", code2, 300, 0), Line("6001", null, 0, 300));
-            var receipt = await Voucher(yearId, "1405/03/20", VoucherType.Normal, Line("1001", "100001", 400, 0), Line("1211", code1, 0, 400));
-            await Voucher(yearId, "1405/04/01", VoucherType.Normal, Line("1211", code1, 99, 0), Line("6001", null, 0, 99));
+                Line("2801", "100001", 5000, 0), Line("2411", code1, 500, 0), Line("3301", null, 0, 5500));
+            var sale1 = await Voucher(yearId, "1405/02/10", VoucherType.Normal, Line("2411", code1, 1000, 0), Line("6001", null, 0, 1000));
+            var sale2 = await Voucher(yearId, "1405/03/05", VoucherType.Normal, Line("2411", code2, 300, 0), Line("6001", null, 0, 300));
+            var receipt = await Voucher(yearId, "1405/03/20", VoucherType.Normal, Line("2801", "100001", 400, 0), Line("2411", code1, 0, 400));
+            await Voucher(yearId, "1405/04/01", VoucherType.Normal, Line("2411", code1, 99, 0), Line("6001", null, 0, 99));
 
             foreach (var id in new[] { opening, sale1, sale2, receipt })
                 await db.Run<VoucherService>(s => s.MarkTemporaryAsync(id, default));
@@ -100,12 +100,12 @@ public class ReportTests(SqlFixture db)
 
         var tb = await Trial(new TrialBalanceRequest(new ReportFilter(seed.YearId)));
 
-        Assert.Equal(["1001", "1211", "5001", "6001"], tb.Rows.Select(r => r.Code));
-        var ar = Row(tb, "1211");
+        Assert.Equal(["2411", "2801", "3301", "6001"], tb.Rows.Select(r => r.Code));
+        var ar = Row(tb, "2411");
         Assert.Equal((1800m, 400m, 1400m, 0m), (ar.TotalDebit, ar.TotalCredit, ar.EndingDebit, ar.EndingCredit));
         Assert.Equal((500m, 1300m, 400m), (ar.OpeningDebit, ar.PeriodDebit, ar.PeriodCredit)); // افتتاحیه = مانده ابتدای دوره
         Assert.Equal(1300m, Row(tb, "6001").EndingCredit);
-        Assert.Equal(5500m, Row(tb, "5001").OpeningCredit);
+        Assert.Equal(5500m, Row(tb, "3301").OpeningCredit);
 
         Assert.True(tb.IsBalanced);
         Assert.Equal((7200m, 7200m, 6800m, 6800m),
@@ -120,7 +120,7 @@ public class ReportTests(SqlFixture db)
 
         var tb = await Trial(new TrialBalanceRequest(new ReportFilter(seed.YearId, IncludeTemporary: false)));
 
-        Assert.Equal(1100m, Row(tb, "1211").EndingDebit);
+        Assert.Equal(1100m, Row(tb, "2411").EndingDebit);
         Assert.Equal(1000m, Row(tb, "6001").EndingCredit);
         Assert.True(tb.IsBalanced);
     }
@@ -133,7 +133,7 @@ public class ReportTests(SqlFixture db)
 
         var tb = await Trial(new TrialBalanceRequest(new ReportFilter(seed.YearId, FromDate: "1405/03/01")));
 
-        var ar = Row(tb, "1211");
+        var ar = Row(tb, "2411");
         Assert.Equal((1500m, 0m), (ar.OpeningDebit, ar.OpeningCredit));
         Assert.Equal((300m, 400m), (ar.PeriodDebit, ar.PeriodCredit));
         Assert.Equal(1400m, ar.EndingDebit);
@@ -148,8 +148,8 @@ public class ReportTests(SqlFixture db)
 
         var tb = await Trial(new TrialBalanceRequest(new ReportFilter(seed.YearId, ToDate: "1405/02/31")));
 
-        Assert.Equal(1500m, Row(tb, "1211").EndingDebit);
-        Assert.Equal(5000m, Row(tb, "1001").EndingDebit);
+        Assert.Equal(1500m, Row(tb, "2411").EndingDebit);
+        Assert.Equal(5000m, Row(tb, "2801").EndingDebit);
         Assert.True(tb.IsBalanced);
     }
 
@@ -160,13 +160,13 @@ public class ReportTests(SqlFixture db)
         var seed = await SeedAsync();
 
         var groups = await Trial(new TrialBalanceRequest(new ReportFilter(seed.YearId), TrialBalanceLevel.Group));
-        Assert.Equal(["1", "5", "6"], groups.Rows.Select(r => r.Code));
-        Assert.Equal((7200m, 400m, 6800m), (Row(groups, "1").TotalDebit, Row(groups, "1").TotalCredit, Row(groups, "1").EndingDebit));
+        Assert.Equal(["2", "3", "6"], groups.Rows.Select(r => r.Code));
+        Assert.Equal((7200m, 400m, 6800m), (Row(groups, "2").TotalDebit, Row(groups, "2").TotalCredit, Row(groups, "2").EndingDebit));
         Assert.True(groups.IsBalanced);
 
-        var generals = await Trial(new TrialBalanceRequest(new ReportFilter(seed.YearId), TrialBalanceLevel.General, AccountCode: "1"));
-        Assert.Equal(["10", "12"], generals.Rows.Select(r => r.Code));
-        Assert.Equal(1400m, Row(generals, "12").EndingDebit);
+        var generals = await Trial(new TrialBalanceRequest(new ReportFilter(seed.YearId), TrialBalanceLevel.General, AccountCode: "2"));
+        Assert.Equal(["24", "28"], generals.Rows.Select(r => r.Code));
+        Assert.Equal(1400m, Row(generals, "24").EndingDebit);
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public class ReportTests(SqlFixture db)
         var seed = await SeedAsync();
 
         var tb = await Trial(new TrialBalanceRequest(new ReportFilter(seed.YearId), TrialBalanceLevel.Detail,
-            AccountCode: "1211", DetailTypeId: seed.CustomerTypeId));
+            AccountCode: "2411", DetailTypeId: seed.CustomerTypeId));
 
         var c1 = tb.Rows.Single(r => r.DetailId == seed.Customer1);
         var c2 = tb.Rows.Single(r => r.DetailId == seed.Customer2);
@@ -194,9 +194,9 @@ public class ReportTests(SqlFixture db)
         // شماره قطعی: افتتاحیه ۱، فروش ۲، دریافت ۳
         var tb = await Trial(new TrialBalanceRequest(new ReportFilter(seed.YearId, FromVoucherNo: 2, ToVoucherNo: 3)));
 
-        var ar = Row(tb, "1211");
+        var ar = Row(tb, "2411");
         Assert.Equal((1000m, 400m), (ar.TotalDebit, ar.TotalCredit));
-        Assert.DoesNotContain(tb.Rows, r => r.Code == "5001");
+        Assert.DoesNotContain(tb.Rows, r => r.Code == "3301");
     }
 
     [Fact]
@@ -205,13 +205,13 @@ public class ReportTests(SqlFixture db)
         if (!db.Enabled) return;
         var seed = await SeedAsync();
 
-        var ledger = await Ledger(new LedgerRequest(new ReportFilter(seed.YearId, FromDate: "1405/02/01"), AccountCode: "1211"));
+        var ledger = await Ledger(new LedgerRequest(new ReportFilter(seed.YearId, FromDate: "1405/02/01"), AccountCode: "2411"));
 
         Assert.Equal(500m, ledger.OpeningBalance);
         Assert.Equal([1500m, 1800m, 1400m], ledger.Rows.Select(r => r.Balance));
         Assert.Equal(["1405/02/10", "1405/03/05", "1405/03/20"], ledger.Rows.Select(r => r.Date));
         Assert.Equal((1300m, 400m, 1400m), (ledger.TotalDebit, ledger.TotalCredit, ledger.EndingBalance));
-        Assert.Contains("1211", ledger.Title);
+        Assert.Contains("2411", ledger.Title);
         Assert.All(ledger.Rows, r => Assert.NotNull(r.Details));
     }
 
@@ -248,13 +248,13 @@ public class ReportTests(SqlFixture db)
         var seed = await SeedAsync();
 
         // حساب استاندارد حذف نمی‌شود؛ حساب اختصاصی با گردش هم نه، تا سندش حذف شود
-        var cash = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("1001", default));
+        var cash = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("2801", default));
         await Assert.ThrowsAsync<DomainException>(() => db.Run<AccountService>(s => s.DeleteAsync(cash.Id, default)));
         var custom = await db.Run<AccountService, int>(s => s.CreateAsync(
-            new CreateAccountRequest(cash.ParentId!.Value, "1098", "صندوق آزمایشی حذف", AccountNature.Debit, null), default));
-        var draft = await Voucher(seed.YearId, "1405/04/02", VoucherType.Normal, Line("1098", null, 10, 0), Line("6001", null, 0, 10));
+            new CreateAccountRequest(cash.ParentId!.Value, "2898", "صندوق آزمایشی حذف", AccountNature.Debit, null), default));
+        var draft = await Voucher(seed.YearId, "1405/04/02", VoucherType.Normal, Line("2898", null, 10, 0), Line("6001", null, 0, 10));
         var used = await Assert.ThrowsAsync<DomainException>(() => db.Run<AccountService>(s => s.DeleteAsync(custom, default)));
-        Assert.Contains("1098", used.Message);
+        Assert.Contains("2898", used.Message);
 
         // سال مالی دارای سند حذف نمی‌شود
         await Assert.ThrowsAsync<DomainException>(() => db.Run<FiscalYearService>(s => s.DeleteAsync(seed.YearId, default)));

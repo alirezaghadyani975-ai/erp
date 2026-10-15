@@ -13,7 +13,8 @@ public class DatabaseScriptTests
         Assert.Equal(
             ["Erp.Database.Migrations.01_schema.sql", "Erp.Database.Migrations.02_seed_coding.sql", "Erp.Database.Migrations.03_seed_calendar.sql",
              "Erp.Database.Migrations.05_persons_roles.sql", "Erp.Database.Migrations.06_base_data.sql",
-             "Erp.Database.Migrations.07_costing.sql", "Erp.Database.Migrations.08_new_coding.sql"],
+             "Erp.Database.Migrations.07_costing.sql", "Erp.Database.Migrations.08_new_coding.sql",
+             "Erp.Database.Migrations.09_standard_order.sql", "Erp.Database.Migrations.10_posting_expenses.sql"],
             names);
     }
 }

@@ -4,6 +4,7 @@ using System.Text.Unicode;
 using Erp.Accounting.Infrastructure;
 using Erp.BaseData.Infrastructure;
 using Erp.Costing.Infrastructure;
+using Erp.Expenses.Infrastructure;
 using Erp.Api.Components;
 using Erp.Api.Components.Shared;
 using Erp.Api.Infrastructure;
@@ -24,6 +25,7 @@ builder.Services.AddSingleton<DatabaseMigrator>();
 builder.Services.AddBaseDataModule();
 builder.Services.AddCostingModule();
 builder.Services.AddAccountingModule();
+builder.Services.AddExpensesModule();
 
 builder.Services.AddControllers().AddJsonOptions(o =>
 {

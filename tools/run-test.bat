@@ -47,8 +47,8 @@ echo. >> "%LOG%"
 echo GET fiscal-years: >> "%LOG%"
 curl -s %API%/accounting/fiscal-years >> "%LOG%" 2>&1
 echo. >> "%LOG%"
-echo GET account 3325: >> "%LOG%"
-curl -s %API%/accounting/accounts/by-code/3325 >> "%LOG%" 2>&1
+echo GET account 5125: >> "%LOG%"
+curl -s %API%/accounting/accounts/by-code/5125 >> "%LOG%" 2>&1
 echo. >> "%LOG%"
 echo GET provinces: >> "%LOG%"
 curl -s %API%/base/lookups/province >> "%LOG%" 2>&1

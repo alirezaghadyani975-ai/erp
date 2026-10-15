@@ -22,11 +22,11 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
 
         var rows = await query.OrderBy(v => v.TempNo)
             .Select(v => new { v.Id, v.TempNo, v.VoucherNo, v.VoucherDate, v.Description, v.Type, v.Status,
-                Total = v.Lines.Sum(l => l.Debit) })
+                Total = v.Lines.Sum(l => l.Debit), v.SourceDocType })
             .ToListAsync(ct);
 
         return rows.Select(r => new VoucherSummaryDto(r.Id, r.TempNo, r.VoucherNo, PersianDate.ToPersian(r.VoucherDate),
-            r.Description, r.Type, r.Status, r.Total)).ToList();
+            r.Description, r.Type, r.Status, r.Total, r.SourceDocType)).ToList();
     }
 
     public async Task<VoucherDto> GetAsync(long id, CancellationToken ct)
@@ -92,6 +92,7 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
     public async Task UpdateAsync(long id, SaveVoucherRequest request, CancellationToken ct)
     {
         var voucher = await LoadAsync(id, ct);
+        await EnsureManualAsync(voucher, ct);
         var fiscalYear = await GetFiscalYearAsync(voucher.FiscalYearId, ct);
 
         await using var tx = await uow.BeginAsync(ct);
@@ -108,6 +109,7 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
     public async Task DeleteAsync(long id, CancellationToken ct)
     {
         var voucher = await LoadAsync(id, ct);
+        await EnsureManualAsync(voucher, ct);
         if (voucher.Status != VoucherStatus.Draft)
             throw new DomainException("فقط سند پیش‌نویس حذف می‌شود؛ سند موقت را برگردانید به پیش‌نویس یا باطل کنید، سند دائم حذف نمی‌شود.");
         db.Vouchers.Remove(voucher);
@@ -116,9 +118,9 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
 
     public Task MarkTemporaryAsync(long id, CancellationToken ct) => ChangeAsync(id, v => v.MarkTemporary(), ct);
 
-    public Task ReturnToDraftAsync(long id, CancellationToken ct) => ChangeAsync(id, v => v.ReturnToDraft(), ct);
+    public Task ReturnToDraftAsync(long id, CancellationToken ct) => ChangeAsync(id, v => v.ReturnToDraft(), ct, manualOnly: true);
 
-    public Task VoidAsync(long id, CancellationToken ct) => ChangeAsync(id, v => v.Void(), ct);
+    public Task VoidAsync(long id, CancellationToken ct) => ChangeAsync(id, v => v.Void(), ct, manualOnly: true);
 
     /// <summary>دائم کردن سند با شماره قطعی بعدی (پیوسته و بدون جای خالی در سال مالی).</summary>
     public async Task<int> MarkPermanentAsync(long id, CancellationToken ct)
@@ -143,9 +145,10 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
         }
     }
 
-    private async Task ChangeAsync(long id, Action<Voucher> change, CancellationToken ct)
+    private async Task ChangeAsync(long id, Action<Voucher> change, CancellationToken ct, bool manualOnly = false)
     {
         var voucher = await LoadAsync(id, ct);
+        if (manualOnly) await EnsureManualAsync(voucher, ct);
         change(voucher);
         await db.SaveChangesAsync(ct);
     }
@@ -204,6 +207,15 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
                 throw new DomainException($"ردیف {row}: {ex.Message}", ex.Code);
             }
         }
+    }
+
+    /// <summary>سندی که زیرسیستم صادر کرده فقط از همان فرم اصلاح یا حذف می‌شود.</summary>
+    private async Task EnsureManualAsync(Voucher voucher, CancellationToken ct)
+    {
+        if (!voucher.IsSystemGenerated) return;
+        var source = await db.PostingTemplates.Where(t => t.SourceDocType == voucher.SourceDocType)
+            .Select(t => t.Title).FirstOrDefaultAsync(ct) ?? voucher.SourceDocType;
+        throw new DomainException($"این سند خودکار از «{source}» صادر شده است؛ اصلاح و حذفش فقط از همان فرم ممکن است.");
     }
 
     private async Task<FiscalYear> GetFiscalYearAsync(short id, CancellationToken ct) =>

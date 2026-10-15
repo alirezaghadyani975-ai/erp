@@ -291,7 +291,7 @@ public class PersonTests(SqlFixture db)
         var legal = types.Single(t => t.OwnerModule == OwnerModules.Persons && t.PersonKind == PersonKind.Legal).Id;
         var natural = types.Single(t => t.OwnerModule == OwnerModules.Persons && t.PersonKind == PersonKind.Natural).Id;
 
-        var account = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("1311", default));
+        var account = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("2511", default));
         await db.Run<AccountService>(s => s.SetDetailLevelAsync(account.Id, 1,
             new SetDetailLevelRequest(false, [natural, legal], [supplier]), default));
 

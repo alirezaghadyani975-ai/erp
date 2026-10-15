@@ -42,13 +42,9 @@
                     <MudSelect T="short?" Value="_model.CenterTypeId" ValueChanged="TypeChanged" Label="نوع مرکز" Required="true" Dense="true"
                                Variant="Variant.Outlined" Margin="Margin.Dense"
                                HelperText="@(Function is { } f ? $"در معین‌های «{Titles.Of(f)}» ثبت می‌شود" : null)">
-                        @foreach (var group in _types.Where(t => t.IsActive || t.Id == _model.CenterTypeId).GroupBy(t => t.Function))
+                        @foreach (var t in _types.Where(t => t.IsActive || t.Id == _model.CenterTypeId).OrderBy(t => t.Function).ThenBy(t => t.SortOrder))
                         {
-                            <MudListSubheader>@Titles.Of(group.Key)</MudListSubheader>
-                            @foreach (var t in group)
-                            {
-                                <MudSelectItem T="short?" Value="t.Id">@t.Title</MudSelectItem>
-                            }
+                            <MudSelectItem T="short?" Value="t.Id">@t.Title @if (t.Title != Titles.Of(t.Function)) { <span class="select-hint">(@Titles.Of(t.Function))</span> }</MudSelectItem>
                         }
                     </MudSelect>
                 </MudItem>

@@ -1,6 +1,145 @@
 @page "/"
+@implements IDisposable
+@inject Backend Backend
 @inject TabService Tabs
+@inject NavigationManager Nav
+
+<TabTitle Text="صفحه نخست" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2" Class="mb-3">
+    <MudText Typo="Typo.h5">صفحه نخست</MudText>
+    @if (_data is not null)
+    {
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Today"><span class="code">@_data.Today</span></MudChip>
+        @if (_data.FiscalYearTitle is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.CalendarMonth">سال مالی @_data.FiscalYearTitle</MudChip>
+        }
+    }
+    <MudSpacer />
+    <MudText Typo="Typo.caption" Color="Color.Secondary">جستجوی سریع هر فرم، معین یا شخص: <span dir="ltr"><kbd>Ctrl</kbd>+<kbd>K</kbd></span></MudText>
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+</MudStack>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+}
+
+<MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-1">دسترسی سریع</MudText>
+<div class="quick-grid mb-4">
+    @foreach (var f in Quick)
+    {
+        <MudPaper Class="quick-item" Elevation="1" @onclick="() => Nav.NavigateTo(f.Url)">
+            <MudIcon Icon="@f.Icon" Color="Color.Primary" />
+            <span>@f.Title</span>
+        </MudPaper>
+    }
+</div>
+
+@if (_data is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_data.FiscalYearId is null)
+{
+    <MudAlert Severity="Severity.Info">هنوز سال مالی تعریف نشده است. از <MudLink Href="/fiscal-years">سال و دوره مالی</MudLink> شروع کنید.</MudAlert>
+}
+else
+{
+    @if (_data.DraftCount + _data.TemporaryCount > 0)
+    {
+        <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-1">کارهای مانده</MudText>
+        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
+            @if (_data.DraftCount > 0)
+            {
+                <MudChip T="string" Color="Color.Default" Icon="@Icons.Material.Outlined.EditNote" Href="/vouchers">@_data.DraftCount سند پیش‌نویس (تراز و موقت نشده)</MudChip>
+            }
+            @if (_data.TemporaryCount > 0)
+            {
+                <MudChip T="string" Color="Color.Info" Icon="@Icons.Material.Outlined.FactCheck" Href="/vouchers">@_data.TemporaryCount سند موقت منتظر دائم شدن</MudChip>
+            }
+        </MudStack>
+    }
+
+    <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-1">خلاصه سال مالی @_data.FiscalYearTitle (سندهای موقت و دائم)</MudText>
+    <div class="kpi-grid mb-4">
+        @foreach (var k in _data.Kpis)
+        {
+            <MudPaper Class="kpi-card" Elevation="1" @onclick="() => { if (k.Url is not null) Nav.NavigateTo(k.Url); }">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@k.Title</MudText>
+                <div class="kpi-amount num @(k.Amount < 0 ? "diff-bad" : "")">@Format.Amount(k.Amount)</div>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@HintOf(k)</MudText>
+            </MudPaper>
+        }
+    </div>
+
+    <MudPaper Class="pa-3" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
+            <MudText Typo="Typo.subtitle1"><b>آخرین سندها</b></MudText>
+            <MudSpacer />
+            <MudLink Href="/vouchers" Typo="Typo.body2">همه اسناد</MudLink>
+        </MudStack>
+        @if (_data.RecentVouchers.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="pa-2">هنوز سندی ثبت نشده است.</MudText>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                <thead><tr><th>ش. موقت</th><th>تاریخ</th><th>شرح</th><th>منبع</th><th>وضعیت</th><th style="text-align:left">مبلغ</th></tr></thead>
+                <tbody>
+                    @foreach (var v in _data.RecentVouchers)
+                    {
+                        <tr style="cursor:pointer" @onclick="() => OpenVoucher(v.Id)">
+                            <td class="code">@v.TempNo</td>
+                            <td class="code">@v.Date</td>
+                            <td>@v.Description</td>
+                            <td>@(v.SourceDocType is null ? "دستی" : SourceLinks.Title(v.SourceDocType))</td>
+                            <td><MudChip T="string" Size="Size.Small" Color="Format.StatusColor(v.Status)">@Format.Status(v.Status)</MudChip></td>
+                            <td class="num">@Format.Amount(v.TotalDebit)</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </MudPaper>
+}
 
 @code {
-    protected override void OnInitialized() => Tabs.CloseCurrentAndGo("/vouchers");
+    private static readonly string[] QuickUrls =
+        ["/vouchers/new", "/expenses/new", "/persons/new", "/reports/trial-balance", "/reports/ledger", "/vouchers", "/expenses"];
+
+    private static readonly List<AppForms.Item> Quick = QuickUrls.Select(u => AppForms.All.First(f => f.Url == u)).ToList();
+
+    private DashboardDto? _data;
+    private string? _error;
+    private bool _wasActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Tabs.Changed += OnTabsChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var r = await Backend.Run<DashboardService, DashboardDto>(s => s.GetAsync(default));
+        if (r.Success) { _data = r.Value; _error = null; } else _error = r.Error;
+    }
+
+    /// <summary>با برگشتن به تب صفحه نخست، اعداد تازه شوند.</summary>
+    private void OnTabsChanged()
+    {
+        var active = Tabs.ActiveKey == TabService.HomeKey;
+        if (active && !_wasActive)
+            _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+        _wasActive = active;
+    }
+
+    private void OpenVoucher(long id) => Nav.NavigateTo($"/vouchers/{id}");
+
+    private string HintOf(KpiDto k) => k.Key is "revenue" or "expense" ? $"{k.Hint} · {_data!.MonthTitle}" : k.Hint;
+
+    public void Dispose() => Tabs.Changed -= OnTabsChanged;
 }

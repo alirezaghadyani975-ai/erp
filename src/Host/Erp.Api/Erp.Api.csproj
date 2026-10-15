@@ -8,5 +8,6 @@
     <ProjectReference Include="..\..\Modules\Accounting\Erp.Accounting.Infrastructure\Erp.Accounting.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\BaseData\Erp.BaseData.Infrastructure\Erp.BaseData.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Costing\Erp.Costing.Infrastructure\Erp.Costing.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Expenses\Erp.Expenses.Infrastructure\Erp.Expenses.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

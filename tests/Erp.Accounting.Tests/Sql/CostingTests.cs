@@ -87,20 +87,33 @@ public class CostingTests(SqlFixture db)
 
         var finance = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("8990", default));
         Assert.Null(finance.CostFunction);
-        Assert.False(finance.DetailLevels[1].IsRequired);
+        Assert.Single(finance.DetailLevels);
 
         Assert.Empty((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("8001", default))).DetailLevels);
-        Assert.True((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("1001", default))).DetailLevels[0].IsRequired);
-        Assert.Equal(new[] { "100001", "101001", "110001", "120001", "130001", "140001", "200001", "300001", "400001", "410001", "500001", "600001", "800001" },
+        Assert.True((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("2801", default))).DetailLevels[0].IsRequired);
+        Assert.Equal(new[] { "100001", "101001", "110001", "120001", "130001", "140001", "150001", "200001", "300001", "400001", "410001", "500001", "600001", "800001" },
             types.OrderBy(t => t.CodeFrom).Select(t => t.CodeFrom));
         Assert.All(types, t => Assert.Equal(6, t.CodeLength));
 
-        // اسناد دریافتنی: هر دو نوع شخص با فیلتر نقش مشتری (1211 را تست گزارش تغییر می‌دهد)؛ اسناد در جریان وصول: شخص و بانک
-        var ar = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("1201", default));
-        var personTypes = types.Where(t => t.OwnerModule == OwnerModules.Persons).Select(t => t.Id).Order().ToList();
-        Assert.Equal(personTypes, ar.DetailLevels[0].DetailTypeIds.Order().ToList());
-        Assert.Single(ar.DetailLevels[0].RoleIds);
-        Assert.Equal(2, (await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("1202", default))).DetailLevels.Count);
+        // اسناد دریافتنی به تفکیک صندوق، اسناد در جریان وصول به تفکیک بانک، اسناد پرداختنی به تفکیک ماه سررسید
+        var notes = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("2401", default));
+        Assert.Equal([types.Single(t => t.CodeFrom == "100001").Id], Assert.Single(notes.DetailLevels).DetailTypeIds);
+        var inCollection = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("2402", default));
+        Assert.Equal([types.Single(t => t.CodeFrom == "110001").Id], Assert.Single(inCollection.DetailLevels).DetailTypeIds);
+        var dueType = types.Single(t => t.CodeFrom == "150001");
+        Assert.Equal(("150012", 12), (dueType.CodeTo, dueType.UsedCount));
+        foreach (var code in new[] { "5001", "5101", "4001" })
+            Assert.Equal([dueType.Id], Assert.Single((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync(code, default))).DetailLevels).DetailTypeIds);
+
+        // دارایی ثابت و موجودی بدون تفصیلی؛ گروه‌هایشان غیرفعال
+        foreach (var code in new[] { "1002", "1102", "2201", "2206" })
+            Assert.Empty((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync(code, default))).DetailLevels);
+        Assert.All(types.Where(t => t.OwnerModule is OwnerModules.Assets or OwnerModules.Inventory), t => Assert.False(t.IsActive));
+        Assert.Single((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("2601", default))).DetailLevels);
+
+        // همه سطح‌های قاعده‌های پیش‌فرض اجباری‌اند
+        foreach (var code in new[] { "1803", "5125", "3001", "6101", "9201" })
+            Assert.All((await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync(code, default))).DetailLevels, l => Assert.True(l.IsRequired));
 
         var personnel = await db.Run<AccountService, AccountDto>(s => s.GetByCodeAsync("8260", default));
         Assert.Equal((CostNature.Personnel, CostFunction.Selling), (personnel.CostNature!.Value, personnel.CostFunction!.Value));
@@ -124,19 +137,19 @@ public class CostingTests(SqlFixture db)
             Line("8110", 1000, 0, basePay, seed.ProductionCode),
             Line("8140", 500, 0, basePay, seed.ServiceCode),
             Line("8990", 200, 0, interest),
-            Line("3325", 0, 1700));
+            Line("5123", 0, 1700));
         Assert.True(ok > 0);
 
         var wrongNature = await Assert.ThrowsAsync<DomainException>(() =>
-            Draft(seed.YearId, Line("8110", 100, 0, buildingDep, seed.ProductionCode), Line("3325", 0, 100)));
+            Draft(seed.YearId, Line("8110", 100, 0, buildingDep, seed.ProductionCode), Line("5123", 0, 100)));
         Assert.Contains("استهلاک", wrongNature.Message);
 
         var wrongFunction = await Assert.ThrowsAsync<DomainException>(() =>
-            Draft(seed.YearId, Line("8110", 100, 0, basePay, seed.AdminCode), Line("3325", 0, 100)));
+            Draft(seed.YearId, Line("8110", 100, 0, basePay, seed.AdminCode), Line("5123", 0, 100)));
         Assert.Contains("اداری", wrongFunction.Message);
 
         var missingCenter = await Assert.ThrowsAsync<DomainException>(() =>
-            Draft(seed.YearId, Line("8110", 100, 0, basePay), Line("3325", 0, 100)));
+            Draft(seed.YearId, Line("8110", 100, 0, basePay), Line("5123", 0, 100)));
         Assert.Contains("سطح 2", missingCenter.Message);
 
         // انتخاب در فرم سند هم همین فیلتر را دارد
@@ -147,10 +160,11 @@ public class CostingTests(SqlFixture db)
         Assert.DoesNotContain(factorsForSalary, d => d.Code == buildingDep);
         var centersForSalary = await db.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(
             account.DetailLevels[1].DetailTypeIds, null, null, account.CostNature, account.CostFunction, default));
-        Assert.Equal([seed.ProductionCode], centersForSalary.Select(d => d.Code));
+        Assert.Contains(centersForSalary, d => d.Code == seed.ProductionCode);
+        Assert.DoesNotContain(centersForSalary, d => d.Code == seed.ServiceCode || d.Code == seed.AdminCode);
 
         // مواد مصرفی بدون تفصیلی
-        Assert.True(await Draft(seed.YearId, Line("8001", 300, 0), Line("8002", 100, 0), Line("1601", 0, 400)) > 0);
+        Assert.True(await Draft(seed.YearId, Line("8001", 300, 0), Line("8002", 100, 0), Line("2201", 0, 400)) > 0);
     }
 
     [Fact]
@@ -174,7 +188,7 @@ public class CostingTests(SqlFixture db)
         await db.Run<CostFactorService>(s => s.UpdateAsync(id, new SaveCostFactorRequest("بخار", payroll, CostBehavior.Fixed, 55, true, null), default));
         var changed = (await Factors("بخار")).Single();
         Assert.Equal((CostNature.Payroll, (decimal?)null), (changed.Nature, changed.VariablePercent));
-        await Draft(seed.YearId, Line("8180", 10, 0, changed.Code, seed.AdminCode), Line("3325", 0, 10));
+        await Draft(seed.YearId, Line("8180", 10, 0, changed.Code, seed.AdminCode), Line("5123", 0, 10));
 
         // در سند آمده: گروه هزینه عوض نمی‌شود، داخل همان گروه می‌شود؛ حذف هم نمی‌شود
         var used = await Assert.ThrowsAsync<DomainException>(() => db.Run<CostFactorService>(s =>
@@ -260,7 +274,7 @@ public class CostingTests(SqlFixture db)
     {
         if (!db.Enabled) return;
         var seed = await SeedAsync();
-        await Draft(seed.YearId, Line("8480", 50, 0, await FactorCode("ملزومات و نوشت‌افزار"), seed.AdminCode), Line("3325", 0, 50));
+        await Draft(seed.YearId, Line("8480", 50, 0, await FactorCode("ملزومات و نوشت‌افزار"), seed.AdminCode), Line("5123", 0, 50));
 
         var admin = await db.Run<CostCenterService, CostCenterDetailsDto>(s => s.GetAsync(seed.Admin, default));
         admin.CenterTypeId = await CenterType(CostFunction.Selling);
@@ -301,10 +315,10 @@ public class CostingTests(SqlFixture db)
         if (!db.Enabled) return;
         var seed = await SeedAsync();
         var food = await FactorCode("غذای کارکنان");
-        Assert.True(await Draft(seed.YearId, Line("8210", 30, 0, food, seed.ProductionCode), Line("3325", 0, 30)) > 0);
+        Assert.True(await Draft(seed.YearId, Line("8210", 30, 0, food, seed.ProductionCode), Line("5123", 0, 30)) > 0);
 
         var wrong = await Assert.ThrowsAsync<DomainException>(() =>
-            Draft(seed.YearId, Line("8110", 30, 0, food, seed.ProductionCode), Line("3325", 0, 30)));
+            Draft(seed.YearId, Line("8110", 30, 0, food, seed.ProductionCode), Line("5123", 0, 30)));
         Assert.Contains("هزینه کارکنان", wrong.Message);
     }
 }

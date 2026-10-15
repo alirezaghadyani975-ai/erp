@@ -2,8 +2,10 @@ using Erp.Accounting.Application.ChartOfAccounts;
 using Erp.Accounting.Application.Details;
 using Erp.Accounting.Application.FiscalYears;
 using Erp.Accounting.Application.Lookups;
+using Erp.Accounting.Application.Posting;
 using Erp.Accounting.Application.Reports;
 using Erp.Accounting.Application.Vouchers;
+using Erp.Accounting.Contracts;
 using Erp.BaseData.Contracts;
 using Erp.Costing.Contracts;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +24,9 @@ public static class DependencyInjection
         services.AddScoped<VoucherService>();
         services.AddScoped<FinanceLookupService>();
         services.AddScoped<ReportService>();
+        services.AddScoped<DashboardService>();
+        services.AddScoped<IVoucherPosting, PostingService>();
+        services.AddScoped<PostingTemplateService>();
         return services;
     }
 }

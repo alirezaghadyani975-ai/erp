@@ -1,0 +1,57 @@
+@* جستجوی سراسری (Ctrl+K): فرم‌ها، معین‌ها (← دفتر معین) و اشخاص *@
+@inject Backend Backend
+@inject NavigationManager Nav
+
+<div id="global-search" class="global-search">
+    <MudAutocomplete T="SearchHit" @ref="_box" Value="_value" ValueChanged="Go" SearchFunc="Search"
+                     ToStringFunc="@(h => h?.Title)" Placeholder="جستجو: فرم، معین، شخص   (Ctrl+K)"
+                     DebounceInterval="200" MaxItems="25" Dense="true" ResetValueOnEmptyText="true" SelectValueOnTab="true"
+                     Variant="Variant.Outlined" Margin="Margin.Dense" AdornmentIcon="@Icons.Material.Outlined.Search"
+                     Class="global-search-box">
+        <ItemTemplate Context="h">
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@h.Icon" Size="Size.Small" Color="Color.Secondary" />
+                <span>@h.Title</span>
+                @if (h.Subtitle is not null) { <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true">@h.Subtitle</MudText> }
+            </MudStack>
+        </ItemTemplate>
+        <NoItemsTemplate><MudText Typo="Typo.body2" Class="pa-2">چیزی پیدا نشد.</MudText></NoItemsTemplate>
+    </MudAutocomplete>
+</div>
+
+@code {
+    private MudAutocomplete<SearchHit>? _box;
+    private SearchHit? _value;
+
+    public sealed record SearchHit(string Title, string? Subtitle, string Url, string Icon);
+
+    private async Task<IEnumerable<SearchHit>> Search(string? term, CancellationToken ct)
+    {
+        term = PersianText.NormalizeOrNull(term);
+        if (term is null) return AppForms.All.Take(10).Select(Form);
+
+        var hits = AppForms.All.Where(f => f.Title.Contains(term) || f.Keywords.Contains(term)).Select(Form).ToList();
+
+        var accounts = await Backend.Run<AccountService, List<AccountDto>>(s => s.SearchPostableAsync(term, ct));
+        hits.AddRange((accounts.Value ?? []).Take(6).Select(a => new SearchHit($"{a.Code} - {a.Title}", "دفتر معین",
+            $"/reports/ledger?account={a.Code}", Icons.Material.Outlined.MenuBook)));
+
+        if (term.Length >= 2)
+        {
+            var persons = await Backend.Run<PersonService, List<PersonListItemDto>>(s => s.SearchAsync(term, null, null, false, ct));
+            hits.AddRange((persons.Value ?? []).Take(6).Select(p => new SearchHit(p.DisplayName,
+                p.DetailCode is { } c ? $"شخص · {c}" : "شخص", $"/persons/{p.Id}", Icons.Material.Outlined.Person)));
+        }
+        return hits;
+    }
+
+    private static SearchHit Form(AppForms.Item f) => new(f.Title, f.Group, f.Url, f.Icon);
+
+    private async Task Go(SearchHit? hit)
+    {
+        if (hit is null) return;
+        _value = null;
+        if (_box is not null) await _box.ClearAsync();
+        Nav.NavigateTo(hit.Url);
+    }
+}

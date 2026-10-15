@@ -1,0 +1,97 @@
+@page "/posting-templates"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+
+<TabTitle Text="الگوهای صدور سند" />
+
+<MudText Typo="Typo.h5" Class="mb-1">الگوهای صدور سند</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر فرمی که سند خودکار دارد یک الگو دارد. ساختار ردیف‌ها (بدهکار و بستانکار) را خود فرم تعیین می‌کند؛ معین ردیف‌های ثابت را
+    این‌جا می‌توانید عوض کنید. تفصیلی‌ها از اطلاعات فرم (مثلاً تأمین‌کننده یا عامل و مرکز هزینه) و قاعده تفصیلی همان معین خودکار پر می‌شوند؛
+    اگر معین جدید تفصیلی‌ای بخواهد که فرم ندارد، هنگام ثبت فرم خطا می‌دهد.
+</MudText>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+@foreach (var t in _templates)
+{
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+            <MudText Typo="Typo.h6">@t.Title</MudText>
+            <span class="code">@t.SourceDocType</span>
+            @if (!t.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+        </MudStack>
+        <MudSimpleTable Dense="true" Elevation="0">
+            <thead><tr><th style="width:22%">ردیف</th><th style="width:9%">طرف</th><th>معین</th><th style="width:28%">تفصیلی‌ها</th></tr></thead>
+            <tbody>
+                @foreach (var l in t.Lines)
+                {
+                    <tr>
+                        <td>@l.Title</td>
+                        <td>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                                     Color="@(l.Side == Erp.Accounting.Domain.Posting.PostingSide.Debit ? Color.Primary : Color.Secondary)">
+                                @(l.Side == Erp.Accounting.Domain.Posting.PostingSide.Debit ? "بدهکار" : "بستانکار")
+                            </MudChip>
+                        </td>
+                        <td>
+                            @if (l.AccountRule is not null)
+                            {
+                                <MudText Typo="Typo.body2" Color="Color.Secondary"><i>@l.RuleTitle</i></MudText>
+                            }
+                            else if (_editing == l.Id)
+                            {
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <div style="min-width:320px"><AccountPicker Value="_picked" ValueChanged="a => _picked = a" /></div>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" Disabled="_picked is null"
+                                                   OnClick="() => SaveAsync(t, l)" aria-label="ذخیره" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => _editing = null" aria-label="انصراف" />
+                                </MudStack>
+                            }
+                            else
+                            {
+                                <span class="code ml-2">@l.AccountCode</span> @l.AccountTitle
+                                <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small" Class="mr-1"
+                                               OnClick="() => { _editing = l.Id; _picked = null; }" aria-label="تغییر معین" />
+                            }
+                        </td>
+                        <td>
+                            @if (l.DetailHint is not null) { <MudText Typo="Typo.body2">از فرم: @l.DetailHint</MudText> }
+                            @if (l.AccountDetails is not null) { <MudText Typo="Typo.caption" Color="Color.Secondary">قاعده معین: @l.AccountDetails</MudText> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+
+@code {
+    private List<PostingTemplateDto> _templates = [];
+    private bool _loading = true;
+    private int? _editing;
+    private AccountDto? _picked;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<PostingTemplateService, List<PostingTemplateDto>>(s => s.GetAllAsync(default));
+        if (r.Success) _templates = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private async Task SaveAsync(PostingTemplateDto t, PostingTemplateLineDto l)
+    {
+        if (_picked is null) return;
+        var code = _picked.Code;
+        var r = await Backend.Run<PostingTemplateService>(s => s.ChangeAccountAsync(t.Id, l.Id, code, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Snackbar.Add($"معین ردیف «{l.Title}» به {code} تغییر کرد.", Severity.Success);
+        _editing = null;
+        await LoadAsync();
+    }
+}

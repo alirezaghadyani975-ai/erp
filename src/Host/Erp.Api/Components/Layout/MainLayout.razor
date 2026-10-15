@@ -10,14 +10,16 @@
         <MudAppBar Elevation="0" Class="no-print" Dense="true" Color="Color.Primary">
             <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
                            OnClick="() => _drawerOpen = !_drawerOpen" aria-label="منو" />
-            <MudText Typo="Typo.h6" Class="mr-2">Erp</MudText>
-            
+            <MudLink Href="/" Color="Color.Inherit" Underline="Underline.None" Class="mr-2"><MudText Typo="Typo.h6">Erp</MudText></MudLink>
+            <MudSpacer />
+            <GlobalSearch />
             <MudSpacer />
             <MudLink Href="/scalar" Target="_blank" Color="Color.Inherit" Typo="Typo.body2">API</MudLink>
         </MudAppBar>
 
         <MudDrawer Class="no-print" @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="1" Variant="DrawerVariant.Responsive">
             <MudNavMenu>
+                <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Home">صفحه نخست</MudNavLink>
                 <MudNavGroup Title="مالی" Icon="@Icons.Material.Outlined.AccountBalanceWallet" Expanded="true">
                     <MudNavGroup Title="حسابداری" Icon="@Icons.Material.Outlined.Calculate" Expanded="true">
                         <MudNavLink Href="/vouchers" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.ReceiptLong">اسناد حسابداری</MudNavLink>
@@ -30,7 +32,12 @@
                             <MudNavLink Href="/accounts" Icon="@Icons.Material.Outlined.AccountTree">کدینگ حساب‌ها</MudNavLink>
                             <MudNavLink Href="/detail-types" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Category">گروه‌ها و حساب‌های تفصیلی</MudNavLink>
                             <MudNavLink Href="/fiscal-years" Icon="@Icons.Material.Outlined.CalendarMonth">سال و دوره مالی</MudNavLink>
+                            <MudNavLink Href="/posting-templates" Icon="@Icons.Material.Outlined.AutoMode">الگوهای صدور سند</MudNavLink>
                         </MudNavGroup>
+                    </MudNavGroup>
+                    <MudNavGroup Title="هزینه‌ها" Icon="@Icons.Material.Outlined.RequestQuote" Expanded="true">
+                        <MudNavLink Href="/expenses" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Receipt">شناسایی هزینه</MudNavLink>
+                        <MudNavLink Href="/expenses/new" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.NoteAdd">فرم جدید</MudNavLink>
                     </MudNavGroup>
                     <MudNavGroup Title="بهای تمام‌شده" Icon="@Icons.Material.Outlined.Factory" Expanded="false">
                         <MudNavLink Href="/costing/centers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Hub">مراکز هزینه</MudNavLink>

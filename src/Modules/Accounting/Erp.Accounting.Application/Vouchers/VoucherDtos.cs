@@ -43,4 +43,4 @@ public sealed record VoucherDto(
 
 public sealed record VoucherSummaryDto(
     long Id, int TempNo, int? VoucherNo, string Date, string? Description, VoucherType Type, VoucherStatus Status,
-    decimal TotalDebit);
+    decimal TotalDebit, string? SourceDocType = null);

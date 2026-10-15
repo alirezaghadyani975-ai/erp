@@ -3,6 +3,7 @@ using Erp.Accounting.Domain.BaseData;
 using Erp.Accounting.Domain.ChartOfAccounts;
 using Erp.Accounting.Domain.Details;
 using Erp.Accounting.Domain.FiscalYears;
+using Erp.Accounting.Domain.Posting;
 using Erp.Accounting.Domain.Vouchers;
 using Erp.Database;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +29,7 @@ public class AccountingDbContext : DbContext, IAccountingDbContext
     public DbSet<FiscalYear> FiscalYears => Set<FiscalYear>();
     public DbSet<Voucher> Vouchers => Set<Voucher>();
     public DbSet<VoucherLine> VoucherLines => Set<VoucherLine>();
+    public DbSet<PostingTemplate> PostingTemplates => Set<PostingTemplate>();
 
     public async Task<short> CreateFiscalYearAsync(int persianYear, byte startMonth, CancellationToken ct)
     {

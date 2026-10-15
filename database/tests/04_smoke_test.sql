@@ -15,9 +15,9 @@ DECLARE @err INT, @YearId SMALLINT, @PersonId INT, @CustType SMALLINT, @Cust INT
 SELECT @D1 = [Date] FROM base.Calendar WHERE PersianDate = '1419/01/12';
 SELECT @D2 = [Date] FROM base.Calendar WHERE PersianDate = '1419/01/05';
 SELECT @Y0 = MIN([Date]), @Y1 = MAX([Date]) FROM base.Calendar WHERE PersianYear = 1419;
-SELECT @AR = Id FROM fin.Accounts WHERE Code = '1211';     -- حساب‌های دریافتنی تجاری
+SELECT @AR = Id FROM fin.Accounts WHERE Code = '2411';     -- حساب‌های دریافتنی تجاری
 SELECT @Sales = Id FROM fin.Accounts WHERE Code = '6001';  -- فروش محصول
-SELECT @Kol23 = Id FROM fin.Accounts WHERE Code = '12';    -- یک حساب کل (غیرمعین)
+SELECT @Kol23 = Id FROM fin.Accounts WHERE Code = '24';    -- یک حساب کل (غیرمعین)
 SELECT TOP (1) @CustType = Id FROM fin.DetailTypes WHERE OwnerModule = 'persons' AND PersonKind = 1 AND IsActive = 1;
 
 -- کد آزاد بعدی در گروه اشخاص حقیقی (دیتابیس ممکن است اشخاص واقعی هم داشته باشد)
@@ -142,6 +142,16 @@ BEGIN TRY
     SET @err = 0;
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد عامل استهلاک در معین حقوق', N'50060', CAST(@err AS NVARCHAR(50)));
+
+-- 9) هر سند منبع فقط یک سند حسابداری زنده (اسکریپت ۱۰)
+INSERT fin.Vouchers (FiscalYearId, TempNo, VoucherDate, CreatedBy, SourceModule, SourceDocType, SourceDocumentId)
+VALUES (@YearId, 5, @D1, 1, 'expenses', 'expense_invoice', -1);
+BEGIN TRY
+    INSERT fin.Vouchers (FiscalYearId, TempNo, VoucherDate, CreatedBy, SourceModule, SourceDocType, SourceDocumentId)
+    VALUES (@YearId, 6, @D1, 1, 'expenses', 'expense_invoice', -1);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد سند دوم برای یک سند منبع', N'2601', CAST(@err AS NVARCHAR(50)));
 
 -- نتیجه
 SELECT Seq, Test, Expected, Got, CASE WHEN Expected = Got THEN N'قبول' ELSE N'رد' END AS Result
