@@ -23,7 +23,6 @@
                 <MudNavGroup Title="مالی" Icon="@Icons.Material.Outlined.AccountBalanceWallet" Expanded="true">
                     <MudNavGroup Title="حسابداری" Icon="@Icons.Material.Outlined.Calculate" Expanded="true">
                         <MudNavLink Href="/vouchers" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.ReceiptLong">اسناد حسابداری</MudNavLink>
-                        <MudNavLink Href="/vouchers/new" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.NoteAdd">سند جدید</MudNavLink>
                         <MudNavGroup Title="گزارش‌ها" Icon="@Icons.Material.Outlined.Assessment" Expanded="true">
                             <MudNavLink Href="/reports/trial-balance" Icon="@Icons.Material.Outlined.TableChart">تراز آزمایشی</MudNavLink>
                             <MudNavLink Href="/reports/ledger" Icon="@Icons.Material.Outlined.MenuBook">دفتر معین و تفصیلی</MudNavLink>
@@ -37,7 +36,22 @@
                     </MudNavGroup>
                     <MudNavGroup Title="هزینه‌ها" Icon="@Icons.Material.Outlined.RequestQuote" Expanded="true">
                         <MudNavLink Href="/expenses" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Receipt">شناسایی هزینه</MudNavLink>
-                        <MudNavLink Href="/expenses/new" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.NoteAdd">فرم جدید</MudNavLink>
+                    </MudNavGroup>
+                    <MudNavGroup Title="خزانه‌داری" Icon="@Icons.Material.Outlined.Savings" Expanded="true">
+                        <MudNavLink Href="/treasury/receipts" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.CallReceived">دریافت</MudNavLink>
+                        <MudNavLink Href="/treasury/payments" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.CallMade">پرداخت</MudNavLink>
+                        <MudNavLink Href="/treasury/transfers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.SwapHoriz">انتقال وجه</MudNavLink>
+                        <MudNavLink Href="/treasury/imprest" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Wallet">صورت‌هزینه تنخواه</MudNavLink>
+                        <MudNavLink Href="/treasury/cheque-ops/in" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.MoveDown">عملیات اسناد دریافتنی</MudNavLink>
+                        <MudNavLink Href="/treasury/cheque-ops/out" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.MoveUp">عملیات اسناد پرداختنی</MudNavLink>
+                        <MudNavLink Href="/treasury/guarantees" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.VerifiedUser">اسناد تضمینی</MudNavLink>
+                        <MudNavGroup Title="گزارش‌های خزانه" Icon="@Icons.Material.Outlined.Assessment" Expanded="false">
+                            <MudNavLink Href="/treasury/reports/cheques-in" Icon="@Icons.Material.Outlined.FactCheck">چک‌های دریافتنی</MudNavLink>
+                            <MudNavLink Href="/treasury/reports/cheques-out" Icon="@Icons.Material.Outlined.FactCheck">چک‌های پرداختنی</MudNavLink>
+                            <MudNavLink Href="/treasury/reports/due" Icon="@Icons.Material.Outlined.EventNote">سررسید ماهانه چک‌ها</MudNavLink>
+                            <MudNavLink Href="/treasury/reports/balances" Icon="@Icons.Material.Outlined.AccountBalance">موجودی صندوق و بانک</MudNavLink>
+                        </MudNavGroup>
+                        <MudNavLink Href="/treasury/setup" Icon="@Icons.Material.Outlined.Tune">تعاریف خزانه‌داری</MudNavLink>
                     </MudNavGroup>
                     <MudNavGroup Title="بهای تمام‌شده" Icon="@Icons.Material.Outlined.Factory" Expanded="false">
                         <MudNavLink Href="/costing/centers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Hub">مراکز هزینه</MudNavLink>
@@ -51,6 +65,7 @@
                     <MudNavLink Href="/base/roles" Icon="@Icons.Material.Outlined.Label">نقش‌های اشخاص</MudNavLink>
                     <MudNavLink Href="/base/lookups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.ListAlt">جدول‌های پایه</MudNavLink>
                     <MudNavLink Href="/base/banks" Icon="@Icons.Material.Outlined.AccountBalance">بانک‌ها</MudNavLink>
+                    <MudNavLink Href="/base/vat-rates" Icon="@Icons.Material.Outlined.Percent">نرخ مالیات و عوارض</MudNavLink>
                 </MudNavGroup>
             </MudNavMenu>
         </MudDrawer>

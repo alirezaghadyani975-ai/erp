@@ -1,0 +1,231 @@
+@page "/treasury/transfers/new"
+@page "/treasury/transfers/{Id:long}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="@Heading" />
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<FormWithList Title="انتقال وجه" Load="LoadSideAsync" NewUrl="/treasury/transfers/new" CurrentUrl="@SelfUrl" Version="_listVersion">
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+    <MudText Typo="Typo.h5">@Heading</MudText>
+    @if (_voucher is not null)
+    {
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                 Color="@Format.StatusColor((VoucherStatus)_voucher.Status)" OnClick="OpenVoucher">
+            سند @_voucher.TempNo — @Format.Status((VoucherStatus)_voucher.Status)
+        </MudChip>
+    }
+    <MudSpacer />
+    @if (_voucher is not null)
+    {
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.ReceiptLong" OnClick="OpenVoucher">مشاهده سند</MudButton>
+    }
+    @if (!IsNew && !Locked)
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="DeleteAsync" Disabled="_saving">حذف</MudButton>
+    }
+    @if (!Locked)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_saving">
+            @(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")
+        </MudButton>
+    }
+</MudStack>
+
+@if (Locked)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3">سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است.</MudAlert>
+}
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="6" md="4"><PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="Locked" /></MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudNumericField T="decimal" @bind-Value="_amount" Label="مبلغ" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
+                             Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudTextField @bind-Value="_refNo" Label="شماره پیگیری" MaxLength="50" Class="code" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12" md="6">
+            <MudSelect T="string" @bind-Value="_from" Label="از (مبدأ)" Required="true" Disabled="Locked" Dense="true"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
+                @foreach (var f in FundItems(_from)) { <MudSelectItem T="string" Value="Key(f)">@KindTitle(f.Kind): @f.Display</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudSelect T="string" @bind-Value="_to" Label="به (مقصد)" Required="true" Disabled="Locked" Dense="true"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
+                @foreach (var f in FundItems(_to).Where(f => Key(f) != _from)) { <MudSelectItem T="string" Value="Key(f)">@KindTitle(f.Kind): @f.Display</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-3" Elevation="1">
+    <MudText Typo="Typo.subtitle1" Class="mb-2"><b>کارمزد بانکی</b> <span class="select-hint">(اختیاری؛ از مبدأ کسر و به هزینه برده می‌شود)</span></MudText>
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="4" md="4">
+            <MudNumericField T="decimal" @bind-Value="_fee" Label="مبلغ کارمزد" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
+                             Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        @if (_fee > 0)
+        {
+            <MudItem xs="12" sm="8" md="8">
+                <MudAutocomplete T="CostFactorDto" Value="_feeFactor" ValueChanged="FactorChanged" SearchFunc="SearchFactors" Label="عامل هزینه"
+                                 ToStringFunc="@(f => f is null ? null : $"{f.Code} - {f.Title}")" ResetValueOnEmptyText="true" Dense="true"
+                                 MaxItems="40" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    <ItemTemplate Context="f"><span class="code ml-2">@f.Code</span> @f.Title</ItemTemplate>
+                </MudAutocomplete>
+            </MudItem>
+            @if (_feeFactor?.Nature != CostNature.Finance)
+            {
+                <MudItem xs="12" sm="6" md="6">
+                    <MudSelect T="int?" @bind-Value="_feeCenterId" Label="مرکز هزینه" Dense="true" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var c in _centers.Where(c => c.IsActive || c.Id == _feeCenterId).OrderBy(c => c.Function).ThenBy(c => c.Title))
+                        {
+                            <MudSelectItem T="int?" Value="c.Id">@c.Title <span class="select-hint">(@Titles.Of(c.Function))</span></MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
+            <MudItem xs="12" sm="6" md="6">
+                <MudField Label="کل کسر از مبدأ" Variant="Variant.Text" Margin="Margin.Dense"><b class="num">@Format.Amount(_amount + _fee)</b></MudField>
+            </MudItem>
+        }
+    </MudGrid>
+</MudPaper>
+</FormWithList>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private bool IsNew => Id is null;
+    private string? SelfUrl => Id is long id ? $"/treasury/transfers/{id}" : null;
+    private string Heading => IsNew ? "انتقال وجه جدید" : $"انتقال وجه {Format.No(_docNo)}";
+    private bool Locked => _voucher?.Status == 3;
+
+    private List<FundOption> _funds = [];
+    private List<CostFactorDto> _factors = [];
+    private List<CostCenterListItemDto> _centers = [];
+    private string? _date = Format.Today();
+    private string? _from, _to, _refNo, _description;
+    private decimal _amount, _fee;
+    private CostFactorDto? _feeFactor;
+    private int? _feeCenterId;
+    private int _docNo;
+    private TreasuryVoucherDto? _voucher;
+    private bool _loading = true, _saving;
+    private int _listVersion;
+    private string? _error;
+
+    private static string Key(FundOption f) => $"{(byte)f.Kind}:{f.Id}";
+    private static string Key(FundKind k, int id) => $"{(byte)k}:{id}";
+    private static (FundKind Kind, int Id) Parse(string key) { var p = key.Split(':'); return ((FundKind)byte.Parse(p[0]), int.Parse(p[1])); }
+    private IEnumerable<FundOption> FundItems(string? selected) => _funds.Where(f => f.IsActive || Key(f) == selected).OrderBy(f => f.Kind);
+
+    public static string KindTitle(FundKind k) => k switch
+    {
+        FundKind.CashBox => "صندوق",
+        FundKind.BankAccount => "بانک",
+        FundKind.Imprest => "تنخواه",
+        _ => k.ToString()
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _funds = (await Backend.Run<TreasurySetupService, List<FundOption>>(s => s.GetFundsAsync(default))).Value ?? [];
+        _factors = (await Backend.Run<CostFactorService, List<CostFactorDto>>(s => s.SearchAsync(null, null, true, default))).Value ?? [];
+        _centers = (await Backend.Run<CostCenterService, List<CostCenterListItemDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        if (Id is long id) await LoadAsync(id);
+        _loading = false;
+    }
+
+    private async Task LoadAsync(long id)
+    {
+        var r = await Backend.Run<TransferService, TransferDto>(s => s.GetAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        var x = r.Value!;
+        (_docNo, _date, _from, _to, _amount, _fee, _feeCenterId, _refNo, _description, _voucher) =
+            (x.DocNo, x.Date, Key(x.FromKind, x.FromId), Key(x.ToKind, x.ToId), x.Amount, x.Fee, x.FeeCenterId, x.RefNo, x.Description, x.Voucher);
+        _feeFactor = _factors.FirstOrDefault(f => f.Id == x.FeeFactorId);
+    }
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var r = await Backend.Run<TransferService, List<TransferDto>>(s => s.ListAsync(null, null, default));
+        return (r.Value ?? []).Select(x => new SideItem($"/treasury/transfers/{x.Id}", $"{Format.No(x.DocNo)} — {x.FromTitle} ← {x.ToTitle}",
+            x.Date, Format.Amount(x.Amount))).ToList();
+    }
+
+    private Task<IEnumerable<CostFactorDto>> SearchFactors(string? term, CancellationToken ct)
+    {
+        IEnumerable<CostFactorDto> list = _factors.Where(f => f.IsActive);
+        term = PersianText.NormalizeOrNull(term);
+        if (term is not null) list = list.Where(f => f.Title.Contains(term) || (f.Code?.StartsWith(term) ?? false));
+        return Task.FromResult(list);
+    }
+
+    private void FactorChanged(CostFactorDto? f)
+    {
+        _feeFactor = f;
+        if (f?.Nature == CostNature.Finance) _feeCenterId = null;
+    }
+
+    private void OpenVoucher()
+    {
+        if (_voucher is not null) Tabs.Go($"/vouchers/{_voucher.VoucherId}");
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_date is null || _from is null || _to is null) { _error = "تاریخ، مبدأ و مقصد الزامی است."; return; }
+        if (_fee > 0 && _feeFactor is null) { _error = "برای کارمزد عامل هزینه را انتخاب کنید."; return; }
+        var (fk, fi) = Parse(_from);
+        var (tk, ti) = Parse(_to);
+        var request = new SaveTransferRequest(_date, fk, fi, tk, ti, _amount, _fee, _fee > 0 ? _feeFactor?.Id : null,
+            _fee > 0 ? _feeCenterId : null, _refNo, _description);
+
+        _saving = true;
+        if (Id is long id)
+        {
+            var r = await Backend.Run<TransferService>(s => s.UpdateAsync(id, request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("فرم ذخیره شد و سند حسابداری‌اش اصلاح شد.", Severity.Success);
+            _listVersion++;
+            await LoadAsync(id);
+        }
+        else
+        {
+            var r = await Backend.Run<TransferService, long>(s => s.CreateAsync(request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("انتقال ثبت شد و سند حسابداری موقت صادر شد.", Severity.Success);
+            Tabs.Go($"/treasury/transfers/{r.Value}");
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Id is not long id) return;
+        if (!await Dialogs.DeleteAsync($"انتقال وجه شماره {Format.No(_docNo)}", "سند حسابداری آن هم حذف می‌شود.")) return;
+        var r = await Backend.Run<TransferService>(s => s.DeleteAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add("انتقال و سند حسابداری‌اش حذف شد.", Severity.Success);
+        Tabs.CloseCurrentAndGo("/treasury/transfers");
+    }
+}

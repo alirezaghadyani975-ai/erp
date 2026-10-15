@@ -95,7 +95,7 @@ public class BaseDataTests(SqlFixture db)
         var person = await db.Run<PersonService, int>(s => s.CreateAsync(new SavePersonRequest
         {
             FirstName = "دارنده", LastName = "کارت", RoleIds = [roles.Single(r => r.Code == RoleCodes.Supplier).Id],
-            BankAccounts = [new BankAccountDto { CardNo = LuhnCard("999901") }]
+            BankAccounts = [new Erp.BaseData.Application.Persons.BankAccountDto { CardNo = LuhnCard("999901") }]
         }, default));
         var p = await db.Run<PersonService, PersonDetailsDto>(s => s.GetAsync(person, default));
         Assert.Equal(id, p.BankAccounts.Single().BankId);   // بانک از پیش‌شماره کارت

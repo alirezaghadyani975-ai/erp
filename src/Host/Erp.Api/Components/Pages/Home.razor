@@ -108,7 +108,7 @@ else
 
 @code {
     private static readonly string[] QuickUrls =
-        ["/vouchers/new", "/expenses/new", "/persons/new", "/reports/trial-balance", "/reports/ledger", "/vouchers", "/expenses"];
+        ["/vouchers/new", "/treasury/receipts/new", "/treasury/payments/new", "/expenses/new", "/persons/new", "/reports/trial-balance", "/reports/ledger", "/treasury/reports/balances"];
 
     private static readonly List<AppForms.Item> Quick = QuickUrls.Select(u => AppForms.All.First(f => f.Url == u)).ToList();
 

@@ -1,0 +1,80 @@
+@* مالیات و عوارض ارزش افزوده: محاسبه خودکار از نرخ سال تاریخ فرم، با امکان اصلاح دستی مبلغ *@
+@inject Backend Backend
+
+<MudStack Spacing="0">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+        <MudSwitch T="bool" Value="_subject" ValueChanged="SubjectChanged" Color="Color.Primary" Disabled="Disabled" Label="مشمول ارزش افزوده" />
+        @if (_subject && _calc is not null)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary">مالیات @(_calc.TaxPercent.ToString("0.##"))٪ + عوارض @(_calc.TollPercent.ToString("0.##"))٪ (سال @_calc.PersianYear)</MudText>
+        }
+    </MudStack>
+    @if (_subject)
+    {
+        <MudNumericField T="decimal" Value="Value" ValueChanged="ManualChanged" Label="مالیات و عوارض ارزش افزوده" Format="#,0.####"
+                         HideSpinButtons="true" Min="0" Class="num" Disabled="Disabled" Variant="Variant.Outlined" Margin="Margin.Dense"
+                         HelperText="@(_manual ? "مبلغ دستی اصلاح شده است" : "خودکار از نرخ سال؛ قابل اصلاح")" />
+        @if (_missingYear is int y)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Warning">نرخ ارزش افزوده سال @y تعریف نشده است؛ <MudLink Href="/base/vat-rates" Typo="Typo.caption">تعریف نرخ</MudLink></MudText>
+        }
+    }
+</MudStack>
+
+@code {
+    [Parameter] public decimal Value { get; set; }
+    [Parameter] public EventCallback<decimal> ValueChanged { get; set; }
+    /// <summary>تاریخ فرم (شمسی) برای انتخاب نرخ سال.</summary>
+    [Parameter] public string? Date { get; set; }
+    /// <summary>مبلغ مشمول (جمع ردیف‌ها).</summary>
+    [Parameter] public decimal BaseAmount { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private bool _subject;
+    private bool _manual;
+    private bool _initialized;
+    private VatCalculation? _calc;
+    private int? _missingYear;
+    private (string?, decimal) _last;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_initialized)
+        {
+            _initialized = true;
+            _subject = Value > 0;
+            _manual = Value > 0; // فرم موجود: مبلغ ذخیره‌شده دست نخورد مگر ردیف‌ها عوض شوند
+            _last = (Date, BaseAmount);
+            await CalculateAsync(apply: false);
+            return;
+        }
+        if (_last == (Date, BaseAmount)) return;
+        _last = (Date, BaseAmount);
+        _manual = false;
+        await CalculateAsync(apply: _subject);
+    }
+
+    private async Task CalculateAsync(bool apply)
+    {
+        _missingYear = null;
+        if (!PersianDate.TryParse(Date, out var d)) { _calc = null; return; }
+        var r = await Backend.Run<Erp.BaseData.Application.Taxes.VatRateService, VatCalculation?>(s => s.CalculateAsync(Date!, BaseAmount, default));
+        _calc = r.Value;
+        if (_calc is null) _missingYear = PersianDate.PersianYear(d);
+        if (apply && _subject && !_manual) await ValueChanged.InvokeAsync(_calc?.Total ?? 0);
+    }
+
+    private async Task SubjectChanged(bool subject)
+    {
+        _subject = subject;
+        _manual = false;
+        if (!subject) { await ValueChanged.InvokeAsync(0); return; }
+        await CalculateAsync(apply: true);
+    }
+
+    private async Task ManualChanged(decimal value)
+    {
+        _manual = true;
+        await ValueChanged.InvokeAsync(value);
+    }
+}

@@ -1,0 +1,117 @@
+@* فرم با فهرست رکوردهای همان فرم در کنار (جستجو، رفتن به رکورد دیگر در همان تب، رکورد جدید). *@
+@inject TabService Tabs
+@inject UiPrefs Prefs
+
+<div class="form-with-list @(Prefs.SideListOpen ? "" : "list-closed")">
+    <aside class="side-list no-print">
+        @if (Prefs.SideListOpen)
+        {
+            <div class="side-list-head">
+                <MudText Typo="Typo.subtitle2"><b>@Title</b></MudText>
+                <MudSpacer />
+                @if (NewUrl is not null)
+                {
+                    <MudTooltip Text="جدید"><MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" OnClick="() => Tabs.Go(NewUrl)" aria-label="جدید" /></MudTooltip>
+                }
+                <MudTooltip Text="به‌روزرسانی"><MudIconButton Icon="@Icons.Material.Outlined.Refresh" Size="Size.Small" OnClick="LoadAsync" aria-label="به‌روزرسانی" /></MudTooltip>
+                <MudTooltip Text="بستن فهرست"><MudIconButton Icon="@Icons.Material.Outlined.KeyboardDoubleArrowRight" Size="Size.Small" OnClick="Toggle" aria-label="بستن فهرست" /></MudTooltip>
+            </div>
+            <MudTextField T="string" @bind-Value="_term" Immediate="true" Placeholder="جستجو در فهرست" Clearable="true"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" />
+            }
+            <div class="side-list-items">
+                @foreach (var item in Visible)
+                {
+                    <div class="side-item @(IsCurrent(item) ? "current" : "")" @onclick="() => Open(item)">
+                        <div class="side-item-row">
+                            <span class="side-item-title">@item.Title</span>
+                            @if (item.Amount is not null) { <span class="num side-item-amount">@item.Amount</span> }
+                        </div>
+                        @if (item.Subtitle is not null || item.Badge is not null)
+                        {
+                            <div class="side-item-row">
+                                <span class="side-item-sub">@item.Subtitle</span>
+                                @if (item.Badge is not null)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="item.BadgeColor" Variant="Variant.Text" Class="ma-0">@item.Badge</MudChip>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                @if (!_loading && _items.Count == 0)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2">رکوردی ثبت نشده است.</MudText>
+                }
+                @if (_items.Count > MaxShown && Visible.Count() == MaxShown)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2">@MaxShown مورد اول؛ برای بقیه جستجو کنید.</MudText>
+                }
+            </div>
+        }
+        else
+        {
+            <MudTooltip Text="@($"نمایش فهرست {Title}")" Placement="Placement.Left">
+                <MudIconButton Icon="@Icons.Material.Outlined.ViewList" OnClick="Toggle" aria-label="نمایش فهرست" />
+            </MudTooltip>
+        }
+    </aside>
+    <div class="form-main">@ChildContent</div>
+</div>
+
+@code {
+    private const int MaxShown = 200;
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public Func<Task<List<SideItem>>> Load { get; set; } = null!;
+    [Parameter] public string? NewUrl { get; set; }
+    /// <summary>نشانی رکورد جاری برای پررنگ کردن.</summary>
+    [Parameter] public string? CurrentUrl { get; set; }
+    /// <summary>با تغییر این عدد (مثلاً بعد از ذخیره) فهرست دوباره خوانده می‌شود.</summary>
+    [Parameter] public int Version { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private List<SideItem> _items = [];
+    private string? _term;
+    private bool _loading;
+    private int _loadedVersion = -1;
+
+    private IEnumerable<SideItem> Visible
+    {
+        get
+        {
+            var term = PersianText.NormalizeOrNull(_term);
+            var q = term is null ? _items : _items.Where(i => i.SearchText.Contains(term));
+            return q.Take(MaxShown);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedVersion == Version) return;
+        _loadedVersion = Version;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try { _items = await Load(); }
+        catch { _items = []; }
+        _loading = false;
+    }
+
+    private bool IsCurrent(SideItem item) => CurrentUrl is not null && item.Url == CurrentUrl;
+
+    private void Open(SideItem item)
+    {
+        if (IsCurrent(item)) return;
+        Tabs.Go(item.Url);
+    }
+
+    private void Toggle() => Prefs.SideListOpen = !Prefs.SideListOpen;
+}

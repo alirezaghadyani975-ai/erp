@@ -50,8 +50,8 @@ public class ReportTests(SqlFixture db)
             var p2 = await db.Run<PersonService, int>(s => s.CreateAsync(Customer("مشتری", "دو", customerRole), default));
             var details = await db.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(customerType, null, default));
             // صندوق تفصیلی صندوق می‌خواهد (قاعده پیش‌فرض معین 2801)
-            var cashType = types.Single(t => t.CodeFrom == "100001").Id;
-            await db.Run<DetailService, int>(s => s.CreateAccountAsync(new CreateDetailAccountRequest(cashType, "صندوق مرکزی", null), default));
+            await db.Run<Erp.Treasury.Application.TreasurySetupService, int>(s => s.SaveCashBoxAsync(null,
+                new Erp.Treasury.Application.SaveCashBoxRequest("صندوق مرکزی", true, null), default));
             var (c1, code1) = details.Where(d => d.PersonId == p1).Select(d => (d.Id, d.Code)).Single();
             var (c2, code2) = details.Where(d => d.PersonId == p2).Select(d => (d.Id, d.Code)).Single();
 

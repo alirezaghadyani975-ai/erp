@@ -57,7 +57,7 @@ public class PersonTests(SqlFixture db)
             BirthCityId = tehranCity.Id, RoleIds = [customer, supplier],
             Addresses = [new AddressDto { AddressTypeId = factory.Id, ProvinceId = tehran.Id, CityId = tehranCity.Id,
                 Address = "خیابان آزادی", PostalCode = "1981735861" }],
-            BankAccounts = [new BankAccountDto { Iban = "IR110170000000123456789001" }]
+            BankAccounts = [new Erp.BaseData.Application.Persons.BankAccountDto { Iban = "IR110170000000123456789001" }]
         });
 
         var p = await Get(id);
@@ -157,7 +157,7 @@ public class PersonTests(SqlFixture db)
         var iban = await Assert.ThrowsAsync<DomainException>(() => Create(new SavePersonRequest
         {
             FirstName = "سه", LastName = "نفر", RoleIds = [role],
-            BankAccounts = [new BankAccountDto { Iban = "IR120170000000123456789001" }]
+            BankAccounts = [new Erp.BaseData.Application.Persons.BankAccountDto { Iban = "IR120170000000123456789001" }]
         }));
         Assert.Contains("حساب بانکی 1", iban.Message);
     }
@@ -231,8 +231,8 @@ public class PersonTests(SqlFixture db)
 
         var types = await Types();
         var allowed = types.Where(t => t.OwnerModule is OwnerModules.Persons or OwnerModules.Treasury).Select(t => t.Id).ToList();
-        var cashType = types.First(t => t.OwnerModule == OwnerModules.Treasury).Id;
-        await db.Run<DetailService, int>(s => s.CreateAccountAsync(new CreateDetailAccountRequest(cashType, "صندوق فیلتر", null), default));
+        await db.Run<Erp.Treasury.Application.TreasurySetupService, int>(s => s.SaveCashBoxAsync(null,
+            new Erp.Treasury.Application.SaveCashBoxRequest("صندوق فیلتر", true, null), default));
 
         var filtered = await db.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync(allowed, [customer], "فقط", default));
         Assert.Contains(filtered, d => d.Code == customerDetail);

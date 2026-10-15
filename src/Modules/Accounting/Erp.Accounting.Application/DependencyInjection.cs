@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<DetailService>();
         services.AddScoped<IPersonLinks, PersonDetailLinks>();
         services.AddScoped<ICostDetailLinks, CostDetailLinks>();
+        services.AddScoped<ITreasuryDetailLinks, TreasuryDetailLinks>();
         services.AddScoped<FiscalYearService>();
         services.AddScoped<VoucherService>();
         services.AddScoped<FinanceLookupService>();

@@ -5,7 +5,7 @@
 @inject IDialogService Dialogs
 @inject TabService Tabs
 
-<TabTitle Text="@(IsNew ? "شناسایی هزینه جدید" : $"شناسایی هزینه {_docNo}")" />
+<TabTitle Text="@(IsNew ? "شناسایی هزینه جدید" : $"شناسایی هزینه {Format.No(_docNo)}")" />
 
 @if (_loading)
 {
@@ -13,9 +13,9 @@
     return;
 }
 
+<FormWithList Title="شناسایی هزینه" Load="LoadSideAsync" NewUrl="/expenses/new" CurrentUrl="@SelfUrl" Version="_listVersion">
 <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
-    <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Href="/expenses" aria-label="بازگشت" />
-    <MudText Typo="Typo.h5">@(IsNew ? "شناسایی هزینه جدید" : $"شناسایی هزینه شماره {_docNo}")</MudText>
+    <MudText Typo="Typo.h5">@(IsNew ? "شناسایی هزینه جدید" : $"شناسایی هزینه {Format.No(_docNo)}")</MudText>
     @if (_voucher is not null)
     {
         <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
@@ -163,15 +163,15 @@
         <MudItem xs="12" sm="4" md="3">
             <MudField Label="جمع ردیف‌ها" Variant="Variant.Text" Margin="Margin.Dense"><span class="num">@Format.Amount(LinesTotal)</span></MudField>
         </MudItem>
-        <MudItem xs="12" sm="4" md="3">
-            <MudNumericField T="decimal" @bind-Value="_vat" Label="مالیات و عوارض ارزش افزوده" Format="#,0.####" HideSpinButtons="true" Min="0"
-                             Class="num" Disabled="Locked" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudItem xs="12" sm="4" md="4">
+            <VatBox @bind-Value="_vat" Date="@_date" BaseAmount="LinesTotal" Disabled="Locked" />
         </MudItem>
         <MudItem xs="12" sm="4" md="3">
             <MudField Label="مبلغ کل (بدهی به تأمین‌کننده)" Variant="Variant.Text" Margin="Margin.Dense"><b class="num">@Format.Amount(LinesTotal + _vat)</b></MudField>
         </MudItem>
     </MudGrid>
 </MudPaper>
+</FormWithList>
 
 @code {
     [Parameter] public long? Id { get; set; }
@@ -185,6 +185,7 @@
     }
 
     private bool IsNew => Id is null;
+    private string? SelfUrl => Id is long id ? $"/expenses/{id}" : null;
     private bool Locked => _voucher?.Status == 3;
     private decimal LinesTotal => _lines.Sum(l => l.Amount);
 
@@ -201,6 +202,7 @@
     private int _docNo;
     private ExpenseVoucherDto? _voucher;
     private bool _loading = true;
+    private int _listVersion;
     private bool _saving;
     private string? _error;
 
@@ -235,6 +237,13 @@
             Amount = l.Amount,
             Description = l.Description
         }).ToList();
+    }
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var r = await Backend.Run<ExpenseInvoiceService, List<ExpenseInvoiceListItemDto>>(s => s.ListAsync(null, null, null, default));
+        return (r.Value ?? []).Select(x => new SideItem($"/expenses/{x.Id}", $"{Format.No(x.DocNo)} — {x.SupplierName}",
+            $"{x.Date}{(x.InvoiceNo is null ? "" : $" · فاکتور {x.InvoiceNo}")}", Format.Amount(x.Total))).ToList();
     }
 
     private Task<IEnumerable<CostFactorDto>> SearchFactors(string? term, CancellationToken ct)
@@ -285,6 +294,7 @@
             _saving = false;
             if (!r.Success) { _error = r.Error; return; }
             Snackbar.Add("فرم ذخیره شد و سند حسابداری‌اش اصلاح شد.", Severity.Success);
+            _listVersion++;
             await LoadAsync(id);
         }
         else

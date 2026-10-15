@@ -5,6 +5,7 @@ using Erp.Accounting.Infrastructure;
 using Erp.BaseData.Infrastructure;
 using Erp.Costing.Infrastructure;
 using Erp.Expenses.Infrastructure;
+using Erp.Treasury.Infrastructure;
 using Erp.Api.Components;
 using Erp.Api.Components.Shared;
 using Erp.Api.Infrastructure;
@@ -26,6 +27,7 @@ builder.Services.AddBaseDataModule();
 builder.Services.AddCostingModule();
 builder.Services.AddAccountingModule();
 builder.Services.AddExpensesModule();
+builder.Services.AddTreasuryModule();
 
 builder.Services.AddControllers().AddJsonOptions(o =>
 {
@@ -42,6 +44,7 @@ builder.Services.AddMudServices();
 builder.Services.AddScoped<Backend>();
 builder.Services.AddScoped<UiLookups>();
 builder.Services.AddScoped<Erp.Api.Components.Shared.Tabs.TabService>();
+builder.Services.AddScoped<Erp.Api.Components.Shared.Forms.UiPrefs>();
 
 var app = builder.Build();
 

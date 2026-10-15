@@ -1,0 +1,245 @@
+@page "/treasury/cheque-ops/in/new"
+@page "/treasury/cheque-ops/out/new"
+@page "/treasury/cheque-ops/{Id:long}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+@inject NavigationManager Nav
+
+<TabTitle Text="@Heading" />
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<FormWithList Title="@SideTitle" Load="LoadSideAsync" NewUrl="@($"{SideUrl}/new")" CurrentUrl="@SelfUrl">
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+    <MudText Typo="Typo.h5">@Heading</MudText>
+    @if (_view?.Voucher is { } v)
+    {
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                 Color="@Format.StatusColor((VoucherStatus)v.Status)" OnClick="OpenVoucher">
+            سند @v.TempNo — @Format.Status((VoucherStatus)v.Status)
+        </MudChip>
+    }
+    <MudSpacer />
+    @if (_view is not null)
+    {
+        @if (_view.Voucher is not null)
+        {
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.ReceiptLong" OnClick="OpenVoucher">مشاهده سند</MudButton>
+        }
+        @if (_view.LockReason is null)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Undo" OnClick="DeleteAsync">حذف و برگرداندن عملیات</MudButton>
+        }
+    }
+    else
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync"
+                   Disabled="@(_saving || _selected.Count == 0)">ثبت عملیات و صدور سند</MudButton>
+    }
+</MudStack>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
+@if (_view is not null)
+{
+    @if (_view.LockReason is not null)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3">@_view.LockReason</MudAlert>
+    }
+    <MudPaper Class="pa-4 mb-3" Elevation="1">
+        <MudGrid Spacing="2">
+            <MudItem xs="6" md="2"><MudField Label="تاریخ" Variant="Variant.Text" Margin="Margin.Dense"><span class="code">@_view.Date</span></MudField></MudItem>
+            <MudItem xs="6" md="3"><MudField Label="عملیات" Variant="Variant.Text" Margin="Margin.Dense">@_view.OperationTitle</MudField></MudItem>
+            <MudItem xs="6" md="3"><MudField Label="صندوق / بانک" Variant="Variant.Text" Margin="Margin.Dense">@(_view.TargetTitle ?? "—")</MudField></MudItem>
+            <MudItem xs="6" md="4"><MudField Label="شرح" Variant="Variant.Text" Margin="Margin.Dense">@(_view.Description ?? "—")</MudField></MudItem>
+        </MudGrid>
+    </MudPaper>
+    <MudPaper Class="pa-3" Elevation="1">
+        <ChequeTable Rows="_view.Cheques" />
+        <MudText Typo="Typo.subtitle1" Align="Align.Left" Class="mt-2"><b>جمع: <span class="num">@Format.Amount(_view.Total)</span></b></MudText>
+    </MudPaper>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-3" Elevation="1">
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="ChequeOperationType" Value="_op" ValueChanged="OperationChanged" Label="عملیات" Dense="true"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
+                    @foreach (var op in Operations)
+                    {
+                        <MudSelectItem T="ChequeOperationType" Value="op">@ChequeTitles.Of(op)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3"><PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" /></MudItem>
+            @if (_op is ChequeOperationType.Deposit or ChequeOperationType.Collect)
+            {
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="int?" @bind-Value="_bankId" Label="@(_op == ChequeOperationType.Deposit ? "واگذاری به حساب بانکی" : "وصول به حساب بانکی")"
+                               Clearable="true" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               HelperText="@(_op == ChequeOperationType.Collect ? "برای چک‌های در جریان وصول همان بانک واگذاری" : null)">
+                        @foreach (var b in _banks.Where(b => b.IsActive)) { <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+            }
+            @if (_op is ChequeOperationType.Collect or ChequeOperationType.Withdraw)
+            {
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="int?" @bind-Value="_boxId" Label="@(_op == ChequeOperationType.Withdraw ? "به صندوق" : "یا وصول نقدی به صندوق")"
+                               Clearable="true" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var b in _boxes.Where(b => b.IsActive)) { <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem> }
+                    </MudSelect>
+                </MudItem>
+            }
+            <MudItem xs="12"><MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        </MudGrid>
+    </MudPaper>
+    <MudPaper Class="pa-3" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2" Wrap="Wrap.Wrap">
+            <MudText Typo="Typo.subtitle1"><b>چک‌های قابل @ChequeTitles.Of(_op)</b></MudText>
+            <MudTextField T="string" @bind-Value="_filter" Immediate="true" Placeholder="سریال، صیاد یا طرف حساب" Clearable="true"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:280px" />
+            <MudSpacer />
+            <MudText Typo="Typo.body2">انتخاب‌شده: <b>@_selected.Count</b> چک — <b class="num">@Format.Amount(_selected.Sum(c => c.Amount))</b></MudText>
+        </MudStack>
+        <MudTable T="ChequeRowDto" Items="FilteredCandidates" Dense="true" Hover="true" Elevation="0" MultiSelection="true"
+                  @bind-SelectedItems="_selected" SelectOnRowClick="true" Loading="_loadingCandidates">
+            <HeaderContent>
+                <MudTh>سریال</MudTh><MudTh>صیاد</MudTh><MudTh>سررسید</MudTh><MudTh>طرف حساب</MudTh><MudTh>بانک</MudTh>
+                <MudTh>وضعیت</MudTh><MudTh>محل</MudTh><MudTh Style="text-align:left">مبلغ</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><span class="code">@context.SerialNo</span></MudTd>
+                <MudTd><span class="code">@context.SayadId</span></MudTd>
+                <MudTd><span class="code">@context.DueDate</span></MudTd>
+                <MudTd>@context.PersonName</MudTd>
+                <MudTd>@context.BankTitle</MudTd>
+                <MudTd>@context.StatusTitle</MudTd>
+                <MudTd>@context.PlaceTitle</MudTd>
+                <MudTd Class="num">@Format.Amount(context.Amount)</MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Class="pa-4">چکی برای این عملیات نیست.</MudText></NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+</FormWithList>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private ChequeSide _side;
+    private ChequeOperationDto? _view;
+    private ChequeOperationType _op;
+    private string? _date = Format.Today();
+    private int? _bankId, _boxId;
+    private string? _description, _filter;
+    private List<ChequeRowDto> _candidates = [];
+    private HashSet<ChequeRowDto> _selected = [];
+    private List<CashBoxDto> _boxes = [];
+    private List<TreasuryBankAccountDto> _banks = [];
+    private bool _loading = true, _loadingCandidates, _saving;
+    private string? _error;
+
+    private string SideUrl => _side == ChequeSide.Receivable ? "/treasury/cheque-ops/in" : "/treasury/cheque-ops/out";
+    private string SideTitle => _side == ChequeSide.Receivable ? "عملیات اسناد دریافتنی" : "عملیات اسناد پرداختنی";
+    private string? SelfUrl => Id is long id ? $"/treasury/cheque-ops/{id}" : null;
+    private string Heading => _view is null
+        ? $"عملیات جدید {(_side == ChequeSide.Receivable ? "اسناد دریافتنی" : "اسناد پرداختنی")}"
+        : $"{_view.OperationTitle} {Format.No(_view.DocNo)}";
+    private ChequeOperationType[] Operations => _side == ChequeSide.Receivable
+        ? [ChequeOperationType.Deposit, ChequeOperationType.Collect, ChequeOperationType.Bounce, ChequeOperationType.Legal,
+           ChequeOperationType.ReturnToDrawer, ChequeOperationType.Withdraw]
+        : [ChequeOperationType.Clear, ChequeOperationType.Cancel];
+
+    private IEnumerable<ChequeRowDto> FilteredCandidates
+    {
+        get
+        {
+            var term = PersianText.NormalizeOrNull(_filter);
+            return term is null ? _candidates
+                : _candidates.Where(c => c.SerialNo.Contains(term) || (c.SayadId?.Contains(term) ?? false) || c.PersonName.Contains(term));
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        _view = null;
+        if (Id is long id)
+        {
+            var r = await Backend.Run<ChequeOperationService, ChequeOperationDto>(s => s.GetAsync(id, default));
+            if (r.Success) { _view = r.Value; _side = _view!.Side; } else _error = r.Error;
+        }
+        else
+        {
+            _side = Nav.Uri.Contains("/out/") ? ChequeSide.Payable : ChequeSide.Receivable;
+            _boxes = (await Backend.Run<TreasurySetupService, List<CashBoxDto>>(s => s.GetCashBoxesAsync(false, default))).Value ?? [];
+            _banks = (await Backend.Run<TreasurySetupService, List<TreasuryBankAccountDto>>(s => s.GetBankAccountsAsync(false, default))).Value ?? [];
+            await OperationChanged(Operations[0]);
+        }
+        _loading = false;
+    }
+
+    private async Task OperationChanged(ChequeOperationType op)
+    {
+        _op = op;
+        _selected = [];
+        _boxId = _op == ChequeOperationType.Withdraw && _boxes.Count == 1 ? _boxes[0].Id : null;
+        _bankId = _op == ChequeOperationType.Deposit && _banks.Count == 1 ? _banks[0].Id : null;
+        _loadingCandidates = true;
+        var r = await Backend.Run<ChequeOperationService, List<ChequeRowDto>>(s => s.CandidatesAsync(op, default));
+        _candidates = r.Value ?? [];
+        if (!r.Success) _error = r.Error;
+        _loadingCandidates = false;
+    }
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var r = await Backend.Run<ChequeOperationService, List<ChequeOperationListItemDto>>(s => s.ListAsync(_side, default));
+        return (r.Value ?? []).Select(x => new SideItem($"/treasury/cheque-ops/{x.Id}", $"{Format.No(x.DocNo)} — {x.OperationTitle}",
+            $"{x.Date} · {x.ChequeCount} چک{(x.TargetTitle is null ? "" : $" · {x.TargetTitle}")}", Format.Amount(x.Total))).ToList();
+    }
+
+    private void OpenVoucher()
+    {
+        if (_view?.Voucher is { } v) Tabs.Go($"/vouchers/{v.VoucherId}");
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_date is null) { _error = "تاریخ الزامی است."; return; }
+        var request = new SaveChequeOperationRequest(_op, _date,
+            _op is ChequeOperationType.Collect or ChequeOperationType.Withdraw ? _boxId : null,
+            _op is ChequeOperationType.Deposit or ChequeOperationType.Collect ? _bankId : null,
+            _description, _selected.Select(c => c.Id).ToList());
+        _saving = true;
+        var r = await Backend.Run<ChequeOperationService, long>(s => s.CreateAsync(request, default));
+        _saving = false;
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add("عملیات ثبت شد و سند حسابداری موقت صادر شد.", Severity.Success);
+        Tabs.Go($"/treasury/cheque-ops/{r.Value}");
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_view is null) return;
+        if (!await Dialogs.DeleteAsync($"{_view.OperationTitle} شماره {Format.No(_view.DocNo)}",
+                "چک‌ها به وضعیت قبل برمی‌گردند و سند حسابداری حذف می‌شود.")) return;
+        var r = await Backend.Run<ChequeOperationService>(s => s.DeleteAsync(_view.Id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add("عملیات حذف شد و چک‌ها به وضعیت قبل برگشتند.", Severity.Success);
+        Tabs.CloseCurrentAndGo(SideUrl);
+    }
+}

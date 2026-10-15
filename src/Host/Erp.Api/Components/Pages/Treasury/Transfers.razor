@@ -1,0 +1,60 @@
+@page "/treasury/transfers"
+@inject Backend Backend
+@inject TabService Tabs
+@inject ISnackbar Snackbar
+
+<TabTitle Text="انتقال وجه" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">انتقال وجه داخل سازمان</MudText>
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/treasury/transfers/new"))">انتقال جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">جابه‌جایی وجه بین صندوق، حساب‌های بانکی و تنخواه‌گردان‌ها (مثل شارژ تنخواه یا واریز صندوق به بانک).</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" Class="mb-2">
+        <div style="width:170px"><PersianDateField Value="_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+    </MudStack>
+    <MudTable T="TransferDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/treasury/transfers/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره</MudTh><MudTh>تاریخ</MudTh><MudTh>از</MudTh><MudTh>به</MudTh><MudTh>شرح</MudTh>
+            <MudTh Style="text-align:left">مبلغ</MudTh><MudTh Style="text-align:left">کارمزد</MudTh><MudTh>سند</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd>@TransferEditor.KindTitle(context.FromKind): @context.FromTitle</MudTd>
+            <MudTd>@TransferEditor.KindTitle(context.ToKind): @context.ToTitle</MudTd>
+            <MudTd>@context.Description</MudTd>
+            <MudTd Class="num"><b>@Format.Amount(context.Amount)</b></MudTd>
+            <MudTd Class="num">@Format.Amount(context.Fee)</MudTd>
+            <MudTd>
+                @if (context.Voucher is { } v)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@Format.StatusColor((VoucherStatus)v.Status)">@v.TempNo — @Format.Status((VoucherStatus)v.Status)</MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">انتقالی ثبت نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<TransferDto> _rows = [];
+    private bool _loading = true;
+    private string? _from, _to;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<TransferService, List<TransferDto>>(s => s.ListAsync(_from, _to, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

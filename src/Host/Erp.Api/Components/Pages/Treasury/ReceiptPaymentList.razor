@@ -1,0 +1,93 @@
+@* فهرست مشترک دریافت‌ها و پرداخت‌ها *@
+@inject Backend Backend
+@inject TabService Tabs
+@inject ISnackbar Snackbar
+
+<TabTitle Text="@Title" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">@Title</MudText>
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go($"{BaseUrl}/new"))">@(IsPayment ? "پرداخت جدید" : "دریافت جدید")</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    @(IsPayment
+        ? "پرداخت نقد، بانکی، با چک صادره یا خرج چک دریافتی؛ با ثبت فرم سند موقت خودکار صادر می‌شود."
+        : "دریافت نقد، بانکی یا چک؛ چک‌های دریافتی همین‌جا ثبت می‌شوند و با ثبت فرم سند موقت خودکار صادر می‌شود.")
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudTextField T="string" @bind-Value="_term" Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="_ => LoadAsync()"
+                      Placeholder="طرف حساب یا شرح" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:260px" />
+        <div style="width:170px"><PersianDateField Value="_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+    </MudStack>
+
+    <MudTable T="ReceiptPaymentListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"{BaseUrl}/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره</MudTh>
+            <MudTh>تاریخ</MudTh>
+            <MudTh>طرف حساب</MudTh>
+            <MudTh>نوع</MudTh>
+            <MudTh>شرح</MudTh>
+            <MudTh Style="text-align:left">نقد</MudTh>
+            <MudTh Style="text-align:left">بانکی</MudTh>
+            <MudTh Style="text-align:left">چک</MudTh>
+            <MudTh Style="text-align:left">جمع</MudTh>
+            <MudTh>سند</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd>@context.PersonName</MudTd>
+            <MudTd>@context.TypeTitle</MudTd>
+            <MudTd>@context.Description</MudTd>
+            <MudTd Class="num">@Format.Amount(context.CashTotal)</MudTd>
+            <MudTd Class="num">@Format.Amount(context.BankTotal)</MudTd>
+            <MudTd Class="num">@Format.Amount(context.ChequeTotal)</MudTd>
+            <MudTd Class="num"><b>@Format.Amount(context.Total)</b></MudTd>
+            <MudTd>
+                @if (context.Voucher is { } v)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@Format.StatusColor((VoucherStatus)v.Status)">@v.TempNo — @Format.Status((VoucherStatus)v.Status)</MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTd colspan="5"><b>جمع (@_rows.Count فرم)</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.CashTotal))</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.BankTotal))</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.ChequeTotal))</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.Total))</b></MudTd>
+            <MudTd />
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4">فرمی ثبت نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    [Parameter] public bool IsPayment { get; set; }
+
+    private string Title => IsPayment ? "پرداخت‌ها" : "دریافت‌ها";
+    private string BaseUrl => IsPayment ? "/treasury/payments" : "/treasury/receipts";
+    private List<ReceiptPaymentListItemDto> _rows = [];
+    private bool _loading = true;
+    private string? _term, _from, _to;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = IsPayment
+            ? await Backend.Run<PaymentService, List<ReceiptPaymentListItemDto>>(s => s.ListAsync(_term, _from, _to, default))
+            : await Backend.Run<ReceiptService, List<ReceiptPaymentListItemDto>>(s => s.ListAsync(_term, _from, _to, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

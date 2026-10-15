@@ -14,6 +14,7 @@ internal class DetailTypeConfiguration : IEntityTypeConfiguration<DetailType>
         b.Property(t => t.OwnerModule).HasMaxLength(30).IsUnicode(false);
         b.Property(t => t.CodeFrom).HasMaxLength(10).IsUnicode(false);
         b.Property(t => t.CodeTo).HasMaxLength(10).IsUnicode(false);
+        b.Property(t => t.SystemKey).HasMaxLength(30).IsUnicode(false);
         b.Ignore(t => t.CodeLength);
         b.Ignore(t => t.DomainEvents);
     }

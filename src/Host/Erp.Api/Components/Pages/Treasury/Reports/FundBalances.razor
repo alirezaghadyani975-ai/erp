@@ -1,0 +1,76 @@
+@page "/treasury/reports/balances"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+
+<TabTitle Text="موجودی صندوق و بانک" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+    <MudText Typo="Typo.h5">موجودی صندوق، بانک و تنخواه</MudText>
+    <MudSpacer />
+    <div style="width:180px"><PersianDateField Value="_asOf" ValueChanged="async v => { _asOf = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+<MudGrid Spacing="3">
+    @foreach (var g in _rows.GroupBy(r => r.Kind).OrderBy(g => g.Key))
+    {
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle1"><b>@GroupTitle(g.Key)</b></MudText>
+                    <MudSpacer />
+                    <MudText Typo="Typo.subtitle1"><b class="num">@Format.Amount(g.Sum(r => r.Balance))</b></MudText>
+                </MudStack>
+                <MudDivider Class="my-2" />
+                <MudSimpleTable Dense="true" Elevation="0">
+                    <tbody>
+                        @foreach (var r in g)
+                        {
+                            <tr style="@(r.IsActive ? null : "opacity:.6")">
+                                <td><span class="code ml-2">@r.Code</span>@r.Title</td>
+                                <td class="num" style="@(r.Balance < 0 ? "color:var(--mud-palette-error)" : null)">@Format.Amount(r.Balance)</td>
+                            </tr>
+                            @if (r.ChequesInBoxCount > 0)
+                            {
+                                <tr><td class="select-hint" style="padding-right:24px">چک در صندوق (@r.ChequesInBoxCount فقره)</td><td class="num select-hint">@Format.Amount(r.ChequesInBox)</td></tr>
+                            }
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+<MudPaper Class="pa-3 mt-3" Elevation="1">
+    <MudStack Row="true" Spacing="6" Wrap="Wrap.Wrap">
+        <MudText>جمع وجه نقد و بانک: <b class="num">@Format.Amount(_rows.Sum(r => r.Balance))</b></MudText>
+        <MudText>چک‌های در صندوق: <b class="num">@Format.Amount(_rows.Sum(r => r.ChequesInBox))</b> (@_rows.Sum(r => r.ChequesInBoxCount) فقره)</MudText>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private List<FundBalanceDto> _rows = [];
+    private string? _asOf = Format.Today();
+    private bool _loading = true;
+
+    private static string GroupTitle(FundKind k) => k switch
+    {
+        FundKind.CashBox => "صندوق‌ها",
+        FundKind.BankAccount => "حساب‌های بانکی",
+        _ => "تنخواه‌گردان‌ها"
+    };
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<TreasuryReportService, List<FundBalanceDto>>(s => s.BalancesAsync(_asOf, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

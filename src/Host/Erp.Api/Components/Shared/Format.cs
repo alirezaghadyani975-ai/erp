@@ -11,6 +11,9 @@ public static class Format
 {
     public static string Amount(decimal value) => value.ToString("#,0.####", CultureInfo.InvariantCulture);
 
+    /// <summary>شماره سیستمی فرم‌ها، ۶ رقمی (000001).</summary>
+    public static string No(int value) => value.ToString("000000", CultureInfo.InvariantCulture);
+
     public static string Status(VoucherStatus s) => s switch
     {
         VoucherStatus.Draft => "پیش‌نویس",

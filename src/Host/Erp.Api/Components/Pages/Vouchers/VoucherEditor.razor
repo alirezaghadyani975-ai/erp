@@ -8,6 +8,7 @@
 
 <TabTitle Text="@(Id is null ? "سند جدید" : $"سند {_tempNo}")" />
 
+<FormWithList Title="اسناد حسابداری" Load="LoadSideAsync" NewUrl="/vouchers/new" CurrentUrl="@SelfUrl" Version="_listVersion">
 @if (_loading)
 {
     <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
@@ -15,7 +16,6 @@
 else
 {
     <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2" Class="mb-3">
-        <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Href="/vouchers" aria-label="بازگشت به فهرست" />
         <MudText Typo="Typo.h5">@(Id is null ? "سند جدید" : "سند حسابداری")</MudText>
         @if (Id is not null)
         {
@@ -186,9 +186,11 @@ else
                        OnClick="VoidAsync" Disabled="_busy">باطل کردن</MudButton>
         }
         <MudSpacer />
-        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" Href="/vouchers/new" OnClick="NewVoucher">سند جدید</MudButton>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="NewVoucher">سند جدید</MudButton>
     </MudStack>
 }
+
+</FormWithList>
 
 @code {
     [Parameter] public long? Id { get; set; }
@@ -210,6 +212,23 @@ else
     private long? _sourceDocId;
 
     private bool IsSystem => _sourceDocType is not null;
+    private string? SelfUrl => Id is long id ? $"/vouchers/{id}" : null;
+    private int _listVersion;
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var year = _yearId;
+        if (year == 0)
+        {
+            var years = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+            year = years.Value?.FirstOrDefault()?.Id ?? 0;
+        }
+        if (year == 0) return [];
+        var r = await Backend.Run<VoucherService, List<VoucherSummaryDto>>(s => s.ListAsync(year, null, default));
+        return (r.Value ?? []).OrderByDescending(v => v.TempNo).Select(v => new SideItem($"/vouchers/{v.Id}",
+            $"سند {v.TempNo}{(v.VoucherNo is int n ? $" (قطعی {n})" : "")}", $"{v.Date} · {v.Description}", Format.Amount(v.TotalDebit),
+            Format.Status(v.Status), Format.StatusColor(v.Status))).ToList();
+    }
     private bool ReadOnly => _status != VoucherStatus.Draft || IsSystem;
     private decimal TotalDebit => _lines.Sum(l => l.Debit);
     private decimal TotalCredit => _lines.Sum(l => l.Credit);
@@ -289,6 +308,7 @@ else
     private void NewVoucher()
     {
         if (Id is null) { _loadedId = -1; ResetNew(); }
+        else Tabs.Go("/vouchers/new");
     }
 
     private static void AccountChanged(LineModel line, AccountDto? account)
@@ -406,11 +426,13 @@ else
         var r = await Backend.Run<VoucherService>(action);
         if (!r.Success) { _error = r.Error; return; }
         Snackbar.Add(message, Severity.Success);
+        _listVersion++;
         await LoadAsync(Id!.Value);
     });
 
     private async Task ReloadOrNavigate(long id)
     {
+        _listVersion++;
         if (Id == id) await LoadAsync(id);
         else Tabs.Go($"/vouchers/{id}");
     }

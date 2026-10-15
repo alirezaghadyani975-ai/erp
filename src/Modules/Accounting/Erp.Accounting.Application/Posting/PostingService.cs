@@ -72,7 +72,8 @@ public class PostingService(IAccountingDbContext db, ICurrentUser user, TimeProv
             row++;
             try
             {
-                voucher.AddLine(line.Account, line.Details, line.Debit, line.Credit, new LineExtras(line.Description));
+                voucher.AddLine(line.Account, line.Details, line.Debit, line.Credit,
+                    new LineExtras(line.Description, FollowUpNo: line.FollowUpNo, FollowUpDate: line.FollowUpDate));
             }
             catch (DomainException ex)
             {
@@ -117,13 +118,14 @@ public class PostingService(IAccountingDbContext db, ICurrentUser user, TimeProv
     // ------------------------------------------------------------------
 
     private sealed record ResolvedLine(string Title, Account Account, IReadOnlyList<DetailAccount?> Details,
-        decimal Debit, decimal Credit, string? Description);
+        decimal Debit, decimal Credit, string? Description, string? FollowUpNo, DateOnly? FollowUpDate);
 
     private async Task<List<ResolvedLine>> ResolveLinesAsync(PostingTemplate template, List<PostingLine> lines, CancellationToken ct)
     {
         var candidates = await LoadDetailsAsync(lines.SelectMany(l => l.Details).Distinct().ToList(), ct);
 
-        var fixedIds = template.Lines.Where(l => l.AccountId is not null).Select(l => l.AccountId!.Value).ToList();
+        var fixedIds = template.Lines.Where(l => l.AccountId is not null).Select(l => l.AccountId!.Value)
+            .Concat(lines.Select(l => l.AccountId).OfType<int>()).Distinct().ToList();
         var accounts = await db.Accounts.Include(a => a.DetailLevels).ThenInclude(l => l.AllowedTypes).AsNoTracking()
             .Where(a => fixedIds.Contains(a.Id) || (a.Level == AccountLevel.Subsidiary && a.CostNature != null))
             .ToListAsync(ct);
@@ -139,13 +141,17 @@ public class PostingService(IAccountingDbContext db, ICurrentUser user, TimeProv
                 null => accounts.FirstOrDefault(a => a.Id == tl.AccountId)
                         ?? throw new DomainException($"معین ردیف «{tl.Title}» در الگوی «{template.Title}» پیدا نشد."),
                 AccountRules.Cost => CostAccount(accounts, details, tl),
+                AccountRules.Source => line.AccountId is int sid
+                    ? accounts.FirstOrDefault(a => a.Id == sid) ?? throw new DomainException($"معین ردیف «{tl.Title}» پیدا نشد.")
+                    : throw new DomainException($"فرم برای ردیف «{tl.Title}» معین نداده است."),
                 _ => throw new DomainException($"قاعده معین «{tl.AccountRule}» شناخته نشده است.")
             };
 
             var levels = FillLevels(account, details, tl);
             var amount = Math.Abs(line.Amount);
             var debitSide = (tl.Side == PostingSide.Debit) == (line.Amount > 0);
-            result.Add(new ResolvedLine(tl.Title, account, levels, debitSide ? amount : 0, debitSide ? 0 : amount, line.Description));
+            result.Add(new ResolvedLine(tl.Title, account, levels, debitSide ? amount : 0, debitSide ? 0 : amount, line.Description,
+                line.FollowUpNo, line.FollowUpDate));
         }
         return result;
     }
@@ -160,6 +166,10 @@ public class PostingService(IAccountingDbContext db, ICurrentUser user, TimeProv
         var factorIds = refs.Where(r => r.Kind == PostingDetailKind.CostFactor).Select(r => r.Id).ToList();
         var centerIds = refs.Where(r => r.Kind == PostingDetailKind.CostCenter).Select(r => r.Id).ToList();
         var directIds = refs.Where(r => r.Kind == PostingDetailKind.DetailAccount).Select(r => (int)r.Id).ToList();
+        var treasuryIds = refs.Where(r => r.Kind is PostingDetailKind.CashBox or PostingDetailKind.BankAccount or PostingDetailKind.Imprest)
+            .Select(r => r.Id).ToList();
+        var dueTypes = db.DetailTypes.Where(t => t.SystemKey == DetailSystemKeys.DueMonth).Select(t => t.Id);
+        var hasDue = refs.Any(r => r.Kind == PostingDetailKind.DueMonth);
 
         var factorTypes = db.DetailTypes.Where(t => t.OwnerModule == OwnerModules.CostFactors).Select(t => t.Id);
         var centerTypes = db.DetailTypes.Where(t => t.OwnerModule == OwnerModules.CostCenters).Select(t => t.Id);
@@ -167,11 +177,16 @@ public class PostingService(IAccountingDbContext db, ICurrentUser user, TimeProv
         var rows = await db.DetailAccounts.AsNoTracking()
             .Where(d => (d.PersonId != null && personIds.Contains(d.PersonId.Value))
                         || directIds.Contains(d.Id)
+                        || (hasDue && dueTypes.Contains(d.DetailTypeId))
+                        || (d.SourceModule == TreasuryDetailLinks.SourceModule && d.SourceEntityId != null && treasuryIds.Contains(d.SourceEntityId.Value))
                         || (d.SourceModule == CostDetailLinks.SourceModule && d.SourceEntityId != null
                             && ((factorIds.Contains(d.SourceEntityId.Value) && factorTypes.Contains(d.DetailTypeId))
                                 || (centerIds.Contains(d.SourceEntityId.Value) && centerTypes.Contains(d.DetailTypeId)))))
             .ToListAsync(ct);
-        var owners = await db.DetailTypes.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.OwnerModule, ct);
+        var types = await db.DetailTypes.AsNoTracking().ToDictionaryAsync(t => t.Id, t => new { t.OwnerModule, t.SystemKey }, ct);
+        var owners = types.ToDictionary(t => t.Key, t => t.Value.OwnerModule);
+        bool Treasury(DetailAccount d, long id, string key) =>
+            d.SourceModule == TreasuryDetailLinks.SourceModule && d.SourceEntityId == id && types[d.DetailTypeId].SystemKey == key;
 
         foreach (var r in refs)
         {
@@ -180,6 +195,11 @@ public class PostingService(IAccountingDbContext db, ICurrentUser user, TimeProv
                 PostingDetailKind.Person => rows.Where(d => d.PersonId == r.Id).ToList(),
                 PostingDetailKind.CostFactor => rows.Where(d => d.SourceEntityId == r.Id && owners[d.DetailTypeId] == OwnerModules.CostFactors).ToList(),
                 PostingDetailKind.CostCenter => rows.Where(d => d.SourceEntityId == r.Id && owners[d.DetailTypeId] == OwnerModules.CostCenters).ToList(),
+                PostingDetailKind.CashBox => rows.Where(d => Treasury(d, r.Id, DetailSystemKeys.Cash)).ToList(),
+                PostingDetailKind.BankAccount => rows.Where(d => Treasury(d, r.Id, DetailSystemKeys.Bank)).ToList(),
+                PostingDetailKind.Imprest => rows.Where(d => Treasury(d, r.Id, DetailSystemKeys.Imprest)).ToList(),
+                PostingDetailKind.DueMonth => rows.Where(d => types[d.DetailTypeId].SystemKey == DetailSystemKeys.DueMonth)
+                    .OrderBy(d => d.Code).Skip((int)r.Id - 1).Take(1).ToList(),
                 _ => rows.Where(d => d.Id == r.Id).ToList()
             };
             if (matches.Count == 0)
@@ -188,6 +208,10 @@ public class PostingService(IAccountingDbContext db, ICurrentUser user, TimeProv
                     PostingDetailKind.Person => "شخص انتخاب‌شده تفصیلی حسابداری ندارد؛ به او نقش طرف‌حساب (مثلاً تأمین‌کننده) بدهید.",
                     PostingDetailKind.CostFactor => "عامل هزینه انتخاب‌شده تفصیلی حسابداری ندارد.",
                     PostingDetailKind.CostCenter => "مرکز هزینه انتخاب‌شده تفصیلی حسابداری ندارد.",
+                    PostingDetailKind.CashBox => "صندوق انتخاب‌شده تفصیلی حسابداری ندارد.",
+                    PostingDetailKind.BankAccount => "حساب بانکی انتخاب‌شده تفصیلی حسابداری ندارد.",
+                    PostingDetailKind.Imprest => "تنخواه‌گردان انتخاب‌شده تفصیلی حسابداری ندارد.",
+                    PostingDetailKind.DueMonth => "تفصیلی ماه سررسید پیدا نشد (گروه «ماه سررسید»).",
                     _ => "حساب تفصیلی پیدا نشد."
                 });
             result[r] = matches;

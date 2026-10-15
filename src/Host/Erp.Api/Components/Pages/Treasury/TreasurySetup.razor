@@ -1,0 +1,236 @@
+@page "/treasury/setup"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="تعاریف خزانه‌داری" />
+
+<MudText Typo="Typo.h5" Class="mb-1">تعاریف خزانه‌داری</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    تفصیلی هر صندوق، حساب بانکی و تنخواه‌گردان همین‌جا خودکار ساخته می‌شود. نوع دریافت و پرداخت تعیین می‌کند طرف حساب در کدام معین ثبت شود.
+</MudText>
+
+<MudTabs Elevation="1" Rounded="true" TabPanelsClass="pa-3" @bind-ActivePanelIndex="_tab">
+    <MudTabPanel Text="صندوق‌ها" Icon="@Icons.Material.Outlined.Inventory2">
+        <MudStack Row="true" Class="mb-2"><MudSpacer /><MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => EditBox(null)">صندوق جدید</MudButton></MudStack>
+        <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+            <thead><tr><th>کد تفصیلی</th><th>صندوق</th><th style="text-align:left">مانده</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var b in _boxes)
+                {
+                    <tr style="cursor:pointer" @onclick="() => EditBox(b)">
+                        <td class="code">@b.Code</td><td>@b.Title</td><td class="num">@Format.Amount(b.Balance)</td>
+                        <td>@if (!b.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }</td>
+                        <td style="text-align:left" @onclick:stopPropagation="true"><MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => DeleteBox(b)" aria-label="حذف" /></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudTabPanel>
+    <MudTabPanel Text="حساب‌های بانکی" Icon="@Icons.Material.Outlined.AccountBalance">
+        <MudStack Row="true" Class="mb-2"><MudSpacer /><MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => EditBank(null)">حساب جدید</MudButton></MudStack>
+        <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+            <thead><tr><th>کد تفصیلی</th><th>حساب</th><th>بانک و شعبه</th><th>شماره حساب</th><th>شبا</th><th style="text-align:left">مانده</th><th></th><th></th></tr></thead>
+            <tbody>
+                @foreach (var b in _banks)
+                {
+                    <tr style="cursor:pointer" @onclick="() => EditBank(b)">
+                        <td class="code">@b.Code</td><td>@b.Title</td><td>@b.BankTitle @b.Branch</td><td class="code">@b.AccountNo</td><td class="code">@b.Iban</td>
+                        <td class="num">@Format.Amount(b.Balance)</td>
+                        <td>@if (!b.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }</td>
+                        <td style="text-align:left" @onclick:stopPropagation="true"><MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => DeleteBank(b)" aria-label="حذف" /></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudTabPanel>
+    <MudTabPanel Text="تنخواه‌گردان‌ها" Icon="@Icons.Material.Outlined.Wallet">
+        <MudStack Row="true" Class="mb-2"><MudSpacer /><MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => EditFund(null)">تنخواه‌گردان جدید</MudButton></MudStack>
+        <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+            <thead><tr><th>کد تفصیلی</th><th>تنخواه‌گردان</th><th>دارنده</th><th style="text-align:left">مانده</th><th></th><th></th></tr></thead>
+            <tbody>
+                @foreach (var f in _funds)
+                {
+                    <tr style="cursor:pointer" @onclick="() => EditFund(f)">
+                        <td class="code">@f.Code</td><td>@f.Title</td><td>@f.HolderName</td><td class="num">@Format.Amount(f.Balance)</td>
+                        <td>@if (!f.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }</td>
+                        <td style="text-align:left" @onclick:stopPropagation="true"><MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => DeleteFund(f)" aria-label="حذف" /></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudTabPanel>
+    <MudTabPanel Text="انواع دریافت و پرداخت" Icon="@Icons.Material.Outlined.SwapHoriz">
+        <MudStack Row="true" Class="mb-2"><MudSpacer /><MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => EditType(null)">نوع جدید</MudButton></MudStack>
+        <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+            <thead><tr><th>دریافت/پرداخت</th><th>عنوان</th><th>معین طرف حساب</th><th></th><th></th></tr></thead>
+            <tbody>
+                @foreach (var t in _types)
+                {
+                    <tr style="cursor:pointer" @onclick="() => EditType(t)">
+                        <td><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@(t.Kind == TransactionKind.Receipt ? Color.Success : Color.Warning)">@(t.Kind == TransactionKind.Receipt ? "دریافت" : "پرداخت")</MudChip></td>
+                        <td>@t.Title</td><td><span class="code ml-2">@t.AccountCode</span>@t.AccountTitle</td>
+                        <td>@if (!t.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }</td>
+                        <td style="text-align:left" @onclick:stopPropagation="true"><MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => DeleteType(t)" aria-label="حذف" /></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudTabPanel>
+</MudTabs>
+
+@* ویرایشگر مشترک *@
+<MudDialog @bind-Visible="_open" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@_dialogTitle</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            @if (_mode == Mode.Type)
+            {
+                <MudItem xs="12">
+                    <MudRadioGroup T="TransactionKind" @bind-Value="_kind" Disabled="_editId is not null">
+                        <MudRadio T="TransactionKind" Value="TransactionKind.Receipt" Color="Color.Primary" Dense="true">دریافت</MudRadio>
+                        <MudRadio T="TransactionKind" Value="TransactionKind.Payment" Color="Color.Primary" Dense="true">پرداخت</MudRadio>
+                    </MudRadioGroup>
+                </MudItem>
+            }
+            <MudItem xs="12"><MudTextField @bind-Value="_title" Immediate="true" Label="عنوان" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
+            @if (_mode == Mode.Bank)
+            {
+                <MudItem xs="12" sm="6"><BankSelect @bind-Value="_bankId" Iban="@_iban" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_branch" Label="شعبه" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_accountNo" Label="شماره حساب" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="6"><MudTextField @bind-Value="_iban" Label="شبا" Class="code" Placeholder="IR..." Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12">
+                    <MudRadioGroup T="BankAccountKind" @bind-Value="_accountKind">
+                        <MudRadio T="BankAccountKind" Value="BankAccountKind.Current" Dense="true">جاری</MudRadio>
+                        <MudRadio T="BankAccountKind" Value="BankAccountKind.ShortTerm" Dense="true">سپرده کوتاه‌مدت</MudRadio>
+                        <MudRadio T="BankAccountKind" Value="BankAccountKind.Gharzolhasaneh" Dense="true">قرض‌الحسنه</MudRadio>
+                    </MudRadioGroup>
+                </MudItem>
+            }
+            @if (_mode == Mode.Fund)
+            {
+                <MudItem xs="12"><PersonPicker @bind-PersonId="_holderId" PersonName="@_holderName" Label="دارنده تنخواه" /></MudItem>
+            }
+            @if (_mode == Mode.Type)
+            {
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">معین طرف حساب @(_accountText is null ? "" : $"(فعلی: {_accountText})")</MudText>
+                    <AccountPicker Value="_account" ValueChanged="a => _account = a" />
+                </MudItem>
+                <MudItem xs="6"><MudNumericField T="int" @bind-Value="_sort" Label="ترتیب" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            }
+            @if (_mode != Mode.Type)
+            {
+                <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="توضیحات" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            }
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _open = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="string.IsNullOrWhiteSpace(_title)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private enum Mode { Box, Bank, Fund, Type }
+
+    private int _tab;
+    private List<CashBoxDto> _boxes = [];
+    private List<TreasuryBankAccountDto> _banks = [];
+    private List<ImprestFundDto> _funds = [];
+    private List<TransactionTypeDto> _types = [];
+
+    private bool _open;
+    private Mode _mode;
+    private string _dialogTitle = "";
+    private int? _editId;
+    private string? _title, _notes, _branch, _accountNo, _iban, _holderName, _accountText;
+    private short? _bankId;
+    private int? _holderId;
+    private BankAccountKind _accountKind = BankAccountKind.Current;
+    private bool _active = true;
+    private TransactionKind _kind = TransactionKind.Receipt;
+    private AccountDto? _account;
+    private int _sort;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _boxes = (await Backend.Run<TreasurySetupService, List<CashBoxDto>>(s => s.GetCashBoxesAsync(true, default))).Value ?? [];
+        _banks = (await Backend.Run<TreasurySetupService, List<TreasuryBankAccountDto>>(s => s.GetBankAccountsAsync(true, default))).Value ?? [];
+        _funds = (await Backend.Run<TreasurySetupService, List<ImprestFundDto>>(s => s.GetImprestFundsAsync(true, default))).Value ?? [];
+        _types = (await Backend.Run<TreasurySetupService, List<TransactionTypeDto>>(s => s.GetTypesAsync(null, true, default))).Value ?? [];
+    }
+
+    private void Open(Mode mode, string title, int? id, string? name, bool active, string? notes)
+    {
+        (_mode, _dialogTitle, _editId, _title, _active, _notes) = (mode, title, id, name, active, notes);
+        _open = true;
+    }
+
+    private void EditBox(CashBoxDto? b) => Open(Mode.Box, b is null ? "صندوق جدید" : "ویرایش صندوق", b?.Id, b?.Title, b?.IsActive ?? true, b?.Notes);
+
+    private void EditBank(TreasuryBankAccountDto? b)
+    {
+        (_bankId, _branch, _accountNo, _iban, _accountKind) = (b?.BankId, b?.Branch, b?.AccountNo, b?.Iban, b?.AccountKind ?? BankAccountKind.Current);
+        Open(Mode.Bank, b is null ? "حساب بانکی جدید" : "ویرایش حساب بانکی", b?.Id, b?.Title, b?.IsActive ?? true, b?.Notes);
+    }
+
+    private void EditFund(ImprestFundDto? f)
+    {
+        (_holderId, _holderName) = (f?.HolderPersonId, f?.HolderName);
+        Open(Mode.Fund, f is null ? "تنخواه‌گردان جدید" : "ویرایش تنخواه‌گردان", f?.Id, f?.Title, f?.IsActive ?? true, f?.Notes);
+    }
+
+    private void EditType(TransactionTypeDto? t)
+    {
+        (_kind, _account, _sort, _accountText) = (t?.Kind ?? TransactionKind.Receipt, null, t?.SortOrder ?? 0,
+            t is null ? null : $"{t.AccountCode} - {t.AccountTitle}");
+        Open(Mode.Type, t is null ? "نوع دریافت/پرداخت جدید" : "ویرایش نوع", t?.Id, t?.Title, t?.IsActive ?? true, null);
+    }
+
+    private async Task SaveAsync()
+    {
+        string? error;
+        switch (_mode)
+        {
+            case Mode.Box:
+                error = (await Backend.Run<TreasurySetupService, int>(s => s.SaveCashBoxAsync(_editId, new SaveCashBoxRequest(_title!, _active, _notes), default))).Error;
+                break;
+            case Mode.Bank:
+                error = (await Backend.Run<TreasurySetupService, int>(s => s.SaveBankAccountAsync(_editId,
+                    new SaveTreasuryBankAccountRequest(_title!, _bankId, _branch, _accountNo, _iban, _accountKind, _active, _notes), default))).Error;
+                break;
+            case Mode.Fund:
+                error = (await Backend.Run<TreasurySetupService, int>(s => s.SaveImprestFundAsync(_editId,
+                    new SaveImprestFundRequest(_title!, _holderId, _active, _notes), default))).Error;
+                break;
+            default:
+                var code = _account?.Code ?? _accountText?.Split(' ')[0];
+                if (code is null) { Snackbar.Add("معین طرف حساب را انتخاب کنید.", Severity.Warning); return; }
+                error = (await Backend.Run<TreasurySetupService, short>(s => s.SaveTypeAsync((short?)_editId,
+                    new SaveTransactionTypeRequest(_kind, _title!, code, _sort, _active), default))).Error;
+                break;
+        }
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _open = false;
+        Snackbar.Add("ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task Delete(string what, Func<TreasurySetupService, Task> action)
+    {
+        if (!await Dialogs.DeleteAsync(what, "تفصیلی حسابداری آن هم حذف می‌شود؛ اگر استفاده شده باشد فقط غیرفعال‌کردن ممکن است.")) return;
+        var r = await Backend.Run<TreasurySetupService>(action);
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+
+    private Task DeleteBox(CashBoxDto b) => Delete($"صندوق «{b.Title}»", s => s.DeleteCashBoxAsync(b.Id, default));
+    private Task DeleteBank(TreasuryBankAccountDto b) => Delete($"حساب «{b.Title}»", s => s.DeleteBankAccountAsync(b.Id, default));
+    private Task DeleteFund(ImprestFundDto f) => Delete($"تنخواه‌گردان «{f.Title}»", s => s.DeleteImprestFundAsync(f.Id, default));
+    private Task DeleteType(TransactionTypeDto t) => Delete($"«{t.Title}»", s => s.DeleteTypeAsync(t.Id, default));
+}

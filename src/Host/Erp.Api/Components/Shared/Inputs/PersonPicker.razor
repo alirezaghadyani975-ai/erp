@@ -1,0 +1,47 @@
+@* انتخاب شخص با جستجوی نام، کد ملی یا کد تفصیلی *@
+@inject Backend Backend
+
+<MudAutocomplete T="PersonListItemDto" Value="_value" ValueChanged="OnChanged" SearchFunc="Search"
+                 ToStringFunc="@(p => p?.DisplayName)" Label="@Label" Required="Required" Disabled="Disabled"
+                 ResetValueOnEmptyText="true" DebounceInterval="250" Dense="true" MaxItems="30"
+                 HelperText="@(_value?.DetailCode is { } c ? $"تفصیلی {c}" : HelperText)"
+                 Variant="Variant.Outlined" Margin="Margin.Dense">
+    <ItemTemplate Context="p">
+        @p.DisplayName
+        @if (p.DetailCode is not null) { <span class="code mr-2 select-hint">@p.DetailCode</span> }
+        @if (p.Roles.Count > 0) { <span class="select-hint mr-2">(@string.Join("، ", p.Roles))</span> }
+    </ItemTemplate>
+</MudAutocomplete>
+
+@code {
+    [Parameter] public int? PersonId { get; set; }
+    [Parameter] public EventCallback<int?> PersonIdChanged { get; set; }
+    /// <summary>نام شخص انتخاب‌شده هنگام باز کردن فرم موجود.</summary>
+    [Parameter] public string? PersonName { get; set; }
+    [Parameter] public string Label { get; set; } = "شخص";
+    [Parameter] public string? HelperText { get; set; } = "نام، کد ملی یا کد تفصیلی";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private PersonListItemDto? _value;
+
+    protected override void OnParametersSet()
+    {
+        if (PersonId is null) _value = null;
+        else if (_value?.Id != PersonId)
+            _value = new PersonListItemDto(PersonId.Value, PersonKind.Natural, PersonName ?? "?", null, null, true, [], null, null, null);
+    }
+
+    private async Task<IEnumerable<PersonListItemDto>> Search(string? term, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(term)) return [];
+        var r = await Backend.Run<PersonService, List<PersonListItemDto>>(s => s.SearchAsync(term, null, null, false, ct));
+        return r.Value ?? [];
+    }
+
+    private async Task OnChanged(PersonListItemDto? p)
+    {
+        _value = p;
+        await PersonIdChanged.InvokeAsync(p?.Id);
+    }
+}

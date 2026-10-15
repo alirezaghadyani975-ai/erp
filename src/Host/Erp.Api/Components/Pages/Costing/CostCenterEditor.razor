@@ -14,6 +14,8 @@
     return;
 }
 
+<FormWithList Title="مراکز هزینه" Load="LoadSideAsync" NewUrl="/costing/centers/new" CurrentUrl="@SelfUrl" Version="_listVersion">
+
 <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
     <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Href="/costing/centers" aria-label="بازگشت" />
     <MudText Typo="Typo.h5">@(IsNew ? "مرکز هزینه جدید" : _model.Title)</MudText>
@@ -162,7 +164,18 @@
     </MudItem>
 </MudGrid>
 
+</FormWithList>
+
 @code {
+    private string? SelfUrl => Id is int id ? $"/costing/centers/{id}" : null;
+    private int _listVersion;
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var r = await Backend.Run<CostCenterService, List<CostCenterListItemDto>>(s => s.GetAllAsync(true, default));
+        return (r.Value ?? []).Select(c => new SideItem($"/costing/centers/{c.Id}", c.Title, c.TypeTitle, c.Code,
+            c.IsActive ? null : "غیرفعال")).ToList();
+    }
     [Parameter] public int? Id { get; set; }
 
     private bool IsNew => Id is null;
@@ -250,6 +263,7 @@
                 var r = await Backend.Run<CostCenterService>(s => s.UpdateAsync(Id!.Value, _model, default));
                 if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
                 Snackbar.Add("تغییرات ذخیره شد.", Severity.Success);
+                _listVersion++;
                 await OnParametersSetAsync();
             }
         }

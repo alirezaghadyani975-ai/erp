@@ -16,9 +16,13 @@ public static class AccountRules
     /// <summary>معین هزینه از روی گروه عامل هزینه (کل) و وظیفه مرکز هزینه (معین).</summary>
     public const string Cost = "cost";
 
+    /// <summary>معین را خود فرم می‌دهد (مثلاً از نوع دریافت و پرداخت).</summary>
+    public const string Source = "source";
+
     public static string Title(string rule) => rule switch
     {
         Cost => "از روی گروه عامل و وظیفه مرکز هزینه",
+        Source => "از فرم (مثلاً معین نوع دریافت یا پرداخت)",
         _ => rule
     };
 }

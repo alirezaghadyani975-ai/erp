@@ -2,6 +2,7 @@ using Erp.BaseData.Application.Abstractions;
 using Erp.BaseData.Domain.Banks;
 using Erp.BaseData.Domain.Lookups;
 using Erp.BaseData.Domain.Persons;
+using Erp.BaseData.Domain.Taxes;
 using Erp.Database;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,6 +23,7 @@ public class BaseDataDbContext : DbContext, IBaseDataDbContext
     public DbSet<LookupCategory> LookupCategories => Set<LookupCategory>();
     public DbSet<LookupItem> LookupItems => Set<LookupItem>();
     public DbSet<Bank> Banks => Set<Bank>();
+    public DbSet<VatRate> VatRates => Set<VatRate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(BaseDataDbContext).Assembly);

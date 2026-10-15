@@ -1,0 +1,73 @@
+@page "/treasury/cheque-ops/in"
+@page "/treasury/cheque-ops/out"
+@inject Backend Backend
+@inject TabService Tabs
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<TabTitle Text="@Title" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">@Title</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.FactCheck" OnClick="@(() => Tabs.Go(ReportUrl))">گزارش چک‌ها</MudButton>
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go($"{BaseUrl}/new"))">عملیات جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    @(Side == ChequeSide.Receivable
+        ? "واگذاری به بانک، وصول، برگشت، اقدام حقوقی، عودت به صاحب چک و برگشت از واگذاری؛ هر عملیات روی چند چک با یک سند حسابداری."
+        : "پاس شدن و ابطال/عودت چک‌های صادره؛ هر عملیات روی چند چک با یک سند حسابداری.")
+    برگرداندن یک عملیات با حذف آن است (فقط آخرین عملیات هر چک).
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="ChequeOperationListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/treasury/cheque-ops/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره</MudTh><MudTh>تاریخ</MudTh><MudTh>عملیات</MudTh><MudTh>صندوق / بانک</MudTh><MudTh>تعداد چک</MudTh>
+            <MudTh>شرح</MudTh><MudTh Style="text-align:left">مبلغ</MudTh><MudTh>سند</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd>@context.OperationTitle</MudTd>
+            <MudTd>@context.TargetTitle</MudTd>
+            <MudTd>@context.ChequeCount</MudTd>
+            <MudTd>@context.Description</MudTd>
+            <MudTd Class="num"><b>@Format.Amount(context.Total)</b></MudTd>
+            <MudTd>
+                @if (context.Voucher is { } v)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@Format.StatusColor((VoucherStatus)v.Status)">@v.TempNo — @Format.Status((VoucherStatus)v.Status)</MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">عملیاتی ثبت نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private ChequeSide Side => Nav.Uri.TrimEnd('/').EndsWith("/out") ? ChequeSide.Payable : ChequeSide.Receivable;
+    private string Title => Side == ChequeSide.Receivable ? "عملیات اسناد دریافتنی" : "عملیات اسناد پرداختنی";
+    private string BaseUrl => Side == ChequeSide.Receivable ? "/treasury/cheque-ops/in" : "/treasury/cheque-ops/out";
+    private string ReportUrl => Side == ChequeSide.Receivable ? "/treasury/reports/cheques-in" : "/treasury/reports/cheques-out";
+    private List<ChequeOperationListItemDto> _rows = [];
+    private bool _loading = true;
+    private ChequeSide? _loaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loaded == Side) return;
+        _loaded = Side;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<ChequeOperationService, List<ChequeOperationListItemDto>>(s => s.ListAsync(Side, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

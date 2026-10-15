@@ -27,6 +27,20 @@ public static class OwnerModules
     public static bool IsSingleActive(string ownerModule) => IsManagedByModule(ownerModule);
 }
 
+/// <summary>کلید سیستمی گروه‌های تفصیلی (fin.DetailTypes.SystemKey).</summary>
+public static class DetailSystemKeys
+{
+    public const string Cash = "cash";
+    public const string Imprest = "imprest";
+    public const string Bank = "bank";
+    public const string LetterOfCredit = "lc";
+    public const string Loan = "loan";
+    public const string DueMonth = "due_month";
+
+    /// <summary>تفصیلی این گروه‌ها فقط از خزانه‌داری (تعریف صندوق، حساب بانکی، تنخواه‌گردان) ساخته می‌شود.</summary>
+    public static bool IsTreasuryManaged(string? key) => key is Cash or Imprest or Bank;
+}
+
 /// <summary>
 /// نوع تفصیلی (fin.DetailTypes)، مثل «مشتریان حقیقی» یا «حساب جاری بانک‌ها».
 /// هر نوع یک بازه کد هم‌طول دارد (مثلاً 01001 تا 02999) تا کد تفصیلی نقش را نشان دهد.
@@ -95,6 +109,9 @@ public class DetailType : AggregateRoot<short>
     public string CodeFrom { get; private set; } = null!;
     public string CodeTo { get; private set; } = null!;
     public bool IsActive { get; private set; } = true;
+
+    /// <summary>کلید سیستمی گروه‌هایی که زیرسیستم‌ها پیدایشان می‌کنند (cash، bank، imprest، due_month، ...).</summary>
+    public string? SystemKey { get; private set; }
 
     public int CodeLength => CodeFrom.Length;
 

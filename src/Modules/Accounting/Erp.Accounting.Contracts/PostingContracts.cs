@@ -9,6 +9,14 @@ public enum PostingDetailKind : byte
     CostFactor = 2,
     /// <summary>مرکز هزینه (cost.CostCenters).</summary>
     CostCenter = 3,
+    /// <summary>ماه سررسید؛ Id شماره ماه (۱ تا ۱۲).</summary>
+    DueMonth = 4,
+    /// <summary>صندوق (trs.CashBoxes).</summary>
+    CashBox = 5,
+    /// <summary>حساب بانکی (trs.BankAccounts).</summary>
+    BankAccount = 6,
+    /// <summary>تنخواه‌گردان (trs.ImprestFunds).</summary>
+    Imprest = 7,
     /// <summary>خود حساب تفصیلی (fin.DetailAccounts)، مثلاً صندوق یا حساب بانکی.</summary>
     DetailAccount = 9
 }
@@ -19,7 +27,9 @@ public sealed record PostingDetail(PostingDetailKind Kind, long Id);
 /// یک ردیف سند منبع با کلید ردیف الگو (مثلاً expense یا vat). مبلغ منفی در طرف مقابل الگو ثبت می‌شود؛
 /// مبلغ صفر نادیده گرفته می‌شود. تفصیلی‌ها به ترتیب سطح‌های قاعده معین خودکار جا می‌گیرند.
 /// </summary>
-public sealed record PostingLine(string LineKey, decimal Amount, IReadOnlyList<PostingDetail> Details, string? Description = null);
+/// <param name="AccountId">معین ردیف وقتی ردیف الگو قاعده «source» دارد (فرم معین را تعیین می‌کند، مثلاً از نوع دریافت).</param>
+public sealed record PostingLine(string LineKey, decimal Amount, IReadOnlyList<PostingDetail> Details, string? Description = null,
+    int? AccountId = null, string? FollowUpNo = null, DateOnly? FollowUpDate = null);
 
 /// <summary>درخواست صدور (یا صدور دوباره) سند حسابداری یک سند منبع.</summary>
 public sealed record PostingRequest(
@@ -54,4 +64,35 @@ public interface IVoucherPosting
     /// <summary>سند حسابداری زنده چند سند منبع (شناسه سند منبع ← سند).</summary>
     Task<IReadOnlyDictionary<long, PostedVoucher>> FindAsync(string sourceModule, string docType,
         IReadOnlyCollection<long> documentIds, CancellationToken ct);
+}
+
+/// <summary>موجودیت خزانه‌داری که تفصیلی حسابداری دارد.</summary>
+public enum TreasuryDetailKind : byte
+{
+    CashBox = 1,
+    BankAccount = 2,
+    Imprest = 3
+}
+
+/// <summary>
+/// تفصیلی صندوق‌ها، حساب‌های بانکی و تنخواه‌گردان‌ها؛ پیاده‌سازی در حسابداری. تفصیلی در گروه همان نوع
+/// (کلید سیستمی cash، bank، imprest) ساخته و با عنوان و وضعیت موجودیت هماهنگ می‌شود.
+/// </summary>
+public interface ITreasuryDetailLinks
+{
+    /// <summary>ساخت یا هماهنگ کردن تفصیلی؛ کد تفصیلی را برمی‌گرداند.</summary>
+    Task<string> SyncAsync(TreasuryDetailKind kind, int id, string title, bool isActive, CancellationToken ct);
+
+    Task<bool> IsUsedAsync(TreasuryDetailKind kind, int id, CancellationToken ct);
+
+    Task DeleteAsync(TreasuryDetailKind kind, int id, CancellationToken ct);
+
+    /// <summary>کد تفصیلی همه موجودیت‌های یک نوع (شناسه ← کد).</summary>
+    Task<IReadOnlyDictionary<int, string>> GetCodesAsync(TreasuryDetailKind kind, CancellationToken ct);
+
+    /// <summary>
+    /// مانده هر صندوق/حساب بانکی/تنخواه (شناسه ← مانده بدهکار) در معین وجه نقد همان نوع، از سندهای موقت و دائم
+    /// تا تاریخ داده‌شده (خالی یعنی همه).
+    /// </summary>
+    Task<IReadOnlyDictionary<int, decimal>> GetBalancesAsync(TreasuryDetailKind kind, DateOnly? asOf, CancellationToken ct);
 }

@@ -1,0 +1,8 @@
+@page "/treasury/payments/new"
+@page "/treasury/payments/{Id:long}"
+
+<ReceiptPaymentEditor IsPayment="true" Id="Id" />
+
+@code {
+    [Parameter] public long? Id { get; set; }
+}

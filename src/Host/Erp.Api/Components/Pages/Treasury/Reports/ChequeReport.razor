@@ -1,0 +1,96 @@
+@page "/treasury/reports/cheques-in"
+@page "/treasury/reports/cheques-out"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@inject TabService Tabs
+
+<TabTitle Text="@Title" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">@Title</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.SwapVert" OnClick="@(() => Tabs.Go(OpsUrl))">عملیات چک</MudButton>
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">با دکمه سابقه در هر ردیف، همه عملیات‌های یک چک دیده می‌شود.</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudGrid Spacing="2" Class="mb-2">
+        <MudItem xs="12" md="6">
+            <MudSelect T="byte" Label="وضعیت" MultiSelection="true" SelectedValues="_statuses" SelectedValuesChanged="StatusesChanged"
+                       Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                       MultiSelectionTextFunc="@(v => v.Count == 0 ? "همه" : string.Join("، ", v.Select(x => StatusTitle(byte.Parse(x!)))))">
+                @foreach (var s in Statuses) { <MudSelectItem T="byte" Value="s">@StatusTitle(s)</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" md="3"><PersianDateField Value="_fromDue" ValueChanged="async v => { _fromDue = v; await LoadAsync(); }" Label="سررسید از" /></MudItem>
+        <MudItem xs="6" md="3"><PersianDateField Value="_toDue" ValueChanged="async v => { _toDue = v; await LoadAsync(); }" Label="سررسید تا" /></MudItem>
+        <MudItem xs="12" md="4">
+            <MudTextField T="string" @bind-Value="_term" Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="_ => LoadAsync()"
+                          Placeholder="سریال، صیاد یا طرف حساب" Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" md="4"><PersonPicker PersonId="_personId" PersonIdChanged="PersonChanged" Label="طرف حساب" HelperText="@null" /></MudItem>
+        <MudItem xs="12" md="2">
+            <MudSelect T="int?" Value="_bankId" ValueChanged="BankChanged" Label="حساب بانکی" Clearable="true" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var b in _banks) { <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        @if (!IsPayable)
+        {
+            <MudItem xs="12" md="2">
+                <MudSelect T="int?" Value="_boxId" ValueChanged="BoxChanged" Label="صندوق" Clearable="true" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var b in _boxes) { <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem> }
+                </MudSelect>
+            </MudItem>
+        }
+    </MudGrid>
+    <ChequeTable Rows="_rows" Loading="_loading" />
+</MudPaper>
+
+@code {
+    private bool IsPayable => Nav.Uri.Contains("cheques-out");
+    private string Title => IsPayable ? "گزارش چک‌های پرداختنی" : "گزارش چک‌های دریافتنی";
+    private string OpsUrl => IsPayable ? "/treasury/cheque-ops/out" : "/treasury/cheque-ops/in";
+    private byte[] Statuses => IsPayable
+        ? Enum.GetValues<IssuedChequeStatus>().Select(s => (byte)s).ToArray()
+        : Enum.GetValues<ReceivedChequeStatus>().Select(s => (byte)s).ToArray();
+    private string StatusTitle(byte s) => IsPayable ? ChequeTitles.Of((IssuedChequeStatus)s) : ChequeTitles.Of((ReceivedChequeStatus)s);
+
+    private List<ChequeRowDto> _rows = [];
+    private List<CashBoxDto> _boxes = [];
+    private List<TreasuryBankAccountDto> _banks = [];
+    private IReadOnlyCollection<byte> _statuses = [];
+    private string? _fromDue, _toDue, _term;
+    private int? _personId, _bankId, _boxId;
+    private bool _loading = true;
+    private bool? _loadedPayable;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedPayable == IsPayable) return;
+        _loadedPayable = IsPayable;
+        _statuses = IsPayable ? [(byte)IssuedChequeStatus.Issued] : [(byte)ReceivedChequeStatus.InBox, (byte)ReceivedChequeStatus.InCollection];
+        _boxes = (await Backend.Run<TreasurySetupService, List<CashBoxDto>>(s => s.GetCashBoxesAsync(true, default))).Value ?? [];
+        _banks = (await Backend.Run<TreasurySetupService, List<TreasuryBankAccountDto>>(s => s.GetBankAccountsAsync(true, default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private Task StatusesChanged(IReadOnlyCollection<byte>? v) { _statuses = v ?? []; return LoadAsync(); }
+    private Task PersonChanged(int? v) { _personId = v; return LoadAsync(); }
+    private Task BankChanged(int? v) { _bankId = v; return LoadAsync(); }
+    private Task BoxChanged(int? v) { _boxId = v; return LoadAsync(); }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var filter = new ChequeFilter(_statuses.Any() ? _statuses.ToList() : null, _fromDue, _toDue, _personId, _bankId,
+            IsPayable ? null : _boxId, _term);
+        var r = IsPayable
+            ? await Backend.Run<TreasuryReportService, List<ChequeRowDto>>(s => s.IssuedChequesAsync(filter, default))
+            : await Backend.Run<TreasuryReportService, List<ChequeRowDto>>(s => s.ReceivedChequesAsync(filter, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

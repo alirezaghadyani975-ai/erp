@@ -1,0 +1,239 @@
+@page "/treasury/guarantees/new"
+@page "/treasury/guarantees/{Id:long}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="@Heading" />
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<FormWithList Title="اسناد تضمینی" Load="LoadSideAsync" NewUrl="/treasury/guarantees/new" CurrentUrl="@SelfUrl" Version="_listVersion">
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+    <MudText Typo="Typo.h5">@Heading</MudText>
+    @if (_dto?.Voucher is { } v)
+    {
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                 Color="@Format.StatusColor((VoucherStatus)v.Status)" OnClick="() => OpenVoucher(v)">
+            سند ثبت @v.TempNo — @Format.Status((VoucherStatus)v.Status)
+        </MudChip>
+    }
+    @if (_dto?.ReturnVoucher is { } rv)
+    {
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                 Color="@Format.StatusColor((VoucherStatus)rv.Status)" OnClick="() => OpenVoucher(rv)">
+            سند استرداد @rv.TempNo — @Format.Status((VoucherStatus)rv.Status)
+        </MudChip>
+    }
+    <MudSpacer />
+    @if (_dto is not null)
+    {
+        @if (_dto.IsReturned)
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Undo" OnClick="UndoReturnAsync" Disabled="_saving">لغو استرداد</MudButton>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.AssignmentReturn" OnClick="() => _returnOpen = true" Disabled="_saving">استرداد</MudButton>
+            @if (!Locked)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="DeleteAsync" Disabled="_saving">حذف</MudButton>
+            }
+        }
+    }
+    @if (!ReadOnly)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_saving">
+            @(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")
+        </MudButton>
+    }
+</MudStack>
+
+@if (_dto?.IsReturned == true)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3">این سند در تاریخ @_dto.ReturnDate مسترد شده است؛ برای اصلاح، ابتدا استرداد را لغو کنید.</MudAlert>
+}
+else if (Locked)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3">سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است.</MudAlert>
+}
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" md="12">
+            <MudRadioGroup T="GuaranteeDirection" @bind-Value="_direction" Disabled="@(!IsNew)">
+                <MudRadio T="GuaranteeDirection" Value="GuaranteeDirection.Received" Color="Color.Primary" Dense="true">دریافتی (نزد ما)</MudRadio>
+                <MudRadio T="GuaranteeDirection" Value="GuaranteeDirection.Issued" Color="Color.Primary" Dense="true">پرداختی (ما نزد دیگران)</MudRadio>
+            </MudRadioGroup>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="GuaranteeKind" @bind-Value="_kind" Label="نوع" Disabled="ReadOnly" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var k in Enum.GetValues<GuaranteeKind>()) { <MudSelectItem T="GuaranteeKind" Value="k">@KindTitle(k)</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3"><PersianDateField @bind-Value="_date" Label="تاریخ ثبت" Required="true" Disabled="ReadOnly" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><PersianDateField @bind-Value="_due" Label="سررسید / اعتبار تا" Disabled="ReadOnly" /></MudItem>
+        <MudItem xs="12" md="6">
+            <PersonPicker @bind-PersonId="_personId" PersonName="@_personName" Required="true" Disabled="ReadOnly"
+                          Label="@(_direction == GuaranteeDirection.Received ? "تضمین‌دهنده" : "ذی‌نفع (گیرنده تضمین)")" />
+        </MudItem>
+        @if (_direction == GuaranteeDirection.Issued && _kind is GuaranteeKind.BankGuarantee or GuaranteeKind.Cheque)
+        {
+            <MudItem xs="12" md="6">
+                <MudSelect T="int?" @bind-Value="_bankAccountId" Label="حساب بانکی صادرکننده" Clearable="true" Disabled="ReadOnly" Dense="true"
+                           Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var b in _banks.Where(b => b.IsActive || b.Id == _bankAccountId)) { <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem> }
+                </MudSelect>
+            </MudItem>
+        }
+        <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_number" Label="شماره سند/ضمانت‌نامه" MaxLength="50" Class="code" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudNumericField T="decimal" @bind-Value="_amount" Label="مبلغ" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
+                             Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" md="6"><MudTextField @bind-Value="_subject" Label="موضوع (قرارداد، مناقصه، ...)" MaxLength="200" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12" md="6"><MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+</MudPaper>
+</FormWithList>
+
+<MudDialog @bind-Visible="_returnOpen" Options="new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true }">
+    <TitleContent><MudText Typo="Typo.h6">استرداد سند تضمینی</MudText></TitleContent>
+    <DialogContent>
+        <PersianDateField @bind-Value="_returnDate" Label="تاریخ استرداد" Required="true" />
+        <MudText Typo="Typo.caption" Color="Color.Secondary">سند انتظامی معکوس با همین تاریخ صادر می‌شود.</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _returnOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ReturnAsync" Disabled="_returnDate is null">ثبت استرداد</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private bool IsNew => Id is null;
+    private string? SelfUrl => Id is long id ? $"/treasury/guarantees/{id}" : null;
+    private string Heading => IsNew ? "سند تضمینی جدید" : $"سند تضمینی {Format.No(_dto?.DocNo ?? 0)}";
+    private bool Locked => _dto?.Voucher?.Status == 3;
+    private bool ReadOnly => Locked || _dto?.IsReturned == true;
+
+    private GuaranteeDto? _dto;
+    private List<TreasuryBankAccountDto> _banks = [];
+    private GuaranteeDirection _direction = GuaranteeDirection.Received;
+    private GuaranteeKind _kind = GuaranteeKind.Cheque;
+    private string? _date = Format.Today(), _due, _number, _subject, _description, _personName, _returnDate = Format.Today();
+    private int? _personId, _bankAccountId;
+    private decimal _amount;
+    private bool _loading = true, _saving, _returnOpen;
+    private int _listVersion;
+    private string? _error;
+
+    public static string DirectionTitle(GuaranteeDirection d) => d == GuaranteeDirection.Received ? "دریافتی" : "پرداختی";
+
+    public static string KindTitle(GuaranteeKind k) => k switch
+    {
+        GuaranteeKind.Cheque => "چک تضمینی",
+        GuaranteeKind.PromissoryNote => "سفته",
+        GuaranteeKind.BankGuarantee => "ضمانت‌نامه بانکی",
+        _ => "سایر"
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _banks = (await Backend.Run<TreasurySetupService, List<TreasuryBankAccountDto>>(s => s.GetBankAccountsAsync(true, default))).Value ?? [];
+        if (Id is long id) await LoadAsync(id);
+        _loading = false;
+    }
+
+    private async Task LoadAsync(long id)
+    {
+        var r = await Backend.Run<GuaranteeService, GuaranteeDto>(s => s.GetAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        var x = _dto = r.Value!;
+        (_direction, _kind, _date, _due, _number, _subject, _description, _personId, _personName, _bankAccountId, _amount) =
+            (x.Direction, x.Kind, x.Date, x.DueDate, x.Number, x.Subject, x.Description, x.PersonId, x.PersonName, x.BankAccountId, x.Amount);
+    }
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var r = await Backend.Run<GuaranteeService, List<GuaranteeDto>>(s => s.ListAsync(null, null, default));
+        return (r.Value ?? []).Select(x => new SideItem($"/treasury/guarantees/{x.Id}", $"{Format.No(x.DocNo)} — {x.PersonName}",
+            $"{DirectionTitle(x.Direction)} · {KindTitle(x.Kind)}", Format.Amount(x.Amount),
+            x.IsReturned ? "مسترد" : null)).ToList();
+    }
+
+    private void OpenVoucher(TreasuryVoucherDto v) => Tabs.Go($"/vouchers/{v.VoucherId}");
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_date is null) { _error = "تاریخ الزامی است."; return; }
+        if (_personId is null) { _error = "شخص را انتخاب کنید."; return; }
+        var bank = _direction == GuaranteeDirection.Issued && _kind is GuaranteeKind.BankGuarantee or GuaranteeKind.Cheque ? _bankAccountId : null;
+        var request = new SaveGuaranteeRequest(_direction, _kind, _date, _personId.Value, bank, _number, _amount, _due, _subject, _description);
+        _saving = true;
+        if (Id is long id)
+        {
+            var r = await Backend.Run<GuaranteeService>(s => s.UpdateAsync(id, request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("سند تضمینی ذخیره شد و سند انتظامی‌اش اصلاح شد.", Severity.Success);
+            _listVersion++;
+            await LoadAsync(id);
+        }
+        else
+        {
+            var r = await Backend.Run<GuaranteeService, long>(s => s.CreateAsync(request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("سند تضمینی ثبت شد و سند انتظامی صادر شد.", Severity.Success);
+            Tabs.Go($"/treasury/guarantees/{r.Value}");
+        }
+    }
+
+    private async Task ReturnAsync()
+    {
+        if (Id is not long id || _returnDate is null) return;
+        _returnOpen = false;
+        _saving = true;
+        var r = await Backend.Run<GuaranteeService>(s => s.ReturnAsync(id, _returnDate, default));
+        _saving = false;
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add("استرداد ثبت شد و سند انتظامی معکوس صادر شد.", Severity.Success);
+        _listVersion++;
+        await LoadAsync(id);
+    }
+
+    private async Task UndoReturnAsync()
+    {
+        if (Id is not long id) return;
+        _saving = true;
+        var r = await Backend.Run<GuaranteeService>(s => s.UndoReturnAsync(id, default));
+        _saving = false;
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add("استرداد لغو شد و سند آن حذف شد.", Severity.Success);
+        _listVersion++;
+        await LoadAsync(id);
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Id is not long id) return;
+        if (!await Dialogs.DeleteAsync($"سند تضمینی شماره {Format.No(_dto?.DocNo ?? 0)}", "سند انتظامی آن هم حذف می‌شود.")) return;
+        var r = await Backend.Run<GuaranteeService>(s => s.DeleteAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add("سند تضمینی حذف شد.", Severity.Success);
+        Tabs.CloseCurrentAndGo("/treasury/guarantees");
+    }
+}

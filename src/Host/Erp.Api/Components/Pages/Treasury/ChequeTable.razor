@@ -1,0 +1,85 @@
+@* جدول چک‌ها (دریافتنی یا پرداختنی) با سابقه هر چک *@
+@inject Backend Backend
+@inject TabService Tabs
+
+<MudTable T="ChequeRowDto" Items="Rows" Dense="true" Hover="true" Elevation="0" Loading="Loading">
+    <HeaderContent>
+        <MudTh>سریال</MudTh><MudTh>صیاد</MudTh><MudTh>سررسید</MudTh><MudTh>طرف حساب</MudTh><MudTh>بانک</MudTh>
+        <MudTh>وضعیت</MudTh><MudTh>محل</MudTh><MudTh>فرم مبدأ</MudTh><MudTh Style="text-align:left">مبلغ</MudTh><MudTh></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd><span class="code">@context.SerialNo</span></MudTd>
+        <MudTd><span class="code">@context.SayadId</span></MudTd>
+        <MudTd><span class="code">@context.DueDate</span></MudTd>
+        <MudTd>@context.PersonName</MudTd>
+        <MudTd>@context.BankTitle</MudTd>
+        <MudTd><MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="StatusColor(context)">@context.StatusTitle</MudChip></MudTd>
+        <MudTd>@context.PlaceTitle</MudTd>
+        <MudTd>
+            @if (context.SourceId is long sid)
+            {
+                <MudLink Typo="Typo.body2" OnClick="() => OpenSource(context.Side, sid)">@(context.Side == ChequeSide.Receivable ? "دریافت" : "پرداخت") @context.SourceDocNo</MudLink>
+            }
+        </MudTd>
+        <MudTd Class="num">@Format.Amount(context.Amount)</MudTd>
+        <MudTd><MudIconButton Icon="@Icons.Material.Outlined.History" Size="Size.Small" OnClick="() => ShowHistory(context)" aria-label="سابقه چک" /></MudTd>
+    </RowTemplate>
+    <FooterContent>
+        <MudTd colspan="8"><b>جمع (@Rows.Count() چک)</b></MudTd>
+        <MudTd Class="num"><b>@Format.Amount(Rows.Sum(r => r.Amount))</b></MudTd>
+        <MudTd />
+    </FooterContent>
+    <NoRecordsContent><MudText Class="pa-4">چکی پیدا نشد.</MudText></NoRecordsContent>
+</MudTable>
+
+<MudDialog @bind-Visible="_historyOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">سابقه چک @_historyFor?.SerialNo</MudText></TitleContent>
+    <DialogContent>
+        <MudTimeline TimelinePosition="TimelinePosition.Start" Class="pa-0">
+            @foreach (var e in _history)
+            {
+                <MudTimelineItem Size="Size.Small">
+                    <MudText Typo="Typo.body2"><span class="code ml-2">@e.Date</span> <b>@e.Title</b> @if (e.DocNo is not null) { <span>— @e.DocNo</span> }</MudText>
+                    <MudStack Row="true" Spacing="3">
+                        @if (e.Place is not null) { <MudText Typo="Typo.caption" Color="Color.Secondary">@e.Place</MudText> }
+                        @if (e.Url is not null) { <MudLink Typo="Typo.caption" OnClick="() => Go(e.Url)">باز کردن فرم</MudLink> }
+                    </MudStack>
+                </MudTimelineItem>
+            }
+        </MudTimeline>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [Parameter] public IEnumerable<ChequeRowDto> Rows { get; set; } = [];
+    [Parameter] public bool Loading { get; set; }
+
+    private bool _historyOpen;
+    private ChequeRowDto? _historyFor;
+    private List<ChequeEventDto> _history = [];
+
+    private static Color StatusColor(ChequeRowDto c) => (c.Side, c.Status) switch
+    {
+        (ChequeSide.Receivable, (byte)ReceivedChequeStatus.Collected) or (ChequeSide.Payable, (byte)IssuedChequeStatus.Cleared) => Color.Success,
+        (ChequeSide.Receivable, (byte)ReceivedChequeStatus.Bounced) or (ChequeSide.Receivable, (byte)ReceivedChequeStatus.Legal) => Color.Error,
+        (ChequeSide.Receivable, (byte)ReceivedChequeStatus.InCollection) => Color.Info,
+        (ChequeSide.Receivable, (byte)ReceivedChequeStatus.InBox) or (ChequeSide.Payable, (byte)IssuedChequeStatus.Issued) => Color.Primary,
+        _ => Color.Default
+    };
+
+    private void OpenSource(ChequeSide side, long id) =>
+        Tabs.Go(side == ChequeSide.Receivable ? $"/treasury/receipts/{id}" : $"/treasury/payments/{id}");
+
+    private async Task ShowHistory(ChequeRowDto c)
+    {
+        _historyFor = c;
+        _history = (await Backend.Run<TreasuryReportService, List<ChequeEventDto>>(s => s.HistoryAsync(c.Side, c.Id, default))).Value ?? [];
+        _historyOpen = true;
+    }
+
+    private void Go(string url)
+    {
+        _historyOpen = false;
+        Tabs.Go(url);
+    }
+}

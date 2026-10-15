@@ -1,0 +1,65 @@
+@page "/treasury/imprest"
+@inject Backend Backend
+@inject TabService Tabs
+@inject ISnackbar Snackbar
+
+<TabTitle Text="صورت‌هزینه تنخواه" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">صورت‌هزینه تنخواه</MudText>
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/treasury/imprest/new"))">صورت‌هزینه جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هزینه‌هایی که تنخواه‌دار پرداخت کرده با عامل و مرکز هزینه ثبت می‌شود و تنخواه‌گردان بستانکار می‌شود. شارژ تنخواه از «انتقال وجه» است.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" Class="mb-2">
+        <div style="width:170px"><PersianDateField Value="_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+    </MudStack>
+    <MudTable T="ImprestSettlementListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/treasury/imprest/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره</MudTh><MudTh>تاریخ</MudTh><MudTh>تنخواه‌گردان</MudTh><MudTh>شرح</MudTh>
+            <MudTh Style="text-align:left">جمع</MudTh><MudTh>سند</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd>@context.FundTitle</MudTd>
+            <MudTd>@context.Description</MudTd>
+            <MudTd Class="num"><b>@Format.Amount(context.Total)</b></MudTd>
+            <MudTd>
+                @if (context.Voucher is { } v)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@Format.StatusColor((VoucherStatus)v.Status)">@v.TempNo — @Format.Status((VoucherStatus)v.Status)</MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTd colspan="4"><b>جمع (@_rows.Count فرم)</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.Total))</b></MudTd>
+            <MudTd />
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4">صورت‌هزینه‌ای ثبت نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<ImprestSettlementListItemDto> _rows = [];
+    private bool _loading = true;
+    private string? _from, _to;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<ImprestSettlementService, List<ImprestSettlementListItemDto>>(s => s.ListAsync(_from, _to, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

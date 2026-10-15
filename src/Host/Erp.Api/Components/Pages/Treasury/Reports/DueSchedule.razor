@@ -1,0 +1,65 @@
+@page "/treasury/reports/due"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject TabService Tabs
+
+<TabTitle Text="سررسید چک‌ها" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">جدول سررسید ماهانه چک‌ها</MudText>
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    چک‌های دریافتنی هنوز وصول‌نشده (در صندوق و در جریان وصول) در برابر چک‌های صادره پاس‌نشده، به تفکیک ماه سررسید؛ برای پیش‌بینی نقدینگی.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="DueMonthDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading">
+        <HeaderContent>
+            <MudTh>ماه</MudTh>
+            <MudTh Style="text-align:left">دریافتنی</MudTh><MudTh Style="text-align:center">تعداد</MudTh>
+            <MudTh Style="text-align:left">پرداختنی</MudTh><MudTh Style="text-align:center">تعداد</MudTh>
+            <MudTh Style="text-align:left">خالص</MudTh><MudTh Style="text-align:left">خالص انباشته</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><b>@context.Title</b></MudTd>
+            <MudTd Class="num"><MudLink OnClick="() => Tabs.Go(InUrl)">@Format.Amount(context.Receivable)</MudLink></MudTd>
+            <MudTd Style="text-align:center">@context.ReceivableCount</MudTd>
+            <MudTd Class="num"><MudLink OnClick="() => Tabs.Go(OutUrl)">@Format.Amount(context.Payable)</MudLink></MudTd>
+            <MudTd Style="text-align:center">@context.PayableCount</MudTd>
+            <MudTd Class="num" Style="@Neg(context.Net)">@Format.Amount(context.Net)</MudTd>
+            <MudTd Class="num" Style="@Neg(Cumulative(context))"><b>@Format.Amount(Cumulative(context))</b></MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTd><b>جمع</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.Receivable))</b></MudTd>
+            <MudTd Style="text-align:center"><b>@_rows.Sum(r => r.ReceivableCount)</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.Payable))</b></MudTd>
+            <MudTd Style="text-align:center"><b>@_rows.Sum(r => r.PayableCount)</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.Net))</b></MudTd>
+            <MudTd />
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4">چک سررسید نشده‌ای نیست.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private const string InUrl = "/treasury/reports/cheques-in";
+    private const string OutUrl = "/treasury/reports/cheques-out";
+    private List<DueMonthDto> _rows = [];
+    private bool _loading = true;
+
+    private static string? Neg(decimal v) => v < 0 ? "color:var(--mud-palette-error)" : null;
+    private decimal Cumulative(DueMonthDto row) => _rows.TakeWhile(r => r != row).Sum(r => r.Net) + row.Net;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<TreasuryReportService, List<DueMonthDto>>(s => s.DueScheduleAsync(default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

@@ -14,6 +14,8 @@
     return;
 }
 
+<FormWithList Title="اشخاص" Load="LoadSideAsync" NewUrl="/persons/new" CurrentUrl="@SelfUrl" Version="_listVersion">
+
 <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
     <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Href="/persons" aria-label="بازگشت" />
     <MudText Typo="Typo.h5">@(IsNew ? "شخص جدید" : _model.DisplayName)</MudText>
@@ -278,7 +280,18 @@
     </MudTabs>
 </MudForm>
 
+</FormWithList>
+
 @code {
+    private string? SelfUrl => Id is int id ? $"/persons/{id}" : null;
+    private int _listVersion;
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var r = await Backend.Run<PersonService, List<PersonListItemDto>>(s => s.SearchAsync(null, null, null, true, default));
+        return (r.Value ?? []).Select(p => new SideItem($"/persons/{p.Id}", p.DisplayName,
+            string.Join("، ", p.Roles), p.DetailCode, p.IsActive ? null : "غیرفعال")).ToList();
+    }
     [Parameter] public int? Id { get; set; }
 
     private const long MaxAttachment = 10 * 1024 * 1024;
@@ -388,6 +401,7 @@
                 var r = await Backend.Run<PersonService>(s => s.UpdateAsync(Id!.Value, _model, default));
                 if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
                 Snackbar.Add("تغییرات ذخیره شد.", Severity.Success);
+                _listVersion++;
                 await OnParametersSetAsync();
             }
         }

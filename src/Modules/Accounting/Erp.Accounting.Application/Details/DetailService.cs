@@ -131,7 +131,10 @@ public class DetailService(IAccountingDbContext db)
     {
         var detail = await db.DetailAccounts.FirstOrDefaultAsync(d => d.Id == id, ct)
                      ?? throw new NotFoundException("تفصیلی پیدا نشد.");
-        var owner = await db.DetailTypes.Where(t => t.Id == detail.DetailTypeId).Select(t => t.OwnerModule).FirstAsync(ct);
+        var type = await db.DetailTypes.Where(t => t.Id == detail.DetailTypeId).Select(t => new { t.OwnerModule, t.SystemKey }).FirstAsync(ct);
+        var owner = type.OwnerModule;
+        if (detail.SourceModule == "treasury" || DetailSystemKeys.IsTreasuryManaged(type.SystemKey) && detail.SourceEntityId is not null)
+            throw new DomainException("تفصیلی صندوق، حساب بانکی و تنخواه‌گردان از تعاریف خزانه‌داری مدیریت می‌شود.");
         if (detail.PersonId is not null || owner is OwnerModules.Persons or OwnerModules.Payroll)
             throw new DomainException("تفصیلی اشخاص و کارکنان از فرم شخص مدیریت می‌شود.");
         if (owner is OwnerModules.CostFactors or OwnerModules.CostCenters)
@@ -219,6 +222,8 @@ public class DetailService(IAccountingDbContext db)
             throw new DomainException("تفصیلی اشخاص و کارکنان از قسمت تعریف شخص ساخته می‌شود.");
         if (type.OwnerModule is OwnerModules.CostFactors or OwnerModules.CostCenters)
             throw new DomainException("تفصیلی عوامل و مراکز هزینه از اطلاعات پایه بهای تمام‌شده ساخته می‌شود.");
+        if (DetailSystemKeys.IsTreasuryManaged(type.SystemKey))
+            throw new DomainException("تفصیلی صندوق، حساب بانکی و تنخواه‌گردان از تعاریف خزانه‌داری ساخته می‌شود.");
 
         var code = string.IsNullOrWhiteSpace(request.Code)
             ? await NextCodeAsync(type, ct)

@@ -1,0 +1,86 @@
+@page "/treasury/guarantees"
+@inject Backend Backend
+@inject TabService Tabs
+@inject ISnackbar Snackbar
+
+<TabTitle Text="اسناد تضمینی" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">اسناد تضمینی</MudText>
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/treasury/guarantees/new"))">سند تضمینی جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    چک و سفته تضمینی، ضمانت‌نامه بانکی و سایر تضمین‌ها؛ دریافتی (نزد ما) و پرداختی (ما نزد دیگران). ثبت و استرداد هر کدام سند انتظامی دارد.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="3" Wrap="Wrap.Wrap" Class="mb-2" AlignItems="AlignItems.Center">
+        <MudChipSet T="string" SelectedValue="_dir" SelectedValueChanged="DirChanged" CheckMark="true" SelectionMode="SelectionMode.SingleSelection">
+            <MudChip T="string" Value="@("all")">همه</MudChip>
+            <MudChip T="string" Value="@("in")">دریافتی</MudChip>
+            <MudChip T="string" Value="@("out")">پرداختی</MudChip>
+        </MudChipSet>
+        <MudChipSet T="string" SelectedValue="_state" SelectedValueChanged="StateChanged" CheckMark="true" SelectionMode="SelectionMode.SingleSelection">
+            <MudChip T="string" Value="@("open")">جاری</MudChip>
+            <MudChip T="string" Value="@("returned")">مستردشده</MudChip>
+            <MudChip T="string" Value="@("all")">همه</MudChip>
+        </MudChipSet>
+    </MudStack>
+    <MudTable T="GuaranteeDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/treasury/guarantees/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره</MudTh><MudTh>تاریخ</MudTh><MudTh>جهت</MudTh><MudTh>نوع</MudTh><MudTh>شخص</MudTh><MudTh>شماره سند</MudTh>
+            <MudTh>سررسید</MudTh><MudTh>موضوع</MudTh><MudTh Style="text-align:left">مبلغ</MudTh><MudTh>وضعیت</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd>@GuaranteeEditor.DirectionTitle(context.Direction)</MudTd>
+            <MudTd>@GuaranteeEditor.KindTitle(context.Kind)</MudTd>
+            <MudTd>@context.PersonName</MudTd>
+            <MudTd><span class="code">@context.Number</span></MudTd>
+            <MudTd><span class="code">@context.DueDate</span></MudTd>
+            <MudTd>@context.Subject</MudTd>
+            <MudTd Class="num"><b>@Format.Amount(context.Amount)</b></MudTd>
+            <MudTd>
+                @if (context.IsReturned)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">مسترد @context.ReturnDate</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">جاری</MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTd colspan="8"><b>جمع (@_rows.Count سند)</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.Amount))</b></MudTd>
+            <MudTd />
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4">سند تضمینی‌ای نیست.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<GuaranteeDto> _rows = [];
+    private bool _loading = true;
+    private string _dir = "all", _state = "open";
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private Task DirChanged(string? v) { _dir = v ?? "all"; return LoadAsync(); }
+    private Task StateChanged(string? v) { _state = v ?? "open"; return LoadAsync(); }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        GuaranteeDirection? dir = _dir switch { "in" => GuaranteeDirection.Received, "out" => GuaranteeDirection.Issued, _ => null };
+        bool? returned = _state switch { "open" => false, "returned" => true, _ => null };
+        var r = await Backend.Run<GuaranteeService, List<GuaranteeDto>>(s => s.ListAsync(dir, returned, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}
