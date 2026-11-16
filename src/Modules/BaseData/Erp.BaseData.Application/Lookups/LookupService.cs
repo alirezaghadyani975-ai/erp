@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.BaseData.Application.Abstractions;
 using Erp.BaseData.Domain.Lookups;
 using Erp.SharedKernel.Domain;
@@ -18,7 +19,7 @@ public sealed record SaveLookupItemRequest(short CategoryId, string Title, strin
 /// جدول پایه عمومی: فهرست‌ها و اقلامشان. اقلام سیستمی (مثل استان‌ها) ویرایش‌پذیرند ولی حذف نمی‌شوند.
 /// قلمی که جایی استفاده شده حذف نمی‌شود؛ باید غیرفعال شود.
 /// </summary>
-public class LookupService(IBaseDataDbContext db)
+public class LookupService(IBaseDataDbContext db, IAccessControl access)
 {
     public async Task<List<LookupCategoryDto>> GetCategoriesAsync(CancellationToken ct)
     {
@@ -61,6 +62,7 @@ public class LookupService(IBaseDataDbContext db)
 
     public async Task<int> CreateItemAsync(SaveLookupItemRequest request, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.Lookups);
         var (category, parent) = await ResolveAsync(request, ct);
         var item = new LookupItem(category, request.Title, request.Code, parent, request.SortOrder);
         if (!request.IsActive) item.Deactivate();
@@ -72,6 +74,7 @@ public class LookupService(IBaseDataDbContext db)
 
     public async Task UpdateItemAsync(int id, SaveLookupItemRequest request, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.Lookups);
         var item = await db.LookupItems.FirstOrDefaultAsync(i => i.Id == id, ct) ?? throw new NotFoundException("قلم پیدا نشد.");
         if (item.CategoryId != request.CategoryId)
             throw new DomainException("فهرست قلم عوض نمی‌شود.");
@@ -87,6 +90,7 @@ public class LookupService(IBaseDataDbContext db)
     /// <summary>حذف قلم؛ اقلام سیستمی، اقلامی که زیرمجموعه دارند یا جایی استفاده شده‌اند حذف نمی‌شوند.</summary>
     public async Task DeleteItemAsync(int id, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.Lookups);
         var item = await db.LookupItems.FirstOrDefaultAsync(i => i.Id == id, ct) ?? throw new NotFoundException("قلم پیدا نشد.");
         if (item.IsSystem)
             throw new DomainException($"«{item.Title}» قلم سیستمی است و حذف نمی‌شود؛ می‌توانید غیرفعالش کنید.");

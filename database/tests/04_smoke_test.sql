@@ -153,6 +153,13 @@ BEGIN TRY
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد سند دوم برای یک سند منبع', N'2601', CAST(@err AS NVARCHAR(50)));
 
+-- 10) لاگ تغییرات فقط درج می‌شود (اسکریپت ۱۳)
+BEGIN TRY
+    UPDATE audit.ChangeLog SET Reason = Reason WHERE 1 = 0;
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد ویرایش لاگ تغییرات', N'50130', CAST(@err AS NVARCHAR(50)));
+
 -- نتیجه
 SELECT Seq, Test, Expected, Got, CASE WHEN Expected = Got THEN N'قبول' ELSE N'رد' END AS Result
 FROM @R ORDER BY Seq;

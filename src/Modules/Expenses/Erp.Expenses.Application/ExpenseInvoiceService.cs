@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Accounting.Contracts;
 using Erp.Costing.Contracts;
 using Erp.Expenses.Domain;
@@ -42,11 +43,13 @@ public sealed record ExpenseInvoiceDto(
 /// اگر صدور سند خطا بدهد (مثلاً قاعده تفصیلی یا دوره بسته)، فرم هم ذخیره نمی‌شود.
 /// </summary>
 public class ExpenseInvoiceService(IExpensesDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user,
-    TimeProvider clock)
+    TimeProvider clock, IAccessControl access)
 {
     public async Task<List<ExpenseInvoiceListItemDto>> ListAsync(string? term, string? fromDate, string? toDate, CancellationToken ct)
     {
+        access.Demand(ExpensePermissions.View);
         var query = db.ExpenseInvoices.AsNoTracking();
+        if (access.OwnDocsOnly) query = query.Where(i => i.CreatedBy == access.UserId);
         if (!string.IsNullOrWhiteSpace(fromDate)) { var f = PersianDate.Parse(fromDate); query = query.Where(i => i.DocDate >= f); }
         if (!string.IsNullOrWhiteSpace(toDate)) { var t = PersianDate.Parse(toDate); query = query.Where(i => i.DocDate <= t); }
 
@@ -73,6 +76,7 @@ public class ExpenseInvoiceService(IExpensesDbContext db, IVoucherPosting postin
 
     public async Task<ExpenseInvoiceDto> GetAsync(long id, CancellationToken ct)
     {
+        access.Demand(ExpensePermissions.View);
         var invoice = await LoadAsync(id, tracking: false, ct);
         var factorIds = invoice.Lines.Select(l => l.CostFactorId).Distinct().ToList();
         var centerIds = invoice.Lines.Select(l => l.CostCenterId).OfType<int>().Distinct().ToList();
@@ -94,6 +98,7 @@ public class ExpenseInvoiceService(IExpensesDbContext db, IVoucherPosting postin
     /// <summary>ثبت فرم و صدور سند حسابداری موقت آن.</summary>
     public async Task<long> CreateAsync(SaveExpenseInvoiceRequest request, CancellationToken ct)
     {
+        access.Demand(ExpensePermissions.Create);
         await using var tx = await uow.BeginAsync(ct);
         var docNo = (await db.ExpenseInvoices.MaxAsync(i => (int?)i.DocNo, ct) ?? 0) + 1;
         var invoice = new ExpenseInvoice(docNo, user.UserId, clock.GetUtcNow().UtcDateTime);
@@ -109,6 +114,7 @@ public class ExpenseInvoiceService(IExpensesDbContext db, IVoucherPosting postin
     /// <summary>اصلاح فرم؛ سند حسابداری‌اش با همان شماره بازنویسی می‌شود (اگر دائم نشده باشد).</summary>
     public async Task UpdateAsync(long id, SaveExpenseInvoiceRequest request, CancellationToken ct)
     {
+        access.Demand(ExpensePermissions.Edit);
         await posting.EnsureChangeableAsync(ExpenseInvoice.Module, ExpenseInvoice.DocType, id, ct);
         await using var tx = await uow.BeginAsync(ct);
         var invoice = await LoadAsync(id, tracking: true, ct);
@@ -126,6 +132,7 @@ public class ExpenseInvoiceService(IExpensesDbContext db, IVoucherPosting postin
     /// <summary>حذف فرم و سند حسابداری‌اش (اگر دائم نشده باشد).</summary>
     public async Task DeleteAsync(long id, CancellationToken ct)
     {
+        access.Demand(ExpensePermissions.Delete);
         await using var tx = await uow.BeginAsync(ct);
         var invoice = await LoadAsync(id, tracking: true, ct);
         await posting.UnpostAsync(ExpenseInvoice.Module, ExpenseInvoice.DocType, id, ct);
@@ -209,8 +216,10 @@ public class ExpenseInvoiceService(IExpensesDbContext db, IVoucherPosting postin
     {
         var query = db.ExpenseInvoices.Include(i => i.Lines).AsQueryable();
         if (!tracking) query = query.AsNoTracking();
-        return await query.FirstOrDefaultAsync(i => i.Id == id, ct)
+        var invoice = await query.FirstOrDefaultAsync(i => i.Id == id, ct)
                ?? throw new NotFoundException($"شناسایی هزینه با شناسه {id} پیدا نشد.");
+        access.DemandOwner(invoice.CreatedBy);
+        return invoice;
     }
 
     private static ExpenseVoucherDto? ToDto(PostedVoucher? v) =>

@@ -1,0 +1,58 @@
+@* پنجره «تاریخچه» فرم: همه تغییرات فرم و ردیف‌هایش (چه کسی، کی، از چه به چه) *@
+@using Erp.Api.Infrastructure
+@inject Backend Backend
+
+<MudDialog @bind-Visible="Visible" Options="_options">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Outlined.History" />
+            <MudText Typo="Typo.h6">تاریخچه تغییرات @Title</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error">@_error</MudAlert>
+        }
+        else
+        {
+            <div style="max-height:65vh; overflow:auto">
+                <AuditTimeline Entries="_entries" />
+            </div>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => VisibleChanged.InvokeAsync(false)">بستن</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter, EditorRequired] public string Entity { get; set; } = "";
+    [Parameter] public long Id { get; set; }
+    [Parameter] public string? Title { get; set; }
+
+    private readonly DialogOptions _options = new() { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+    private List<AuditEntryDto> _entries = [];
+    private bool _loading;
+    private string? _error;
+    private bool _wasVisible;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Visible && !_wasVisible)
+        {
+            _loading = true;
+            var r = await Backend.Run<AuditLogService, List<AuditEntryDto>>(s => s.HistoryAsync(Entity, Id, default));
+            _entries = r.Value ?? [];
+            _error = r.Error;
+            _loading = false;
+        }
+        _wasVisible = Visible;
+    }
+}

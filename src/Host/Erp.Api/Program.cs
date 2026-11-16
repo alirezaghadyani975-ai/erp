@@ -6,6 +6,8 @@ using Erp.BaseData.Infrastructure;
 using Erp.Costing.Infrastructure;
 using Erp.Expenses.Infrastructure;
 using Erp.Treasury.Infrastructure;
+using Erp.Security.Application;
+using Erp.Security.Infrastructure;
 using Erp.Api.Components;
 using Erp.Api.Components.Shared;
 using Erp.Api.Infrastructure;
@@ -14,13 +16,26 @@ using Erp.SharedKernel.Abstractions;
 using MudBlazor.Services;
 using Scalar.AspNetCore;
 
+// فرهنگ ثابت: قالب عدد و تاریخ نباید به تنظیمات منطقه‌ای ویندوز سرور وابسته باشد (تاریخ شمسی با PersianDate ساخته می‌شود)
+System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
+System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ICompanyContext, CompanyContext>();
-builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<DatabaseMigrator>();
+
+// لاگ خطاهای فنی در فایل روزانه (پوشه logs)
+builder.Logging.AddProvider(new FileLoggerProvider(
+    Path.Combine(builder.Environment.ContentRootPath, builder.Configuration["Logging:File:Path"] ?? "logs")));
+
+// دیتابیس مرکزی (کاربران، نقش‌ها، شرکت‌ها) و احراز هویت
+var centralConnection = builder.Configuration.GetConnectionString("Central")
+    ?? throw new InvalidOperationException("رشته اتصال دیتابیس مرکزی (ConnectionStrings:Central) تعریف نشده است.");
+builder.Services.AddSecurityModule(centralConnection);
+builder.Services.AddErpAuth();
 
 // ماژول‌ها — ماژول‌های بعدی (انبار، فروش، خرید، کارگزینی، ...) همین‌جا اضافه می‌شوند
 builder.Services.AddBaseDataModule();
@@ -42,6 +57,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddMudServices();
 builder.Services.AddScoped<Backend>();
+builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddScoped<UiLookups>();
 builder.Services.AddScoped<Erp.Api.Components.Shared.Tabs.TabService>();
 builder.Services.AddScoped<Erp.Api.Components.Shared.Forms.UiPrefs>();
@@ -52,24 +68,40 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 
-if (app.Environment.IsDevelopment())
+// دیتابیس مرکزی: اسکریپت‌ها، شرکت‌های appsettings (بخش Companies) و کاربر admin در اولین اجرا
+IReadOnlyList<Erp.Security.Domain.Company> companies;
+await using (var scope = app.Services.CreateAsyncScope())
 {
-    app.MapOpenApi();
-    app.MapScalarApiReference(o => o.WithTitle("Erp API"));
-
-    // در محیط توسعه، دیتابیس شرکت پیش‌فرض خودکار ساخته/به‌روز می‌شود
-    var connectionString = app.Configuration.GetSection("Companies")[CompanyContext.DefaultCompany]
-        ?? throw new InvalidOperationException("رشته اتصال شرکت پیش‌فرض (Companies:Default) تعریف نشده است.");
-    var result = await app.Services.GetRequiredService<DatabaseMigrator>().MigrateAsync(connectionString);
-    app.Logger.LogInformation("دیتابیس: {Created} اسکریپت‌های اجراشده: {Scripts}",
-        result.DatabaseCreated ? "ساخته شد" : "موجود بود",
-        result.AppliedScripts.Count == 0 ? "هیچ (به‌روز است)" : string.Join("، ", result.AppliedScripts));
+    var configured = app.Configuration.GetSection("Companies").GetChildren()
+        .Where(c => !string.IsNullOrWhiteSpace(c.Value)).ToDictionary(c => c.Key, c => c.Value!);
+    companies = await scope.ServiceProvider.GetRequiredService<SecurityBootstrapper>()
+        .InitializeAsync(configured, app.Configuration["Security:InitialAdminPassword"] ?? "admin");
+    var settings = await scope.ServiceProvider.GetRequiredService<SecuritySettingsService>().GetAsync(default);
+    Auth.ApplyIdleTimeout(app.Services, settings.IdleMinutes);
 }
 
-app.UseAntiforgery();
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi().RequireAuthorization();
+    app.MapScalarApiReference(o => o.WithTitle("Erp API")).RequireAuthorization();
+
+    // در محیط توسعه، دیتابیس همه شرکت‌های فعال خودکار ساخته/به‌روز می‌شود
+    foreach (var company in companies)
+    {
+        var result = await app.Services.GetRequiredService<DatabaseMigrator>().MigrateAsync(company.ConnectionString);
+        app.Logger.LogInformation("دیتابیس شرکت {Company}: {Created} اسکریپت‌های اجراشده: {Scripts}", company.Key,
+            result.DatabaseCreated ? "ساخته شد" : "موجود بود",
+            result.AppliedScripts.Count == 0 ? "هیچ (به‌روز است)" : string.Join("، ", result.AppliedScripts));
+    }
+}
+
+app.UseAuthentication();
 app.UseAuthorization();
+app.UseErpSession();
+app.UseAntiforgery();
 app.MapStaticAssets();
-app.MapControllers();
-app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+app.MapErpAuthEndpoints();
+app.MapControllers().RequireAuthorization();
+app.MapRazorComponents<App>().AddInteractiveServerRenderMode().RequireAuthorization();
 
 app.Run();

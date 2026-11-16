@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using System.Globalization;
 using Erp.Accounting.Contracts;
 using Erp.SharedKernel.Abstractions;
@@ -54,11 +55,17 @@ internal static class TreasuryText
 /// دریافت: ثبت، اصلاح و حذف با سند خودکار. چک‌های دریافتی با همین فرم ساخته می‌شوند؛
 /// فرمی که چکش عملیات خورده (واگذاری، خرج، ...) دیگر اصلاح یا حذف نمی‌شود.
 /// </summary>
-public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock)
+public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock,
+    IAccessControl access)
 {
     public async Task<List<ReceiptPaymentListItemDto>> ListAsync(string? term, string? fromDate, string? toDate, CancellationToken ct)
     {
-        var query = db.Receipts.AsNoTracking();
+        access.Demand(TreasuryPermissions.ReceiptView);
+        var query = db.Receipts.AsNoTracking().Own(access);
+        if (access.Ids(ScopeKind.CashBox) is { } boxes)
+            query = query.Where(r => r.Lines.All(l => l.CashBoxId == null || boxes.Contains(l.CashBoxId.Value)));
+        if (access.Ids(ScopeKind.BankAccount) is { } bankIds)
+            query = query.Where(r => r.Lines.All(l => l.BankAccountId == null || bankIds.Contains(l.BankAccountId.Value)));
         if (!string.IsNullOrWhiteSpace(fromDate)) { var f = PersianDate.Parse(fromDate); query = query.Where(r => r.DocDate >= f); }
         if (!string.IsNullOrWhiteSpace(toDate)) { var t = PersianDate.Parse(toDate); query = query.Where(r => r.DocDate <= t); }
         var rows = await query.OrderByDescending(r => r.DocDate).ThenByDescending(r => r.DocNo)
@@ -83,6 +90,7 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
 
     public async Task<ReceiptPaymentDto> GetAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.ReceiptView);
         var r = await LoadAsync(id, tracking: false, ct);
         var person = await db.Persons.Where(p => p.Id == r.PersonId).Select(p => p.DisplayName).FirstOrDefaultAsync(ct);
         var type = await db.TransactionTypes.Where(t => t.Id == r.TypeId).Select(t => t.Title).FirstOrDefaultAsync(ct);
@@ -97,6 +105,7 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
 
     public async Task<long> CreateAsync(SaveReceiptPaymentRequest request, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.ReceiptCreate);
         await using var tx = await uow.BeginAsync(ct);
         var no = (await db.Receipts.MaxAsync(r => (int?)r.DocNo, ct) ?? 0) + 1;
         var receipt = new Receipt(no, user.UserId, clock.GetUtcNow().UtcDateTime);
@@ -110,6 +119,7 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
 
     public async Task UpdateAsync(long id, SaveReceiptPaymentRequest request, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.ReceiptEdit);
         await posting.EnsureChangeableAsync(TreasuryModule.Name, Receipt.DocType, id, ct);
         await using var tx = await uow.BeginAsync(ct);
         var receipt = await LoadAsync(id, tracking: true, ct);
@@ -125,6 +135,7 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
 
     public async Task DeleteAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.ReceiptDelete);
         await using var tx = await uow.BeginAsync(ct);
         var receipt = await LoadAsync(id, tracking: true, ct);
         if (await LockReasonAsync(receipt, ct) is { } reason) throw new DomainException(reason);
@@ -165,6 +176,7 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
 
     private async Task FundsActiveAsync(List<TreasuryLineRequest> lines, CancellationToken ct)
     {
+        access.DemandFunds(lines.Select(l => l.CashBoxId), lines.Select(l => l.BankAccountId));
         var boxIds = lines.Select(l => l.CashBoxId).OfType<int>().Distinct().ToList();
         var bankIds = lines.Select(l => l.BankAccountId).OfType<int>().Distinct().ToList();
         var inactiveBox = await db.CashBoxes.Where(c => boxIds.Contains(c.Id) && !c.IsActive).Select(c => c.Title).FirstOrDefaultAsync(ct);
@@ -209,7 +221,10 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
     {
         var query = db.Receipts.Include(r => r.Lines).ThenInclude(l => l.Cheque).AsQueryable();
         if (!tracking) query = query.AsNoTracking();
-        return await query.FirstOrDefaultAsync(r => r.Id == id, ct) ?? throw new NotFoundException($"دریافت با شناسه {id} پیدا نشد.");
+        var receipt = await query.FirstOrDefaultAsync(r => r.Id == id, ct) ?? throw new NotFoundException($"دریافت با شناسه {id} پیدا نشد.");
+        access.DemandDoc(receipt);
+        access.DemandFunds(receipt.Lines.Select(l => l.CashBoxId), receipt.Lines.Select(l => l.BankAccountId));
+        return receipt;
     }
 
     internal static ChequeDto ToDto(ReceivedCheque c, IReadOnlyDictionary<short, string> banks) =>
@@ -221,11 +236,17 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
 /// پرداخت: ثبت، اصلاح و حذف با سند خودکار. چک صادره با همین فرم ساخته می‌شود و چک دریافتیِ خرج‌شده
 /// از صندوق بیرون می‌رود؛ با حذف یا اصلاح فرم، چک خرج‌شده به صندوق برمی‌گردد.
 /// </summary>
-public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock)
+public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock,
+    IAccessControl access)
 {
     public async Task<List<ReceiptPaymentListItemDto>> ListAsync(string? term, string? fromDate, string? toDate, CancellationToken ct)
     {
-        var query = db.Payments.AsNoTracking();
+        access.Demand(TreasuryPermissions.PaymentView);
+        var query = db.Payments.AsNoTracking().Own(access);
+        if (access.Ids(ScopeKind.CashBox) is { } boxes)
+            query = query.Where(r => r.Lines.All(l => l.CashBoxId == null || boxes.Contains(l.CashBoxId.Value)));
+        if (access.Ids(ScopeKind.BankAccount) is { } bankIds)
+            query = query.Where(r => r.Lines.All(l => l.BankAccountId == null || bankIds.Contains(l.BankAccountId.Value)));
         if (!string.IsNullOrWhiteSpace(fromDate)) { var f = PersianDate.Parse(fromDate); query = query.Where(r => r.DocDate >= f); }
         if (!string.IsNullOrWhiteSpace(toDate)) { var t = PersianDate.Parse(toDate); query = query.Where(r => r.DocDate <= t); }
         var rows = await query.OrderByDescending(r => r.DocDate).ThenByDescending(r => r.DocNo)
@@ -250,6 +271,7 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
 
     public async Task<ReceiptPaymentDto> GetAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.PaymentView);
         var p = await LoadAsync(id, tracking: false, ct);
         var person = await db.Persons.Where(x => x.Id == p.PersonId).Select(x => x.DisplayName).FirstOrDefaultAsync(ct);
         var type = await db.TransactionTypes.Where(t => t.Id == p.TypeId).Select(t => t.Title).FirstOrDefaultAsync(ct);
@@ -274,11 +296,13 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var banks = await db.Banks.ToDictionaryAsync(b => b.Id, b => b.Title, ct);
         var rows = await db.ReceivedCheques.AsNoTracking().Where(c => c.Status == ReceivedChequeStatus.InBox)
             .OrderBy(c => c.DueDate).ToListAsync(ct);
-        return rows.Select(c => ReceiptService.ToDto(c, banks)).ToList();
+        return rows.Where(c => c.CashBoxId is not int box || access.CanUse(ScopeKind.CashBox, box))
+            .Select(c => ReceiptService.ToDto(c, banks)).ToList();
     }
 
     public async Task<long> CreateAsync(SaveReceiptPaymentRequest request, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.PaymentCreate);
         await using var tx = await uow.BeginAsync(ct);
         var no = (await db.Payments.MaxAsync(r => (int?)r.DocNo, ct) ?? 0) + 1;
         var payment = new Payment(no, user.UserId, clock.GetUtcNow().UtcDateTime);
@@ -292,6 +316,7 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
 
     public async Task UpdateAsync(long id, SaveReceiptPaymentRequest request, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.PaymentEdit);
         await posting.EnsureChangeableAsync(TreasuryModule.Name, Payment.DocType, id, ct);
         await using var tx = await uow.BeginAsync(ct);
         var payment = await LoadAsync(id, tracking: true, ct);
@@ -309,6 +334,7 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
 
     public async Task DeleteAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.PaymentDelete);
         await using var tx = await uow.BeginAsync(ct);
         var payment = await LoadAsync(id, tracking: true, ct);
         if (await LockReasonAsync(payment, ct) is { } reason) throw new DomainException(reason);
@@ -395,6 +421,10 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
             if (l.Instrument == Instrument.SpendCheque) cheque!.MoveTo(ReceivedChequeStatus.Spent, cheque.CashBoxId, null);
         }
 
+        // محدوده داده: صندوق/حساب ردیف‌ها (حساب چک صادره از دسته‌چک) و صندوق چک‌های خرج‌شده
+        access.DemandFunds(payment.Lines.Select(l => l.CashBoxId).Concat(spent.Values.Select(c => c.CashBoxId)),
+            payment.Lines.Select(l => l.BankAccountId));
+
         // شماره چک صادره در هر حساب بانکی تکراری نباشد
         foreach (var ic in payment.Lines.Where(l => l.Cheque is not null).Select(l => l.Cheque!))
         {
@@ -453,6 +483,9 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
     {
         var query = db.Payments.Include(p => p.Lines).ThenInclude(l => l.Cheque).AsQueryable();
         if (!tracking) query = query.AsNoTracking();
-        return await query.FirstOrDefaultAsync(p => p.Id == id, ct) ?? throw new NotFoundException($"پرداخت با شناسه {id} پیدا نشد.");
+        var payment = await query.FirstOrDefaultAsync(p => p.Id == id, ct) ?? throw new NotFoundException($"پرداخت با شناسه {id} پیدا نشد.");
+        access.DemandDoc(payment);
+        access.DemandFunds(payment.Lines.Select(l => l.CashBoxId), payment.Lines.Select(l => l.BankAccountId));
+        return payment;
     }
 }

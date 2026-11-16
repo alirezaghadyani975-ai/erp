@@ -7,10 +7,10 @@
     <title>Erp</title>
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
     <link href="css/app.css" rel="stylesheet" />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="PageRenderMode" />
 </head>
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="PageRenderMode" />
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script>
@@ -30,6 +30,40 @@
                 });
             }
         };
+        // خروج خودکار بعد از بی‌کاری و تمدید کوکی ورود در زمان کار (اتصال Blazor درخواست HTTP نمی‌فرستد)
+        window.erpIdle = {
+            start(minutes) {
+                if (this.started) return;
+                this.started = true;
+                let last = Date.now(), lastPing = Date.now();
+                // دو دقیقه مانده به خروج خودکار هشدار نمایش داده می‌شود؛ هر کلیک یا کلید آن را می‌بندد و زمان را از نو می‌شمارد
+                const warnMs = Math.min(120000, minutes * 30000);
+                let box = null;
+                const hide = () => { if (box) { box.remove(); box = null; } };
+                const show = seconds => {
+                    if (!box) {
+                        box = document.createElement('div');
+                        box.className = 'idle-warning';
+                        box.setAttribute('role', 'alert');
+                        document.body.appendChild(box);
+                    }
+                    box.textContent = 'به‌دلیل بی‌کاری تا ' + seconds + ' ثانیه دیگر از سیستم خارج می‌شوید و فرم‌های ذخیره‌نشده از بین می‌روند. برای ماندن، هر جای صفحه کلیک کنید.';
+                };
+                const mark = () => { last = Date.now(); hide(); };
+                ['mousedown', 'keydown', 'wheel', 'touchstart'].forEach(ev => document.addEventListener(ev, mark, { passive: true }));
+                const pingEvery = Math.min(5, Math.max(1, Math.floor(minutes / 3))) * 60000;
+                setInterval(() => {
+                    const now = Date.now();
+                    const left = minutes * 60000 - (now - last);
+                    if (left <= 0) { location.href = '/account/logout?idle=true'; return; }
+                    if (left <= warnMs) show(Math.ceil(left / 1000));
+                    if (now - lastPing >= pingEvery && now - last < pingEvery) {
+                        lastPing = now;
+                        fetch('/account/ping', { credentials: 'same-origin' }).then(r => { if (r.status === 401 || r.redirected) location.href = '/account/login?expired=1'; });
+                    }
+                }, 5000);
+            }
+        };
         // Ctrl+K (روی صفحه‌کلید فارسی هم): رفتن به جستجوی سراسری
         document.addEventListener('keydown', e => {
             if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
@@ -40,3 +74,11 @@
     </script>
 </body>
 </html>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    // صفحه‌های ورود/تغییر رمز/انتخاب شرکت بدون اتصال تعاملی (static SSR) رندر می‌شوند تا کوکی صادر شود
+    private IComponentRenderMode? PageRenderMode =>
+        HttpContext.AcceptsInteractiveRouting() ? InteractiveServer : null;
+}

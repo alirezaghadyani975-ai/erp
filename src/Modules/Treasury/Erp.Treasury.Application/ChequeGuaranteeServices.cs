@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Accounting.Contracts;
 using Erp.SharedKernel.Abstractions;
 using Erp.SharedKernel.Calendar;
@@ -27,12 +28,16 @@ public sealed record ChequeOperationDto(long Id, ChequeSide Side, int DocNo, str
 /// هر عملیات روی چند چک با یک سند حسابداری. حذف عملیات فقط وقتی همه چک‌هایش هنوز در وضعیت همین عملیات‌اند.
 /// </summary>
 public class ChequeOperationService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock,
-    TreasuryReportService reports)
+    TreasuryReportService reports, IAccessControl access)
 {
     public async Task<List<ChequeOperationListItemDto>> ListAsync(ChequeSide side, CancellationToken ct)
     {
-        var rows = await db.ChequeOperations.AsNoTracking().Include(o => o.Lines).Where(o => o.Side == side)
-            .OrderByDescending(o => o.DocDate).ThenByDescending(o => o.DocNo).ToListAsync(ct);
+        access.Demand(TreasuryPermissions.View(side));
+        var rows = (await db.ChequeOperations.AsNoTracking().Own(access).Include(o => o.Lines).Where(o => o.Side == side)
+            .OrderByDescending(o => o.DocDate).ThenByDescending(o => o.DocNo).ToListAsync(ct))
+            .Where(o => (o.CashBoxId is not int box || access.CanUse(ScopeKind.CashBox, box))
+                        && (o.BankAccountId is not int bank || access.CanUse(ScopeKind.BankAccount, bank)))
+            .ToList();
         var amounts = await AmountsAsync(rows.SelectMany(o => o.Lines).ToList(), ct);
         var places = await PlaceTitlesAsync(ct);
         var docType = side == ChequeSide.Receivable ? ChequeOperation.ReceivableDocType : ChequeOperation.PayableDocType;
@@ -46,9 +51,11 @@ public class ChequeOperationService(ITreasuryDbContext db, IVoucherPosting posti
     {
         var o = await db.ChequeOperations.AsNoTracking().Include(x => x.Lines).FirstOrDefaultAsync(x => x.Id == id, ct)
                 ?? throw new NotFoundException("عملیات چک پیدا نشد.");
+        access.Demand(TreasuryPermissions.View(o.Side));
+        DemandOperation(o);
         var cheques = o.Side == ChequeSide.Receivable
-            ? await reports.ReceivedChequesAsync(new ChequeFilter(Ids: o.Lines.Select(l => l.ReceivedChequeId!.Value).ToList()), ct)
-            : await reports.IssuedChequesAsync(new ChequeFilter(Ids: o.Lines.Select(l => l.IssuedChequeId!.Value).ToList()), ct);
+            ? await reports.ReceivedCoreAsync(new ChequeFilter(Ids: o.Lines.Select(l => l.ReceivedChequeId!.Value).ToList()), ct)
+            : await reports.IssuedCoreAsync(new ChequeFilter(Ids: o.Lines.Select(l => l.IssuedChequeId!.Value).ToList()), ct);
         var vouchers = await posting.FindAsync(TreasuryModule.Name, o.DocType, [id], ct);
         return new ChequeOperationDto(o.Id, o.Side, o.DocNo, PersianDate.ToPersian(o.DocDate), o.Operation, ChequeTitles.Of(o.Operation),
             o.CashBoxId, o.BankAccountId, Target(o, await PlaceTitlesAsync(ct)), o.Description, cheques, cheques.Sum(c => c.Amount),
@@ -58,13 +65,16 @@ public class ChequeOperationService(ITreasuryDbContext db, IVoucherPosting posti
     /// <summary>چک‌هایی که این عملیات رویشان ممکن است.</summary>
     public async Task<List<ChequeRowDto>> CandidatesAsync(ChequeOperationType op, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Operation(op));
         if (ChequeRules.SideOf(op) == ChequeSide.Payable)
-            return await reports.IssuedChequesAsync(new ChequeFilter(Statuses: [(byte)IssuedChequeStatus.Issued]), ct);
-        return await reports.ReceivedChequesAsync(new ChequeFilter(Statuses: ChequeRules.AllowedFrom(op).Select(s => (byte)s).ToList()), ct);
+            return await reports.IssuedCoreAsync(new ChequeFilter(Statuses: [(byte)IssuedChequeStatus.Issued]), ct);
+        return await reports.ReceivedCoreAsync(new ChequeFilter(Statuses: ChequeRules.AllowedFrom(op).Select(s => (byte)s).ToList()), ct);
     }
 
     public async Task<long> CreateAsync(SaveChequeOperationRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Operation(r.Operation));
+        access.DemandFunds([r.CashBoxId], [r.BankAccountId]);
         if (r.ChequeIds.Count == 0) throw new DomainException("حداقل یک چک انتخاب کنید.");
         var side = ChequeRules.SideOf(r.Operation);
         await using var tx = await uow.BeginAsync(ct);
@@ -80,6 +90,7 @@ public class ChequeOperationService(ITreasuryDbContext db, IVoucherPosting posti
             foreach (var id in r.ChequeIds)
             {
                 var c = cheques.FirstOrDefault(x => x.Id == id) ?? throw new DomainException("چک انتخاب‌شده پیدا نشد.");
+                access.DemandFunds([c.CashBoxId], [c.BankAccountId]);
                 var before = (c.Status, c.CashBoxId, c.BankAccountId);
                 op.Apply(c);
                 lines.AddRange(ReceivableLines(op.Operation, c, before, persons.GetValueOrDefault(c.PersonId, "?")));
@@ -91,6 +102,7 @@ public class ChequeOperationService(ITreasuryDbContext db, IVoucherPosting posti
             foreach (var id in r.ChequeIds)
             {
                 var c = cheques.FirstOrDefault(x => x.Id == id) ?? throw new DomainException("چک انتخاب‌شده پیدا نشد.");
+                access.DemandScope(ScopeKind.BankAccount, c.BankAccountId);
                 op.Apply(c);
                 lines.AddRange(PayableLines(op.Operation, c, persons.GetValueOrDefault(c.PersonId, "?")));
             }
@@ -105,11 +117,20 @@ public class ChequeOperationService(ITreasuryDbContext db, IVoucherPosting posti
         return op.Id;
     }
 
+    /// <summary>فرم خود کاربر (اگر «فقط فرم‌های خودش») و صندوق/حساب مقصد عملیات در محدوده مجاز.</summary>
+    private void DemandOperation(ChequeOperation o)
+    {
+        access.DemandDoc(o);
+        access.DemandFunds([o.CashBoxId], [o.BankAccountId]);
+    }
+
     public async Task DeleteAsync(long id, CancellationToken ct)
     {
         await using var tx = await uow.BeginAsync(ct);
         var op = await db.ChequeOperations.Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == id, ct)
                  ?? throw new NotFoundException("عملیات چک پیدا نشد.");
+        access.Demand(TreasuryPermissions.Delete(op.Side));
+        DemandOperation(op);
         if (await LockReasonAsync(op, ct) is { } reason) throw new DomainException(reason);
         await posting.UnpostAsync(TreasuryModule.Name, op.DocType, id, ct);
         foreach (var l in op.Lines)
@@ -225,11 +246,13 @@ public sealed record GuaranteeDto(long Id, int DocNo, GuaranteeDirection Directi
     long? LeafId = null, int? BankGuaranteeId = null);
 
 /// <summary>اسناد تضمینی دریافتی و پرداختی؛ ثبت و استرداد هر کدام سند انتظامی جدا دارد.</summary>
-public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock)
+public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock,
+    IAccessControl access)
 {
     public async Task<List<GuaranteeDto>> ListAsync(GuaranteeDirection? direction, bool? returned, CancellationToken ct)
     {
-        var query = db.Guarantees.AsNoTracking();
+        access.Demand(TreasuryPermissions.GuaranteeView);
+        var query = db.Guarantees.AsNoTracking().Own(access);
         if (direction is not null) query = query.Where(g => g.Direction == direction);
         if (returned is bool r) query = query.Where(g => g.IsReturned == r);
         var rows = await query.OrderByDescending(g => g.DocDate).ThenByDescending(g => g.DocNo).ToListAsync(ct);
@@ -238,12 +261,15 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
 
     public async Task<GuaranteeDto> GetAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.GuaranteeView);
         var g = await db.Guarantees.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("سند تضمینی پیدا نشد.");
+        access.DemandDoc(g);
         return (await ToDtosAsync([g], ct))[0];
     }
 
     public async Task<long> CreateAsync(SaveGuaranteeRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.GuaranteeCreate);
         await using var tx = await uow.BeginAsync(ct);
         var no = (await db.Guarantees.MaxAsync(g => (int?)g.DocNo, ct) ?? 0) + 1;
         var g = new Guarantee(r.Direction, no, user.UserId, clock.GetUtcNow().UtcDateTime);
@@ -257,9 +283,11 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
 
     public async Task UpdateAsync(long id, SaveGuaranteeRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.GuaranteeEdit);
         await posting.EnsureChangeableAsync(TreasuryModule.Name, Guarantee.DocType, id, ct);
         await using var tx = await uow.BeginAsync(ct);
         var g = await db.Guarantees.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("سند تضمینی پیدا نشد.");
+        access.DemandDoc(g);
         if (g.Direction != r.Direction) throw new DomainException("جهت سند تضمینی (دریافتی/پرداختی) عوض نمی‌شود.");
         var person = await ApplyAsync(g, r, ct);
         await db.SaveChangesAsync(ct);
@@ -269,8 +297,10 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
 
     public async Task DeleteAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.GuaranteeDelete);
         await using var tx = await uow.BeginAsync(ct);
         var g = await db.Guarantees.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("سند تضمینی پیدا نشد.");
+        access.DemandDoc(g);
         if (g.IsReturned) throw new DomainException("سند مسترد شده؛ ابتدا استرداد را لغو کنید.");
         await posting.UnpostAsync(TreasuryModule.Name, Guarantee.DocType, id, ct);
         await ReleaseSourceAsync(g, ct);
@@ -282,8 +312,10 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
     /// <summary>استرداد سند تضمینی با سند انتظامی معکوس.</summary>
     public async Task ReturnAsync(long id, string date, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.GuaranteeReturn);
         await using var tx = await uow.BeginAsync(ct);
         var g = await db.Guarantees.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("سند تضمینی پیدا نشد.");
+        access.DemandDoc(g);
         var d = PersianDate.Parse(date);
         g.MarkReturned(d);
         if (g.BankGuaranteeId is int bgId) (await db.BankGuarantees.FirstAsync(x => x.Id == bgId, ct)).TakeBack();
@@ -295,8 +327,10 @@ public class GuaranteeService(ITreasuryDbContext db, IVoucherPosting posting, IU
 
     public async Task UndoReturnAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.GuaranteeReturn);
         await using var tx = await uow.BeginAsync(ct);
         var g = await db.Guarantees.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("سند تضمینی پیدا نشد.");
+        access.DemandDoc(g);
         g.UndoReturn();
         if (g.BankGuaranteeId is int bgId) (await db.BankGuarantees.FirstAsync(x => x.Id == bgId, ct)).Deliver(g.DocDate);
         await posting.UnpostAsync(TreasuryModule.Name, Guarantee.ReturnDocType, id, ct);

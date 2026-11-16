@@ -16,10 +16,9 @@ public static class DependencyInjection
     {
         services.AddAccountingApplication();
 
-        services.TryAddScoped<CompanyConnection>();
-        services.TryAddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CompanyConnection>());
+        services.AddCompanyDatabase();
         services.AddDbContext<AccountingDbContext>((sp, options) =>
-            options.UseSqlServer(sp.GetRequiredService<CompanyConnection>().Connection));
+            options.UseCompanyDatabase(sp));
 
         services.AddScoped<IAccountingDbContext>(sp => sp.GetRequiredService<AccountingDbContext>());
         return services;

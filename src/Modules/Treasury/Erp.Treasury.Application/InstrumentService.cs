@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.SharedKernel.Abstractions;
 using Erp.SharedKernel.Calendar;
 using Erp.SharedKernel.Domain;
@@ -39,7 +40,7 @@ public sealed record SaveBankGuaranteeRequest(int BankAccountId, string Number, 
 /// اسناد پرداختنی تعریف‌شده: دسته‌چک، دفتر سفته (با برگ‌ها) و ضمانت‌نامه‌های بانکی شرکت.
 /// چک صادره و اسناد تضمینی پرداختی فقط از این‌ها انتخاب می‌شوند.
 /// </summary>
-public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
+public class InstrumentService(ITreasuryDbContext db, TimeProvider clock, IAccessControl access)
 {
     public static string Title(LeafStatus s) => s switch
     {
@@ -59,6 +60,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task<List<InstrumentBookDto>> GetBooksAsync(InstrumentKind? kind, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentView);
         var query = db.InstrumentBooks.AsNoTracking();
         if (kind is not null) query = query.Where(b => b.Kind == kind);
         var books = await query.OrderByDescending(b => b.IsActive).ThenBy(b => b.Kind).ThenByDescending(b => b.ReceivedDate).ToListAsync(ct);
@@ -79,6 +81,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task<int> CreateBookAsync(CreateInstrumentBookRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentEdit);
         if (r.Kind == InstrumentKind.ChequeBook)
         {
             var bank = await db.BankAccounts.FirstOrDefaultAsync(b => b.Id == r.BankAccountId, ct)
@@ -102,6 +105,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task UpdateBookAsync(int id, UpdateInstrumentBookRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentEdit);
         var book = await db.InstrumentBooks.FirstOrDefaultAsync(b => b.Id == id, ct) ?? throw new NotFoundException("دفترچه پیدا نشد.");
         book.Update(r.Title, PersianDate.Parse(r.ReceivedDate), r.MaxAmount, r.Notes);
         book.SetActive(r.IsActive);
@@ -110,6 +114,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task DeleteBookAsync(int id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentEdit);
         var book = await db.InstrumentBooks.FirstOrDefaultAsync(b => b.Id == id, ct) ?? throw new NotFoundException("دفترچه پیدا نشد.");
         if (await db.InstrumentLeaves.AnyAsync(l => l.BookId == id && l.Status == LeafStatus.Used, ct))
             throw new DomainException($"از «{book.Title}» برگ استفاده شده و حذف نمی‌شود؛ می‌توانید غیرفعالش کنید.");
@@ -119,6 +124,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task<List<InstrumentLeafDto>> GetLeavesAsync(int bookId, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentView);
         var leaves = await db.InstrumentLeaves.AsNoTracking().Where(l => l.BookId == bookId).OrderBy(l => l.No).ToListAsync(ct);
         var ids = leaves.Select(l => l.Id).ToList();
         var cheques = await db.IssuedCheques.AsNoTracking().Where(c => c.LeafId != null && ids.Contains(c.LeafId.Value))
@@ -140,6 +146,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task VoidLeafAsync(long leafId, string date, string? reason, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentVoid);
         var leaf = await db.InstrumentLeaves.FirstOrDefaultAsync(l => l.Id == leafId, ct) ?? throw new NotFoundException("برگ پیدا نشد.");
         leaf.MarkVoid(PersianDate.Parse(date), reason);
         await db.SaveChangesAsync(ct);
@@ -147,6 +154,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task UndoVoidLeafAsync(long leafId, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentVoid);
         var leaf = await db.InstrumentLeaves.FirstOrDefaultAsync(l => l.Id == leafId, ct) ?? throw new NotFoundException("برگ پیدا نشد.");
         leaf.UndoVoid();
         await db.SaveChangesAsync(ct);
@@ -161,7 +169,8 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
         var ids = books.Select(b => b.Id).ToList();
         var leaves = await db.InstrumentLeaves.AsNoTracking().Where(l => ids.Contains(l.BookId) && l.Status == LeafStatus.Blank)
             .OrderBy(l => l.No).ToListAsync(ct);
-        return books.SelectMany(b => leaves.Where(l => l.BookId == b.Id)
+        return books.Where(b => b.BankAccountId is not int ba || access.CanUse(ScopeKind.BankAccount, ba))
+            .SelectMany(b => leaves.Where(l => l.BookId == b.Id)
             .Select(l => new LeafOption(l.Id, b.Id, b.Title, l.SerialNo, b.BankAccountId, b.MaxAmount))).ToList();
     }
 
@@ -178,6 +187,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task<List<BankGuaranteeDto>> GetBankGuaranteesAsync(BankGuaranteeStatus? status, CancellationToken ct)
     {
+        access.DemandAny(TreasuryPermissions.InstrumentView, TreasuryPermissions.GuaranteeView);
         var query = db.BankGuarantees.AsNoTracking();
         if (status is not null) query = query.Where(g => g.Status == status);
         var rows = await query.OrderBy(g => g.Status).ThenByDescending(g => g.IssueDate).ToListAsync(ct);
@@ -200,6 +210,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task<int> SaveBankGuaranteeAsync(int? id, SaveBankGuaranteeRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentEdit);
         var bank = await db.BankAccounts.FirstOrDefaultAsync(b => b.Id == r.BankAccountId, ct)
                    ?? throw new DomainException("حساب بانکی صادرکننده را انتخاب کنید.");
         var issue = PersianDate.Parse(r.IssueDate);
@@ -223,6 +234,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task DeleteBankGuaranteeAsync(int id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentEdit);
         var g = await db.BankGuarantees.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("ضمانت‌نامه پیدا نشد.");
         if (await db.Guarantees.AnyAsync(x => x.BankGuaranteeId == id, ct))
             throw new DomainException("این ضمانت‌نامه در سند تضمینی استفاده شده و حذف نمی‌شود؛ می‌توانید باطلش کنید.");
@@ -232,6 +244,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task CancelBankGuaranteeAsync(int id, string date, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentEdit);
         var g = await db.BankGuarantees.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("ضمانت‌نامه پیدا نشد.");
         g.Cancel(PersianDate.Parse(date));
         await db.SaveChangesAsync(ct);
@@ -239,6 +252,7 @@ public class InstrumentService(ITreasuryDbContext db, TimeProvider clock)
 
     public async Task UndoCancelBankGuaranteeAsync(int id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.InstrumentEdit);
         var g = await db.BankGuarantees.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("ضمانت‌نامه پیدا نشد.");
         g.UndoCancel();
         await db.SaveChangesAsync(ct);

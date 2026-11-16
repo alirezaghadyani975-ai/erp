@@ -2,10 +2,13 @@ using MudBlazor;
 
 namespace Erp.Api.Components.Shared;
 
-/// <summary>فهرست فرم‌ها برای جستجوی سراسری و دسترسی سریع.</summary>
+/// <summary>فهرست فرم‌ها برای جستجوی سراسری و دسترسی سریع (فقط فرم‌هایی که کاربر مجوز بازکردنشان را دارد).</summary>
 public static class AppForms
 {
     public sealed record Item(string Title, string Group, string Url, string Icon, string Keywords = "");
+
+    public static IEnumerable<Item> Visible(Erp.SharedKernel.Security.IAccessControl access) =>
+        All.Where(f => AppMenu.CanOpen(access, f.Url));
 
     public static readonly IReadOnlyList<Item> All =
     [
@@ -43,5 +46,11 @@ public static class AppForms
         new("جدول‌های پایه", "اطلاعات پایه", "/base/lookups", Icons.Material.Outlined.ListAlt, "شهر استان"),
         new("بانک‌ها", "اطلاعات پایه", "/base/banks", Icons.Material.Outlined.AccountBalance, "بانک"),
         new("نرخ مالیات و عوارض", "اطلاعات پایه", "/base/vat-rates", Icons.Material.Outlined.Percent, "ارزش افزوده"),
+        new("کاربران", "مدیریت سیستم", "/admin/users", Icons.Material.Outlined.ManageAccounts, "کاربر رمز دسترسی"),
+        new("نقش‌ها و مجوزها", "مدیریت سیستم", "/admin/roles", Icons.Material.Outlined.Key, "نقش مجوز دسترسی"),
+        new("شرکت‌ها", "مدیریت سیستم", "/admin/companies", Icons.Material.Outlined.Business, "شرکت دیتابیس"),
+        new("لاگ تغییرات", "مدیریت سیستم", "/admin/audit", Icons.Material.Outlined.History, "تاریخچه لاگ تغییر"),
+        new("لاگ امنیتی", "مدیریت سیستم", "/admin/security-log", Icons.Material.Outlined.Shield, "ورود خروج لاگ"),
+        new("تنظیمات امنیتی", "مدیریت سیستم", "/admin/settings", Icons.Material.Outlined.Settings, "قفل رمز خروج خودکار"),
     ];
 }

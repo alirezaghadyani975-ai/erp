@@ -1,0 +1,90 @@
+@page "/admin/audit"
+@using Erp.Api.Infrastructure
+@inject Backend Backend
+
+<TabTitle Text="لاگ تغییرات" />
+
+<MudText Typo="Typo.h5" Class="mb-1">لاگ تغییرات</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر ایجاد، اصلاح و حذف در فرم‌ها و تعریف‌های این شرکت با کاربر، زمان و مقدار قبلی و جدید ثبت می‌شود و قابل ویرایش یا حذف نیست.
+    هر کارت یک عملیات (یک بار ذخیره) است.
+</MudText>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="6" sm="3" md="3" lg="2"><PersianDateField @bind-Value="_from" Label="از تاریخ" /></MudItem>
+        <MudItem xs="6" sm="3" md="3" lg="2"><PersianDateField @bind-Value="_to" Label="تا تاریخ" /></MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="string" @bind-Value="_user" Label="کاربر" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var u in _users)
+                {
+                    <MudSelectItem Value="u"><span dir="ltr">@u</span></MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudSelect T="string" @bind-Value="_entity" Label="فرم / تعریف" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var e in AuditLabels.Roots.OrderBy(AuditLabels.Entity))
+                {
+                    <MudSelectItem Value="e">@AuditLabels.Entity(e)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3" md="1">
+            <MudSelect T="char?" @bind-Value="_action" Label="کار" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                <MudSelectItem T="char?" Value="@('I')">ایجاد</MudSelectItem>
+                <MudSelectItem T="char?" Value="@('U')">اصلاح</MudSelectItem>
+                <MudSelectItem T="char?" Value="@('D')">حذف</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3" md="2">
+            <MudTextField @bind-Value="_term" Label="متن در مقدارها" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" md="1" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Search" OnClick="SearchAsync" Disabled="_loading">نمایش</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert>
+}
+@if (_entries is not null)
+{
+    <MudText Typo="Typo.caption" Color="Color.Secondary">@_entries.Count تغییر@(_entries.Count >= 500 ? " (فقط ۵۰۰ مورد آخر؛ بازه را کوچک‌تر کنید)" : "")</MudText>
+    <AuditTimeline Entries="_entries" ShowParent="true" ShowDetails="true" />
+}
+
+@code {
+    private string? _from = PersianDate.ToPersian(DateOnly.FromDateTime(DateTime.Now));
+    private string? _to;
+    private string? _user;
+    private string? _entity;
+    private char? _action;
+    private string? _term;
+    private List<string> _users = [];
+    private List<AuditEntryDto>? _entries;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _users = (await Backend.Run<AuditLogService, List<string>>(s => s.UsersAsync(default))).Value ?? [];
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _loading = true;
+        var filter = new AuditFilter(_from, _to, _user, _entity, _action, _term, 500);
+        var r = await Backend.Run<AuditLogService, List<AuditEntryDto>>(s => s.SearchAsync(filter, default));
+        _entries = r.Value;
+        _error = r.Error;
+        _loading = false;
+    }
+}

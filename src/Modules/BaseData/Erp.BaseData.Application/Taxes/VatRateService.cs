@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.BaseData.Application.Abstractions;
 using Erp.BaseData.Domain.Taxes;
 using Erp.SharedKernel.Calendar;
@@ -18,7 +19,7 @@ public sealed record VatCalculation(int PersianYear, decimal TaxPercent, decimal
 }
 
 /// <summary>نرخ‌های سالانه مالیات و عوارض ارزش افزوده.</summary>
-public class VatRateService(IBaseDataDbContext db)
+public class VatRateService(IBaseDataDbContext db, IAccessControl access)
 {
     public Task<List<VatRateDto>> GetAllAsync(CancellationToken ct) =>
         db.VatRates.AsNoTracking().OrderByDescending(r => r.PersianYear)
@@ -27,6 +28,7 @@ public class VatRateService(IBaseDataDbContext db)
     /// <summary>ثبت یا اصلاح نرخ یک سال.</summary>
     public async Task SaveAsync(int persianYear, decimal taxPercent, decimal tollPercent, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.VatRates);
         var rate = await db.VatRates.FirstOrDefaultAsync(r => r.PersianYear == persianYear, ct);
         if (rate is null) db.VatRates.Add(new VatRate(persianYear, taxPercent, tollPercent));
         else rate.Update(taxPercent, tollPercent);
@@ -35,6 +37,7 @@ public class VatRateService(IBaseDataDbContext db)
 
     public async Task DeleteAsync(short id, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.VatRates);
         var rate = await db.VatRates.FirstOrDefaultAsync(r => r.Id == id, ct) ?? throw new NotFoundException("نرخ پیدا نشد.");
         db.VatRates.Remove(rate);
         await db.SaveChangesAsync(ct);

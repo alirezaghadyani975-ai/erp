@@ -41,28 +41,39 @@ echo API up: %UP% >> "%LOG%"
 findstr /c:"دیتابیس" /c:"اسکریپت" /c:"fail" "%APILOG%" >> "%LOG%" 2>&1
 
 echo ----- [6] API smoke test >> "%LOG%"
+rem  API login with a cookie jar: user/password from ERP_USER and ERP_PASS (default admin/admin works only before the first password change)
+set "JAR=%cd%\tools\api-cookies.txt"
+if not defined ERP_USER set "ERP_USER=admin"
+if not defined ERP_PASS set "ERP_PASS=admin"
+echo POST auth/login as %ERP_USER% (set ERP_USER and ERP_PASS if this fails): >> "%LOG%"
+curl -s -c "%JAR%" -X POST %API%/auth/login -H "Content-Type: application/json" -d "{\"userName\":\"%ERP_USER%\",\"password\":\"%ERP_PASS%\"}" >> "%LOG%" 2>&1
+echo. >> "%LOG%"
 echo POST fiscal-years/1405 (second run says it already exists): >> "%LOG%"
-curl -s -X POST %API%/accounting/fiscal-years/1405 >> "%LOG%" 2>&1
+curl -s -b "%JAR%" -X POST %API%/accounting/fiscal-years/1405 >> "%LOG%" 2>&1
 echo. >> "%LOG%"
 echo GET fiscal-years: >> "%LOG%"
-curl -s %API%/accounting/fiscal-years >> "%LOG%" 2>&1
+curl -s -b "%JAR%" %API%/accounting/fiscal-years >> "%LOG%" 2>&1
 echo. >> "%LOG%"
 echo GET account 5125: >> "%LOG%"
-curl -s %API%/accounting/accounts/by-code/5125 >> "%LOG%" 2>&1
+curl -s -b "%JAR%" %API%/accounting/accounts/by-code/5125 >> "%LOG%" 2>&1
 echo. >> "%LOG%"
 echo GET provinces: >> "%LOG%"
-curl -s %API%/base/lookups/province >> "%LOG%" 2>&1
+curl -s -b "%JAR%" %API%/base/lookups/province >> "%LOG%" 2>&1
 echo. >> "%LOG%"
 echo GET detail types: >> "%LOG%"
-curl -s %API%/accounting/details/types >> "%LOG%" 2>&1
+curl -s -b "%JAR%" %API%/accounting/details/types >> "%LOG%" 2>&1
 echo. >> "%LOG%"
 
 echo POST trial balance (group level): >> "%LOG%"
-curl -s -X POST %API%/accounting/reports/trial-balance -H "Content-Type: application/json" -d "{\"filter\":{\"fiscalYearId\":1},\"level\":1}" >> "%LOG%" 2>&1
+curl -s -b "%JAR%" -X POST %API%/accounting/reports/trial-balance -H "Content-Type: application/json" -d "{\"filter\":{\"fiscalYearId\":1},\"level\":1}" >> "%LOG%" 2>&1
 echo. >> "%LOG%"
 
 echo ----- [7] database contents >> "%LOG%"
 sqlcmd -S .\ERP -E -C -I -d %DB% -h -1 -W -Q "SET NOCOUNT ON; SELECT 'scripts: ' + STRING_AGG(ScriptName, ', ') FROM dbo.SchemaVersions; SELECT 'accounts: ' + CAST(COUNT(*) AS varchar) FROM fin.Accounts; SELECT 'detail types: ' + CAST(COUNT(*) AS varchar) FROM fin.DetailTypes; SELECT 'calendar days: ' + CAST(COUNT(*) AS varchar) FROM base.Calendar; SELECT 'lookup items: ' + CAST(COUNT(*) AS varchar) FROM base.LookupItems; SELECT 'banks: ' + CAST(COUNT(*) AS varchar) FROM base.Banks; SELECT 'persons: ' + CAST(COUNT(*) AS varchar) FROM base.Persons; SELECT 'collation: ' + CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS varchar(60));" >> "%LOG%" 2>&1
+
+echo ----- [7b] central database (users and companies; passwords are only one-way hashes) >> "%LOG%"
+sqlcmd -S .\ERP -E -C -I -d ErpCentral -h -1 -W -Q "SET NOCOUNT ON; SELECT 'central scripts: ' + STRING_AGG(ScriptName, ', ') FROM dbo.SchemaVersions; SELECT 'companies: ' + STRING_AGG([Key], ', ') FROM sec.Companies; SELECT 'users: ' + CAST(COUNT(*) AS varchar) + ', admins: ' + CAST(SUM(CAST(IsSystemAdmin AS int)) AS varchar) + ', all hashed: ' + CASE WHEN MIN(CASE WHEN PasswordHash LIKE 'PBKDF2$SHA512$%%' THEN 1 ELSE 0 END) = 1 THEN 'yes' ELSE 'NO' END FROM sec.Users; SELECT 'roles: ' + CAST(COUNT(*) AS varchar) FROM sec.Roles; SELECT 'security log rows: ' + CAST(COUNT(*) AS varchar) FROM sec.SecurityLog;" >> "%LOG%" 2>&1
+sqlcmd -S .\ERP -E -C -I -d %DB% -h -1 -W -Q "SET NOCOUNT ON; SELECT 'audit log rows: ' + CAST(COUNT(*) AS varchar) FROM audit.ChangeLog;" >> "%LOG%" 2>&1
 
 echo ----- [8] SQL smoke test (all rows must be pass) >> "%LOG%"
 sqlcmd -S .\ERP -E -C -I -f 65001 -d %DB% -W -s "|" -i database\tests\04_smoke_test.sql >> "%LOG%" 2>&1

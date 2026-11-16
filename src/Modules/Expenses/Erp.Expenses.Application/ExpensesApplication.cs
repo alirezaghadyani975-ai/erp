@@ -49,6 +49,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddExpensesApplication(this IServiceCollection services)
     {
+        services.AddSingleton(ExpensePermissions.List);
         services.AddScoped<ExpenseInvoiceService>();
         return services;
     }

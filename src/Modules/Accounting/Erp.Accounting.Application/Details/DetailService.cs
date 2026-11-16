@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Costing.Contracts;
 using Erp.SharedKernel.Text;
 using Erp.Accounting.Application.Abstractions;
@@ -32,7 +33,7 @@ public sealed record DetailAccountRowDto(int Id, string Code, string Title, int?
 /// <summary>اگر Code خالی باشد، اولین کد آزاد بعد از آخرین کد بازه داده می‌شود.</summary>
 public sealed record CreateDetailAccountRequest(short DetailTypeId, string Title, string? Code);
 
-public class DetailService(IAccountingDbContext db)
+public class DetailService(IAccountingDbContext db, IAccessControl access)
 {
     public async Task<List<DetailTypeDto>> GetTypesAsync(CancellationToken ct)
     {
@@ -54,6 +55,7 @@ public class DetailService(IAccountingDbContext db)
 
     public async Task<short> CreateTypeAsync(CreateDetailTypeRequest request, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.DetailCreate);
         var type = new DetailType(request.Title, request.OwnerModule, request.CodeFrom, request.CodeTo, request.PersonKind);
         await EnsureValidTypeAsync(type, ct);
         db.DetailTypes.Add(type);
@@ -63,6 +65,7 @@ public class DetailService(IAccountingDbContext db)
 
     public async Task UpdateTypeAsync(short id, UpdateDetailTypeRequest request, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.DetailEdit);
         var type = await db.DetailTypes.FirstOrDefaultAsync(t => t.Id == id, ct)
                    ?? throw new NotFoundException("گروه تفصیلی پیدا نشد.");
         var used = await db.DetailAccounts.Where(d => d.DetailTypeId == id)
@@ -81,6 +84,7 @@ public class DetailService(IAccountingDbContext db)
     /// <summary>حذف گروه تفصیلی؛ فقط وقتی تفصیلی ندارد و در قاعده هیچ معینی نیامده است.</summary>
     public async Task DeleteTypeAsync(short id, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.DetailDelete);
         var type = await db.DetailTypes.FirstOrDefaultAsync(t => t.Id == id, ct)
                    ?? throw new NotFoundException("گروه تفصیلی پیدا نشد.");
         var count = await db.DetailAccounts.CountAsync(d => d.DetailTypeId == id, ct);
@@ -97,6 +101,7 @@ public class DetailService(IAccountingDbContext db)
     /// <summary>تفصیلی‌های یک گروه (برای صفحه مدیریت تفصیلی‌ها)، با تعداد ردیف‌های سند.</summary>
     public async Task<List<DetailAccountRowDto>> ListAccountsAsync(short typeId, string? term, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.DetailView);
         var query = db.DetailAccounts.AsNoTracking().Where(d => d.DetailTypeId == typeId);
         term = PersianText.NormalizeOrNull(term);
         if (term is not null) query = query.Where(d => d.Title.Contains(term) || d.Code.StartsWith(term));
@@ -110,6 +115,7 @@ public class DetailService(IAccountingDbContext db)
     /// <summary>ویرایش عنوان و وضعیت تفصیلی غیرشخصی (تفصیلی اشخاص از فرم شخص هماهنگ می‌شود).</summary>
     public async Task UpdateAccountAsync(int id, string title, bool isActive, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.DetailEdit);
         var detail = await LoadNonPersonDetailAsync(id, ct);
         detail.Rename(title);
         if (isActive) detail.Activate(); else detail.Deactivate();
@@ -119,6 +125,7 @@ public class DetailService(IAccountingDbContext db)
     /// <summary>حذف تفصیلی غیرشخصی که در هیچ سندی نیامده است.</summary>
     public async Task DeleteAccountAsync(int id, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.DetailDelete);
         var detail = await LoadNonPersonDetailAsync(id, ct);
         if (await db.VoucherLines.AnyAsync(l => l.Detail1Id == id || l.Detail2Id == id || l.Detail3Id == id
                                                 || l.Detail4Id == id || l.Detail5Id == id || l.Detail6Id == id, ct))
@@ -216,6 +223,7 @@ public class DetailService(IAccountingDbContext db)
     /// </summary>
     public async Task<int> CreateAccountAsync(CreateDetailAccountRequest request, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.DetailCreate);
         var type = await db.DetailTypes.FirstOrDefaultAsync(t => t.Id == request.DetailTypeId, ct)
                    ?? throw new NotFoundException($"نوع تفصیلی {request.DetailTypeId} پیدا نشد.");
         if (type.OwnerModule is OwnerModules.Persons or OwnerModules.Payroll)

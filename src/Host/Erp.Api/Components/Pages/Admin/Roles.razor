@@ -1,0 +1,212 @@
+@page "/admin/roles"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject PermissionCatalog Catalog
+@inject SessionCache SessionCache
+
+<TabTitle Text="نقش‌ها و مجوزها" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">نقش‌ها و مجوزها</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">نقش جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    نقش مجموعه‌ای از مجوزهاست (مثل «صندوق‌دار» یا «حسابدار ارشد»). در فرم کاربر، برای هر شرکت یک یا چند نقش به کاربر داده می‌شود
+    و مجوز او اجتماع مجوزهای همه نقش‌هایش در آن شرکت است.
+</MudText>
+
+<div class="role-layout">
+    <MudPaper Class="pa-2 role-list" Elevation="1">
+        @if (_roles.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="pa-2" Color="Color.Secondary">هنوز نقشی تعریف نشده است.</MudText>
+        }
+        <MudList T="int" Dense="true">
+            @foreach (var r in _roles)
+            {
+                <MudListItem T="int" OnClick="() => OpenAsync(r.Id)" Class="@(r.Id == _id ? "role-selected" : "")">
+                    <div class="d-flex justify-space-between align-center" style="width:100%">
+                        <span class="@(r.IsActive ? "" : "tree-inactive")">@r.Title</span>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@r.PermissionCount مجوز · @r.UserCount کاربر</MudText>
+                    </div>
+                </MudListItem>
+            }
+        </MudList>
+    </MudPaper>
+
+    <MudPaper Class="pa-3 role-editor" Elevation="1">
+        @if (!_open)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">یک نقش را از فهرست انتخاب کنید یا نقش جدید بسازید.</MudText>
+        }
+        else
+        {
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="5"><MudTextField @bind-Value="_title" Label="عنوان نقش" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="5"><MudTextField @bind-Value="_description" Label="توضیحات" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12" sm="2" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+            </MudGrid>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-2 mb-1">
+                <MudTextField @bind-Value="_filter" Immediate="true" Placeholder="جستجوی مجوز" Clearable="true" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search" Style="max-width:260px" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@_selected.Count از @Catalog.All.Count مجوز</MudText>
+                <MudSpacer />
+                <MudButton Size="Size.Small" OnClick="() => SetAll(true)">انتخاب همه</MudButton>
+                <MudButton Size="Size.Small" OnClick="() => SetAll(false)">هیچ‌کدام</MudButton>
+                <MudButton Size="Size.Small" OnClick="ViewOnly">فقط مشاهده‌ها</MudButton>
+            </MudStack>
+
+            <div class="perm-tree">
+                @foreach (var module in Modules)
+                {
+                    var moduleKeys = module.Groups.SelectMany(g => g.Items).Select(p => p.Key).ToList();
+                    <div class="perm-module">
+                        <MudCheckBox T="bool?" Value="StateOf(moduleKeys)" ValueChanged="v => Set(moduleKeys, v != false)" TriState="true"
+                                     Dense="true" Label="@module.Title" Class="perm-module-title" />
+                        @foreach (var group in module.Groups)
+                        {
+                            var groupKeys = group.Items.Select(p => p.Key).ToList();
+                            <div class="perm-group">
+                                <MudCheckBox T="bool?" Value="StateOf(groupKeys)" ValueChanged="v => Set(groupKeys, v != false)" TriState="true"
+                                             Dense="true" Label="@group.Title" Class="perm-group-title" />
+                                <div class="perm-actions">
+                                    @foreach (var p in group.Items)
+                                    {
+                                        <MudCheckBox T="bool" Value="_selected.Contains(p.Key)" ValueChanged="v => Toggle(p.Key, v)" Dense="true"
+                                                     Label="@p.Action" Size="Size.Small" title="@p.Key" />
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd" Class="mt-3">
+                @if (_id is not null)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="DeleteAsync" Disabled="_busy">حذف</MudButton>
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.ContentCopy" OnClick="CopyAsync" Disabled="_busy">کپی نقش</MudButton>
+                }
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_busy">ذخیره</MudButton>
+            </MudStack>
+        }
+    </MudPaper>
+</div>
+
+@code {
+    private List<RoleDto> _roles = [];
+    private bool _open, _busy, _active = true;
+    private int? _id;
+    private string? _title, _description, _filter;
+    private HashSet<string> _selected = [];
+
+    private sealed record PermGroup(string Title, List<PermissionDef> Items);
+    private sealed record PermModule(string Title, List<PermGroup> Groups);
+
+    private List<PermModule> Modules =>
+        Catalog.All
+            .Where(p => string.IsNullOrWhiteSpace(_filter) || p.Title.Contains(_filter.Trim()) || p.Module.Contains(_filter.Trim())
+                        || p.Key.Contains(_filter.Trim()))
+            .GroupBy(p => p.Module)
+            .Select(m => new PermModule(m.Key, m.GroupBy(p => p.Group).Select(g => new PermGroup(g.Key, g.ToList())).ToList()))
+            .ToList();
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var r = await Backend.Run<RoleService, List<RoleDto>>(s => s.ListAsync(default));
+        if (r.Success) _roles = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+    }
+
+    private void New()
+    {
+        (_id, _title, _description, _active, _filter) = (null, null, null, true, null);
+        _selected = [];
+        _open = true;
+    }
+
+    private async Task OpenAsync(int id)
+    {
+        var r = await Backend.Run<RoleService, RoleDetailsDto>(s => s.GetAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        var d = r.Value!;
+        (_id, _title, _description, _active) = (d.Id, d.Title, d.Description, d.IsActive);
+        _selected = d.Permissions.ToHashSet();
+        _open = true;
+    }
+
+    private bool? StateOf(List<string> keys)
+    {
+        var count = keys.Count(_selected.Contains);
+        return count == 0 ? false : count == keys.Count ? true : null;
+    }
+
+    /// <summary>
+    /// «مشاهده» لازمه بقیه کارهای همان فرم است: با انتخاب هر کار، مشاهده هم انتخاب می‌شود و با برداشتن مشاهده،
+    /// بقیه کارهای آن فرم هم برداشته می‌شوند.
+    /// </summary>
+    private void Set(IEnumerable<string> keys, bool on)
+    {
+        foreach (var k in keys.ToList())
+        {
+            if (on)
+            {
+                _selected.Add(k);
+                if (PermissionCatalog.ViewOf(k) is { } view && Catalog.Contains(view)) _selected.Add(view);
+            }
+            else
+            {
+                _selected.Remove(k);
+                if (k.EndsWith(".view", StringComparison.Ordinal))
+                    _selected.RemoveWhere(x => PermissionCatalog.ViewOf(x) == k);
+            }
+        }
+    }
+
+    private void Toggle(string key, bool on) => Set([key], on);
+
+    private void SetAll(bool on) => Set(Catalog.All.Select(p => p.Key), on);
+
+    private void ViewOnly()
+    {
+        _selected = Catalog.All.Where(p => p.Key.EndsWith(".view") || p.Key.StartsWith("acc.report.")).Select(p => p.Key).ToHashSet();
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        var request = new SaveRoleRequest(_title ?? "", _description, _active, _selected.ToList());
+        var r = await Backend.Run<RoleService, int>(s => s.SaveAsync(_id, request, default));
+        _busy = false;
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _id = r.Value;
+        SessionCache.Clear();
+        Snackbar.Add("نقش ذخیره شد؛ مجوز کاربرانش حداکثر تا یک دقیقه دیگر به‌روز می‌شود.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task CopyAsync()
+    {
+        var title = $"{_title} (کپی)";
+        var r = await Backend.Run<RoleService, int>(s => s.CopyAsync(_id!.Value, title, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+        await OpenAsync(r.Value);
+        Snackbar.Add("نقش کپی شد؛ عنوانش را عوض کنید.", Severity.Success);
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (await Dialogs.ShowMessageBoxAsync("حذف نقش", $"نقش «{_title}» حذف شود؟", yesText: "حذف", cancelText: "انصراف") != true) return;
+        var r = await Backend.Run<RoleService>(s => s.DeleteAsync(_id!.Value, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _open = false;
+        _id = null;
+        Snackbar.Add("نقش حذف شد.", Severity.Success);
+        await LoadAsync();
+    }
+}

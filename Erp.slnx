@@ -16,6 +16,11 @@
     <Project Path="src/Modules/Expenses/Erp.Expenses.Domain/Erp.Expenses.Domain.csproj" />
     <Project Path="src/Modules/Expenses/Erp.Expenses.Infrastructure/Erp.Expenses.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Security/">
+    <Project Path="src/Modules/Security/Erp.Security.Application/Erp.Security.Application.csproj" />
+    <Project Path="src/Modules/Security/Erp.Security.Domain/Erp.Security.Domain.csproj" />
+    <Project Path="src/Modules/Security/Erp.Security.Infrastructure/Erp.Security.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Treasury/">
     <Project Path="src/Modules/Treasury/Erp.Treasury.Application/Erp.Treasury.Application.csproj" />
     <Project Path="src/Modules/Treasury/Erp.Treasury.Domain/Erp.Treasury.Domain.csproj" />

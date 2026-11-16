@@ -1,6 +1,8 @@
 @inherits LayoutComponentBase
 @inject Erp.Api.Components.Shared.Forms.Shortcuts Shortcuts
 @inject IJSRuntime JS
+@inject Erp.Api.Infrastructure.AppSession Session
+@inject NavigationManager Nav
 
 <MudRTLProvider RightToLeft="true">
     <MudThemeProvider Theme="_theme" />
@@ -16,60 +18,40 @@
             <MudSpacer />
             <GlobalSearch />
             <MudSpacer />
-            <MudLink Href="/scalar" Target="_blank" Color="Color.Inherit" Typo="Typo.body2">API</MudLink>
+            @if (Session.Info is { } info)
+            {
+                <span class="appbar-company" title="شرکت جاری">
+                    <MudIcon Icon="@Icons.Material.Outlined.Business" Size="Size.Small" Style="vertical-align:middle" /> @info.CompanyTitle
+                </span>
+                <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" Dense="true" aria-label="حساب کاربری">
+                    <ActivatorContent>
+                        <MudChip T="string" Color="Color.Inherit" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.AccountCircle"
+                                 Style="color:inherit; border-color:rgba(255,255,255,.5)">@info.DisplayName</MudChip>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem Icon="@Icons.Material.Outlined.Person" Disabled="true">
+                            <span dir="ltr">@info.UserName</span>@(info.IsSystemAdmin ? " · مدیر سیستم" : "")
+                        </MudMenuItem>
+                        <MudDivider />
+                        <MudMenuItem Icon="@Icons.Material.Outlined.SwapHoriz" OnClick="@(() => Go(Erp.Api.Infrastructure.Auth.CompanyPath))">تغییر شرکت</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Outlined.Password" OnClick="@(() => Go(Erp.Api.Infrastructure.Auth.ChangePasswordPath))">تغییر رمز عبور</MudMenuItem>
+                        @if (Session.IsSystemAdmin)
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Outlined.Api" Href="/scalar" Target="_blank">مستندات API</MudMenuItem>
+                        }
+                        <MudDivider />
+                        <MudMenuItem Icon="@Icons.Material.Outlined.Logout" OnClick="@(() => Go(Erp.Api.Infrastructure.Auth.LogoutPath))">خروج</MudMenuItem>
+                    </ChildContent>
+                </MudMenu>
+            }
         </MudAppBar>
 
         <MudDrawer Class="no-print" @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="1" Variant="DrawerVariant.Responsive">
             <MudNavMenu>
-                <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Home">صفحه نخست</MudNavLink>
-                <MudNavGroup Title="مالی" Icon="@Icons.Material.Outlined.AccountBalanceWallet" Expanded="true">
-                    <MudNavGroup Title="حسابداری" Icon="@Icons.Material.Outlined.Calculate" Expanded="true">
-                        <MudNavLink Href="/vouchers" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.ReceiptLong">اسناد حسابداری</MudNavLink>
-                        <MudNavGroup Title="گزارش‌ها" Icon="@Icons.Material.Outlined.Assessment" Expanded="true">
-                            <MudNavLink Href="/reports/trial-balance" Icon="@Icons.Material.Outlined.TableChart">تراز آزمایشی</MudNavLink>
-                            <MudNavLink Href="/reports/ledger" Icon="@Icons.Material.Outlined.MenuBook">دفتر معین و تفصیلی</MudNavLink>
-                        </MudNavGroup>
-                        <MudNavGroup Title="تعاریف" Icon="@Icons.Material.Outlined.Tune" Expanded="false">
-                            <MudNavLink Href="/accounts" Icon="@Icons.Material.Outlined.AccountTree">کدینگ حساب‌ها</MudNavLink>
-                            <MudNavLink Href="/detail-types" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Category">گروه‌ها و حساب‌های تفصیلی</MudNavLink>
-                            <MudNavLink Href="/fiscal-years" Icon="@Icons.Material.Outlined.CalendarMonth">سال و دوره مالی</MudNavLink>
-                            <MudNavLink Href="/posting-templates" Icon="@Icons.Material.Outlined.AutoMode">الگوهای صدور سند</MudNavLink>
-                        </MudNavGroup>
-                    </MudNavGroup>
-                    <MudNavGroup Title="هزینه‌ها" Icon="@Icons.Material.Outlined.RequestQuote" Expanded="true">
-                        <MudNavLink Href="/expenses" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.Receipt">شناسایی هزینه</MudNavLink>
-                    </MudNavGroup>
-                    <MudNavGroup Title="خزانه‌داری" Icon="@Icons.Material.Outlined.Savings" Expanded="true">
-                        <MudNavLink Href="/treasury/receipts" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.CallReceived">دریافت</MudNavLink>
-                        <MudNavLink Href="/treasury/payments" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.CallMade">پرداخت</MudNavLink>
-                        <MudNavLink Href="/treasury/transfers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.SwapHoriz">انتقال وجه</MudNavLink>
-                        <MudNavLink Href="/treasury/imprest" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Wallet">صورت‌هزینه تنخواه</MudNavLink>
-                        <MudNavLink Href="/treasury/cheque-ops/in" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.MoveDown">عملیات اسناد دریافتنی</MudNavLink>
-                        <MudNavLink Href="/treasury/cheque-ops/out" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.MoveUp">عملیات اسناد پرداختنی</MudNavLink>
-                        <MudNavLink Href="/treasury/guarantees" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.VerifiedUser">اسناد تضمینی</MudNavLink>
-                        <MudNavGroup Title="گزارش‌های خزانه" Icon="@Icons.Material.Outlined.Assessment" Expanded="false">
-                            <MudNavLink Href="/treasury/reports/cheques-in" Icon="@Icons.Material.Outlined.FactCheck">چک‌های دریافتنی</MudNavLink>
-                            <MudNavLink Href="/treasury/reports/cheques-out" Icon="@Icons.Material.Outlined.FactCheck">چک‌های پرداختنی</MudNavLink>
-                            <MudNavLink Href="/treasury/reports/due" Icon="@Icons.Material.Outlined.EventNote">سررسید ماهانه چک‌ها</MudNavLink>
-                            <MudNavLink Href="/treasury/reports/balances" Icon="@Icons.Material.Outlined.AccountBalance">موجودی صندوق و بانک</MudNavLink>
-                        </MudNavGroup>
-                        <MudNavLink Href="/treasury/instruments" Icon="@Icons.Material.Outlined.MenuBook">دسته‌چک، سفته و ضمانت‌نامه</MudNavLink>
-                        <MudNavLink Href="/treasury/setup" Icon="@Icons.Material.Outlined.Tune">تعاریف خزانه‌داری</MudNavLink>
-                    </MudNavGroup>
-                    <MudNavGroup Title="بهای تمام‌شده" Icon="@Icons.Material.Outlined.Factory" Expanded="false">
-                        <MudNavLink Href="/costing/centers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.Hub">مراکز هزینه</MudNavLink>
-                        <MudNavLink Href="/costing/factors" Icon="@Icons.Material.Outlined.Category">عوامل هزینه</MudNavLink>
-                        <MudNavLink Href="/costing/center-types" Icon="@Icons.Material.Outlined.Lan">انواع مرکز هزینه</MudNavLink>
-                    </MudNavGroup>
-                </MudNavGroup>
-                <MudDivider Class="my-2" />
-                <MudNavGroup Title="اطلاعات پایه" Icon="@Icons.Material.Outlined.Storage" Expanded="true">
-                    <MudNavLink Href="/persons" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.People">اشخاص</MudNavLink>
-                    <MudNavLink Href="/base/roles" Icon="@Icons.Material.Outlined.Label">نقش‌های اشخاص</MudNavLink>
-                    <MudNavLink Href="/base/lookups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Outlined.ListAlt">جدول‌های پایه</MudNavLink>
-                    <MudNavLink Href="/base/banks" Icon="@Icons.Material.Outlined.AccountBalance">بانک‌ها</MudNavLink>
-                    <MudNavLink Href="/base/vat-rates" Icon="@Icons.Material.Outlined.Percent">نرخ مالیات و عوارض</MudNavLink>
-                </MudNavGroup>
+                @foreach (var node in AppMenu.Tree.Where(n => n.IsVisible(Session)))
+                {
+                    @MenuNode(node)
+                }
             </MudNavMenu>
         </MudDrawer>
 
@@ -84,10 +66,38 @@
 @code {
     private bool _drawerOpen = true;
 
+    private bool _idleStarted;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender) await Shortcuts.AttachAsync(JS);
+        // خروج خودکار بعد از بی‌کاری (از تنظیمات امنیتی)
+        if (!_idleStarted && Session.Info is { } info)
+        {
+            _idleStarted = true;
+            await JS.InvokeVoidAsync("erpIdle.start", info.IdleMinutes);
+        }
     }
+
+    /// <summary>صفحه‌های حساب کاربری بیرون از اتصال تعاملی‌اند (کوکی عوض می‌شود).</summary>
+    private void Go(string url) => Nav.NavigateTo(url, forceLoad: true);
+
+    private RenderFragment MenuNode(AppMenu.Node node) => __builder =>
+    {
+        if (node.Children is { } children)
+        {
+            <MudNavGroup Title="@node.Title" Icon="@node.Icon" Expanded="@node.Expanded">
+                @foreach (var child in children.Where(c => c.IsVisible(Session)))
+                {
+                    @MenuNode(child)
+                }
+            </MudNavGroup>
+        }
+        else
+        {
+            <MudNavLink Href="@node.Href" Match="@node.Match" Icon="@node.Icon">@node.Title</MudNavLink>
+        }
+    };
 
     private readonly MudTheme _theme = new()
     {

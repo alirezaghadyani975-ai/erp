@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Costing.Application.Abstractions;
 using Erp.Costing.Contracts;
 using Erp.Costing.Domain;
@@ -8,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Erp.Costing.Application.Setup;
 
 /// <summary>انواع مرکز هزینه (با وظیفه) و مبناهای تسهیم و جذب.</summary>
-public class CostSetupService(ICostingDbContext db, IUnitOfWork uow, ICostDetailLinks links)
+public class CostSetupService(ICostingDbContext db, IUnitOfWork uow, ICostDetailLinks links, IAccessControl access)
 {
     // ------------------------------------------------------------------ انواع مرکز
 
@@ -24,6 +25,7 @@ public class CostSetupService(ICostingDbContext db, IUnitOfWork uow, ICostDetail
 
     public async Task<short> CreateCenterTypeAsync(SaveCostCenterTypeRequest request, CancellationToken ct)
     {
+        access.Demand(CostingPermissions.CenterTypes);
         var type = new CostCenterType(request.Title, request.Function, request.SortOrder);
         if (!request.IsActive) type.Deactivate();
         await EnsureUniqueAsync(type, ct);
@@ -35,6 +37,7 @@ public class CostSetupService(ICostingDbContext db, IUnitOfWork uow, ICostDetail
     /// <summary>تغییر وظیفه نوع مرکز، وظیفه همه مراکز آن را عوض می‌کند؛ اگر مرکزی در سند آمده باشد ممنوع است.</summary>
     public async Task UpdateCenterTypeAsync(short id, SaveCostCenterTypeRequest request, CancellationToken ct)
     {
+        access.Demand(CostingPermissions.CenterTypes);
         var type = await db.CostCenterTypes.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("نوع مرکز پیدا نشد.");
         var functionChanged = type.Function != request.Function;
         var centers = functionChanged ? await db.CostCenters.Include(c => c.Allocations).Where(c => c.CenterTypeId == id).ToListAsync(ct) : [];
@@ -56,6 +59,7 @@ public class CostSetupService(ICostingDbContext db, IUnitOfWork uow, ICostDetail
 
     public async Task DeleteCenterTypeAsync(short id, CancellationToken ct)
     {
+        access.Demand(CostingPermissions.CenterTypes);
         var type = await db.CostCenterTypes.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("نوع مرکز پیدا نشد.");
         if (type.IsSystem)
             throw new DomainException("نوع‌های سیستمی حذف نمی‌شوند.");

@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.BaseData.Application.Abstractions;
 using Erp.BaseData.Contracts;
 using Erp.BaseData.Domain.Lookups;
@@ -20,7 +21,8 @@ public class PersonService(
     IUnitOfWork uow,
     IEnumerable<IPersonLinks> links,
     ICurrentUser user,
-    TimeProvider clock)
+    TimeProvider clock,
+    IAccessControl access)
 {
     // ------------------------------------------------------------------ نقش‌ها
 
@@ -38,6 +40,7 @@ public class PersonService(
 
     public async Task<short> CreateRoleTypeAsync(string title, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.PersonRoles);
         var role = new PersonRoleType(title);
         if (await db.PersonRoleTypes.AnyAsync(r => r.Title == role.Title, ct))
             throw new DomainException($"نقش «{role.Title}» قبلاً تعریف شده است.");
@@ -48,6 +51,7 @@ public class PersonService(
 
     public async Task UpdateRoleTypeAsync(short id, string title, bool isActive, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.PersonRoles);
         var role = await db.PersonRoleTypes.FirstOrDefaultAsync(r => r.Id == id, ct)
                    ?? throw new NotFoundException("نقش پیدا نشد.");
         role.Rename(title);
@@ -58,6 +62,7 @@ public class PersonService(
     /// <summary>حذف نقش تعریف کاربر؛ اگر شخص یا قاعده تفصیلی معینی از آن استفاده کند، حذف نمی‌شود.</summary>
     public async Task DeleteRoleTypeAsync(short id, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.PersonRoles);
         var role = await db.PersonRoleTypes.FirstOrDefaultAsync(r => r.Id == id, ct)
                    ?? throw new NotFoundException("نقش پیدا نشد.");
         if (role.IsSystem)
@@ -73,6 +78,7 @@ public class PersonService(
 
     public async Task<int> CreateAsync(SavePersonRequest request, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.PersonCreate);
         var today = Today();
         var person = Person.Create(request.Kind, await ToProfileAsync(request, ct), today);
         await ApplyAsync(person, request, ct);
@@ -87,6 +93,7 @@ public class PersonService(
 
     public async Task UpdateAsync(int id, SavePersonRequest request, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.PersonEdit);
         var person = await LoadAsync(id, ct);
         if (person.Kind != request.Kind)
             throw new DomainException("نوع شخص (حقیقی/حقوقی) بعد از ثبت عوض نمی‌شود.");
@@ -106,6 +113,7 @@ public class PersonService(
     /// </summary>
     public async Task DeleteAsync(int id, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.PersonDelete);
         var person = await LoadAsync(id, ct);
         foreach (var link in links)
             if (await link.CannotDeleteReasonAsync(id, ct) is { } reason)
@@ -146,6 +154,7 @@ public class PersonService(
 
     public async Task<PersonDetailsDto> GetAsync(int id, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.PersonView);
         var p = await db.Persons.AsNoTracking()
                     .Include(x => x.Roles).Include(x => x.Addresses).Include(x => x.BankAccounts).Include(x => x.Contacts)
                     .FirstOrDefaultAsync(x => x.Id == id, ct)
@@ -230,6 +239,7 @@ public class PersonService(
 
     public async Task<List<AttachmentDto>> ListAttachmentsAsync(int personId, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.PersonView);
         var rows = await db.PersonAttachments.AsNoTracking().Where(a => a.PersonId == personId).OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.Title, a.FileName, a.ContentType, a.SizeBytes, a.UploadedAt })
             .ToListAsync(ct);
@@ -240,6 +250,7 @@ public class PersonService(
     public async Task<int> AddAttachmentAsync(int personId, string? title, string fileName, string contentType, byte[] content,
         CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.PersonEdit);
         if (!await db.Persons.AnyAsync(p => p.Id == personId, ct))
             throw new NotFoundException("شخص پیدا نشد.");
         var attachment = new PersonAttachment(personId, title ?? "", fileName, contentType, content, user.UserId);
@@ -248,13 +259,17 @@ public class PersonService(
         return attachment.Id;
     }
 
-    public async Task<AttachmentFile> GetAttachmentAsync(int id, CancellationToken ct) =>
-        await db.PersonAttachments.AsNoTracking().Where(a => a.Id == id)
+    public async Task<AttachmentFile> GetAttachmentAsync(int id, CancellationToken ct)
+    {
+        access.Demand(BaseDataPermissions.PersonView);
+        return await db.PersonAttachments.AsNoTracking().Where(a => a.Id == id)
             .Select(a => new AttachmentFile(a.FileName, a.ContentType, a.Content)).FirstOrDefaultAsync(ct)
-        ?? throw new NotFoundException("پیوست پیدا نشد.");
+            ?? throw new NotFoundException("پیوست پیدا نشد.");
+    }
 
     public async Task DeleteAttachmentAsync(int id, CancellationToken ct)
     {
+        access.Demand(BaseDataPermissions.PersonEdit);
         var count = await db.PersonAttachments.Where(a => a.Id == id).ExecuteDeleteAsync(ct);
         if (count == 0) throw new NotFoundException("پیوست پیدا نشد.");
     }

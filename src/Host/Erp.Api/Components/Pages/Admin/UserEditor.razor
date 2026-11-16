@@ -1,0 +1,350 @@
+@page "/admin/users/new"
+@page "/admin/users/{Id:int}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+@inject AppSession Session
+@inject SessionCache SessionCache
+
+<TabTitle Text="@(IsNew ? "کاربر جدید" : $"کاربر {_userName}")" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Spacing="2" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h5">@(IsNew ? "کاربر جدید" : _displayName)</MudText>
+    @if (!IsNew)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary"><span dir="ltr">@_userName</span></MudText>
+        @if (_dto?.MustChangePassword == true) { <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">باید رمز را عوض کند</MudChip> }
+        @if (_dto?.LockedUntil is { } locked) { <MudChip T="string" Size="Size.Small" Color="Color.Error">قفل تا @locked</MudChip> }
+    }
+    <MudSpacer />
+    @if (!IsNew)
+    {
+        @if (_dto?.LockedUntil is not null)
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.LockOpen" OnClick="UnlockAsync" Disabled="_busy">باز کردن قفل</MudButton>
+        }
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Password" OnClick="() => _resetOpen = true" Disabled="_busy">بازنشانی رمز</MudButton>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Logout" OnClick="SignOutEverywhereAsync" Disabled="_busy">خروج از همه نشست‌ها</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="DeleteAsync" Disabled="_busy">حذف</MudButton>
+    }
+</MudStack>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-3" Elevation="1">
+    <MudText Typo="Typo.subtitle1" Class="mb-2"><b>مشخصات</b></MudText>
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_userName" Label="نام کاربری" Disabled="!IsNew" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Class="code" HelperText="حروف لاتین، رقم، نقطه، خط تیره" AutoFocus="IsNew" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_displayName" Label="نام و نام خانوادگی" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="6" sm="2" Class="d-flex align-center">
+            <MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" />
+        </MudItem>
+        <MudItem xs="6" sm="2" Class="d-flex align-center">
+            <MudTooltip Text="@(Session.IsSystemAdmin ? "همه مجوزها در همه شرکت‌ها" : "فقط مدیر سیستم می‌تواند تعیین کند")">
+                <MudSwitch T="bool" @bind-Value="_admin" Color="Color.Primary" Label="مدیر سیستم" Disabled="!Session.IsSystemAdmin" />
+            </MudTooltip>
+        </MudItem>
+        @if (IsNew)
+        {
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_password" Label="رمز اولیه" InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              HelperText="کاربر در اولین ورود باید آن را عوض کند" Class="code" />
+            </MudItem>
+            <MudItem xs="12" sm="4" Class="d-flex align-center">
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.AutoFixHigh" OnClick="GeneratePassword">ساخت رمز تصادفی</MudButton>
+                @if (_generated is not null)
+                {
+                    <MudText Typo="Typo.body2" Class="mr-2">رمز: <b class="code" dir="ltr">@_generated</b></MudText>
+                }
+            </MudItem>
+        }
+        else if (_dto is not null)
+        {
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    ساخته‌شده: <span class="code">@_dto.CreatedAt</span> · آخرین ورود: <span class="code">@(_dto.LastLogin ?? "هنوز وارد نشده")</span>
+                    · آخرین تغییر رمز: <span class="code">@(_dto.PasswordChanged ?? "—")</span>
+                </MudText>
+            </MudItem>
+        }
+    </MudGrid>
+    <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-2">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveProfileAsync" Disabled="_busy">
+            @(IsNew ? "ایجاد کاربر" : "ذخیره مشخصات")
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+@if (!IsNew)
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudText Typo="Typo.subtitle1"><b>دسترسی به شرکت‌ها</b></MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAccessAsync" Disabled="_busy || _admin">ذخیره دسترسی‌ها</MudButton>
+        </MudStack>
+        @if (_admin)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true">مدیر سیستم به همه شرکت‌ها و همه مجوزها دسترسی دارد؛ نقش و محدوده برایش لازم نیست.</MudAlert>
+        }
+        else if (_roles.Count == 0)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">
+                هنوز نقشی تعریف نشده است؛ ابتدا در «نقش‌ها و مجوزها» نقش بسازید.
+            </MudAlert>
+        }
+        @if (!_admin)
+        {
+            @foreach (var c in _access)
+            {
+                <div class="user-company @(c.Granted ? "granted" : "")">
+                    <MudCheckBox T="bool" Value="c.Granted" ValueChanged="v => GrantAsync(c, v)" Label="@c.Title" Color="Color.Primary" Class="user-company-title" />
+                    @if (c.Granted)
+                    {
+                        <MudGrid Spacing="2" Class="px-3 pb-2">
+                            <MudItem xs="12" md="7">
+                                <MudSelect T="int" Label="نقش‌ها" MultiSelection="true" SelectedValues="c.Roles" SelectedValuesChanged="v => c.Roles = v"
+                                           Variant="Variant.Outlined" Margin="Margin.Dense" ToStringFunc="RoleTitle"
+                                           MultiSelectionTextFunc="@(list => string.Join("، ", c.Roles.Select(RoleTitle)))">
+                                    @foreach (var r in _roles)
+                                    {
+                                        <MudSelectItem T="int" Value="r.Id">@r.Title@(r.IsActive ? "" : " (غیرفعال)")</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="12" md="5" Class="d-flex align-center">
+                                <MudSwitch T="bool" @bind-Value="c.OwnDocsOnly" Color="Color.Warning" Label="فقط فرم‌ها و اسنادی که خودش ثبت کرده" />
+                            </MudItem>
+                            @if (c.Options is null)
+                            {
+                                <MudItem xs="12"><MudProgressLinear Indeterminate="true" /></MudItem>
+                            }
+                            else
+                            {
+                                @foreach (var kind in Enum.GetValues<ScopeKind>())
+                                {
+                                    var k = kind;
+                                    <MudItem xs="12" sm="6" lg="3">
+                                        <MudSwitch T="bool" Value="c.Limited[k]" ValueChanged="v => c.Limited[k] = v" Color="Color.Warning"
+                                                   Label="@($"{KindTitle(k)}: {(c.Limited[k] ? "فقط موارد انتخاب‌شده" : "همه")}")" />
+                                        @if (c.Limited[k])
+                                        {
+                                            <MudSelect T="int" Label="@KindTitle(k)" MultiSelection="true" SelectedValues="c.Items[k]"
+                                                       SelectedValuesChanged="v => c.Items[k] = v" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                       Error="@(c.Items[k].Count == 0)"
+                                                       ErrorText="چیزی انتخاب نشده: کاربر به هیچ‌کدام دسترسی نخواهد داشت"
+                                                       MultiSelectionTextFunc="@(list => string.Join("، ", c.Items[k].Select(id => ItemTitle(c, k, id))))">
+                                                @foreach (var item in c.Options[k])
+                                                {
+                                                    <MudSelectItem T="int" Value="item.Id">@item.Title@(item.IsActive ? "" : " (غیرفعال)")</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                        }
+                                    </MudItem>
+                                }
+                            }
+                        </MudGrid>
+                    }
+                </div>
+            }
+        }
+    </MudPaper>
+}
+
+<MudDialog @bind-Visible="_resetOpen" Options="new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">بازنشانی رمز @_userName</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+            رمز قبلی قابل بازیابی نیست. رمز جدید را به کاربر بدهید؛ در ورود بعدی باید آن را عوض کند و نشست‌های بازش بسته می‌شود.
+        </MudText>
+        <MudTextField @bind-Value="_password" Label="رمز جدید" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.AutoFixHigh" OnClick="GeneratePassword" Class="mt-1">ساخت رمز تصادفی</MudButton>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _resetOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ResetPasswordAsync" Disabled="string.IsNullOrEmpty(_password) || _busy">بازنشانی</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private bool IsNew => Id is null;
+
+    private UserDto? _dto;
+    private string? _userName, _displayName, _password, _generated, _error;
+    private bool _active = true, _admin, _busy, _resetOpen;
+    private List<RoleDto> _roles = [];
+    private List<CompanyAccess> _access = [];
+
+    private sealed class CompanyAccess
+    {
+        public required short CompanyId { get; init; }
+        public required string Title { get; init; }
+        public bool Granted { get; set; }
+        public bool OwnDocsOnly { get; set; }
+        public IReadOnlyCollection<int> Roles { get; set; } = [];
+        public Dictionary<ScopeKind, bool> Limited { get; } = Enum.GetValues<ScopeKind>().ToDictionary(k => k, _ => false);
+        public Dictionary<ScopeKind, IReadOnlyCollection<int>> Items { get; } = Enum.GetValues<ScopeKind>().ToDictionary(k => k, _ => (IReadOnlyCollection<int>)Array.Empty<int>());
+        public IReadOnlyDictionary<ScopeKind, IReadOnlyList<ScopeItem>>? Options { get; set; }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _error = null;
+        if (IsNew) return;
+        var r = await Backend.Run<UserAdminService, UserDto>(s => s.GetAsync(Id!.Value, default));
+        if (!r.Success) { _error = r.Error; return; }
+        _dto = r.Value!;
+        (_userName, _displayName, _active, _admin) = (_dto.UserName, _dto.DisplayName, _dto.IsActive, _dto.IsSystemAdmin);
+
+        _roles = (await Backend.Run<RoleService, List<RoleDto>>(s => s.ListAsync(default))).Value ?? [];
+        var companies = (await Backend.Run<CompanyAdminService, List<CompanyDto>>(s => s.ListAsync(default))).Value ?? [];
+        _access = companies.Select(c =>
+        {
+            var a = new CompanyAccess { CompanyId = c.Id, Title = c.IsActive ? c.Title : $"{c.Title} (غیرفعال)" };
+            if (_dto.Companies.FirstOrDefault(x => x.CompanyId == c.Id) is { } granted)
+            {
+                a.Granted = true;
+                a.OwnDocsOnly = granted.OwnDocsOnly;
+                a.Roles = granted.RoleIds;
+                foreach (var limit in granted.LimitedScopes)
+                {
+                    a.Limited[limit.Kind] = true;
+                    a.Items[limit.Kind] = limit.ItemIds;
+                }
+            }
+            return a;
+        }).ToList();
+        foreach (var a in _access.Where(a => a.Granted)) await LoadOptionsAsync(a);
+    }
+
+    private async Task GrantAsync(CompanyAccess c, bool granted)
+    {
+        c.Granted = granted;
+        if (granted && c.Options is null) await LoadOptionsAsync(c);
+    }
+
+    private async Task LoadOptionsAsync(CompanyAccess c)
+    {
+        var r = await Backend.Run<CompanyAdminService, IReadOnlyDictionary<ScopeKind, IReadOnlyList<ScopeItem>>>(s => s.ScopeItemsAsync(c.CompanyId, default));
+        if (r.Success) c.Options = r.Value;
+        else
+        {
+            c.Options = Enum.GetValues<ScopeKind>().ToDictionary(k => k, _ => (IReadOnlyList<ScopeItem>)[]);
+            Snackbar.Add($"فهرست صندوق/بانک «{c.Title}» خوانده نشد: {r.Error}", Severity.Warning);
+        }
+    }
+
+    private string RoleTitle(int id) => _roles.FirstOrDefault(r => r.Id == id)?.Title ?? id.ToString();
+
+    private static string ItemTitle(CompanyAccess c, ScopeKind k, int id) =>
+        c.Options?[k].FirstOrDefault(i => i.Id == id)?.Title ?? id.ToString();
+
+    private static string KindTitle(ScopeKind k) => k switch
+    {
+        ScopeKind.CashBox => "صندوق‌ها",
+        ScopeKind.BankAccount => "حساب‌های بانکی",
+        ScopeKind.ImprestFund => "تنخواه‌گردان‌ها",
+        _ => "سال‌های مالی",
+    };
+
+    private void GeneratePassword()
+    {
+        const string letters = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string digits = "23456789";
+        static int rnd(int max) => System.Security.Cryptography.RandomNumberGenerator.GetInt32(max);
+        var chars = Enumerable.Range(0, 7).Select(_ => letters[rnd(letters.Length)])
+            .Concat(Enumerable.Range(0, 3).Select(_ => digits[rnd(digits.Length)])).OrderBy(_ => rnd(1000)).ToArray();
+        _password = _generated = new string(chars);
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        _busy = true;
+        if (IsNew)
+        {
+            var request = new CreateUserRequest(_userName ?? "", _displayName ?? "", _password ?? "", _admin, _active);
+            var r = await Backend.Run<UserAdminService, int>(s => s.CreateAsync(request, default));
+            _busy = false;
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            Snackbar.Add("کاربر ساخته شد؛ حالا دسترسی شرکت‌ها و نقش‌هایش را تعیین کنید.", Severity.Success);
+            _password = _generated = null;
+            Tabs.CloseCurrentAndGo($"/admin/users/{r.Value}");
+            return;
+        }
+        var update = new UpdateUserRequest(_displayName ?? "", _active, _admin);
+        var u = await Backend.Run<UserAdminService>(s => s.UpdateAsync(Id!.Value, update, default));
+        _busy = false;
+        if (!u.Success) { Snackbar.Add(u.Error!, Severity.Error); return; }
+        SessionCache.Clear();
+        Snackbar.Add("مشخصات ذخیره شد.", Severity.Success);
+        await OnParametersSetAsync();
+    }
+
+    private async Task SaveAccessAsync()
+    {
+        var list = _access.Where(a => a.Granted).Select(a => new UserCompanyAccessDto(a.CompanyId, a.OwnDocsOnly, a.Roles.ToList(),
+            a.Limited.Where(l => l.Value).Select(l => new ScopeLimitDto(l.Key, a.Items[l.Key].ToList())).ToList())).ToList();
+        if (list.Any(a => a.RoleIds.Count == 0)
+            && await Dialogs.ShowMessageBoxAsync("بدون نقش", "برای یک یا چند شرکت نقشی انتخاب نشده؛ کاربر در آن شرکت به هیچ فرمی دسترسی نخواهد داشت. ادامه می‌دهید؟",
+                yesText: "ادامه", cancelText: "برگشت") != true)
+            return;
+        _busy = true;
+        var r = await Backend.Run<UserAdminService>(s => s.SetAccessAsync(Id!.Value, list, default));
+        _busy = false;
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        SessionCache.Clear();
+        Snackbar.Add("دسترسی‌ها ذخیره شد؛ حداکثر تا یک دقیقه دیگر در نشست کاربر اعمال می‌شود.", Severity.Success);
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        _busy = true;
+        var password = _password!;
+        var r = await Backend.Run<UserAdminService>(s => s.ResetPasswordAsync(Id!.Value, password, default));
+        _busy = false;
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _resetOpen = false;
+        SessionCache.Clear();
+        Snackbar.Add($"رمز بازنشانی شد. رمز جدید: {password}", Severity.Success, o => o.RequireInteraction = true);
+        _password = _generated = null;
+        await OnParametersSetAsync();
+    }
+
+    private async Task UnlockAsync()
+    {
+        var r = await Backend.Run<UserAdminService>(s => s.UnlockAsync(Id!.Value, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Snackbar.Add("قفل حساب باز شد.", Severity.Success);
+        await OnParametersSetAsync();
+    }
+
+    private async Task SignOutEverywhereAsync()
+    {
+        if (await Dialogs.ShowMessageBoxAsync("خروج از همه نشست‌ها", $"همه نشست‌های باز «{_userName}» بسته شود؟ باید دوباره وارد شود.",
+                yesText: "بله", cancelText: "انصراف") != true) return;
+        var r = await Backend.Run<UserAdminService>(s => s.SignOutEverywhereAsync(Id!.Value, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        SessionCache.Clear();
+        Snackbar.Add("نشست‌های کاربر بسته شد.", Severity.Success);
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (await Dialogs.ShowMessageBoxAsync("حذف کاربر", $"کاربر «{_userName}» حذف شود؟", yesText: "حذف", cancelText: "انصراف") != true) return;
+        var r = await Backend.Run<UserAdminService>(s => s.DeleteAsync(Id!.Value, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Snackbar.Add("کاربر حذف شد.", Severity.Success);
+        Tabs.CloseCurrentAndGo("/admin/users");
+    }
+}

@@ -1,0 +1,16 @@
+@* نمایش محتوا فقط وقتی کاربر مجوز دارد: Url = مجوز بازکردن آن صفحه، Permission = یک مجوز مشخص *@
+@inject Erp.Api.Infrastructure.AppSession Session
+
+@if (Allowed)
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public string? Url { get; set; }
+    [Parameter] public string? Permission { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool Allowed =>
+        (Url is null || AppMenu.CanOpen(Session, Url)) && (Permission is null || Session.Has(Permission));
+}

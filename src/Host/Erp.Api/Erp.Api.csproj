@@ -10,5 +10,6 @@
     <ProjectReference Include="..\..\Modules\Costing\Erp.Costing.Infrastructure\Erp.Costing.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Expenses\Erp.Expenses.Infrastructure\Erp.Expenses.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Treasury\Erp.Treasury.Infrastructure\Erp.Treasury.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Security\Erp.Security.Infrastructure\Erp.Security.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

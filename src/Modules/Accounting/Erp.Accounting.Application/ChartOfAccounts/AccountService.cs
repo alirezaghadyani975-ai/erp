@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.SharedKernel.Text;
 using Erp.Accounting.Application.Abstractions;
 using Erp.Accounting.Domain.ChartOfAccounts;
@@ -7,10 +8,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Accounting.Application.ChartOfAccounts;
 
-public class AccountService(IAccountingDbContext db)
+public class AccountService(IAccountingDbContext db, IAccessControl access)
 {
     public async Task<List<AccountNodeDto>> GetTreeAsync(CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.AccountView);
         var all = await db.Accounts.AsNoTracking().OrderBy(a => a.Code).ToListAsync(ct);
         var nodes = all.ToDictionary(a => a.Id, a => new AccountNodeDto(
             a.Id, a.Code, a.Title, a.Level, a.ParentId, a.Nature, a.Type, a.IsStandard, a.IsActive, []));
@@ -51,6 +53,7 @@ public class AccountService(IAccountingDbContext db)
 
     public async Task<int> CreateAsync(CreateAccountRequest request, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.AccountCreate);
         var parent = await LoadAsync(request.ParentId, ct);
         if (await db.Accounts.AnyAsync(a => a.Code == request.Code.Trim(), ct))
             throw new DomainException($"کد حساب {request.Code} تکراری است.");
@@ -67,6 +70,7 @@ public class AccountService(IAccountingDbContext db)
 
     public async Task UpdateAsync(int id, UpdateAccountRequest request, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.AccountEdit);
         var account = await LoadAsync(id, ct);
         account.Rename(request.Title);
         if (request.IsActive) account.Activate(); else account.Deactivate();
@@ -76,6 +80,7 @@ public class AccountService(IAccountingDbContext db)
     /// <summary>تعریف یا تغییر یک سطح تفصیلی برای معین.</summary>
     public async Task SetDetailLevelAsync(int id, int levelNo, SetDetailLevelRequest request, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.AccountEdit);
         var account = await LoadAsync(id, ct);
         var typeIds = request.DetailTypeIds.Distinct().ToList();
         var existing = await db.DetailTypes.CountAsync(t => typeIds.Contains(t.Id), ct);
@@ -95,6 +100,7 @@ public class AccountService(IAccountingDbContext db)
     /// <summary>حذف حساب اختصاصی (نه استاندارد) که زیرحساب و گردش ندارد.</summary>
     public async Task DeleteAsync(int id, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.AccountDelete);
         var account = await LoadAsync(id, ct);
         if (account.IsStandard)
             throw new DomainException("حساب استاندارد کدینگ حذف نمی‌شود؛ می‌توانید غیرفعالش کنید.");
@@ -108,6 +114,7 @@ public class AccountService(IAccountingDbContext db)
 
     public async Task RemoveDetailLevelAsync(int id, int levelNo, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.AccountEdit);
         var account = await LoadAsync(id, ct);
         var inUse = await TypesInUseAsync(id, levelNo, ct);
         account.RemoveDetailLevel(levelNo, inUse.Count > 0);

@@ -14,7 +14,7 @@
 }
 
 <FormWithList Title="شناسایی هزینه" Load="LoadSideAsync" NewUrl="/expenses/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
-<FormToolbar Title="@Heading" IsNew="IsNew" Editing="_editing" CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
+<FormToolbar Title="@Heading" Permission="exp.invoice" AuditEntity="ExpenseInvoice" AuditId="Id" IsNew="IsNew" Editing="_editing" CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
              SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId"
              LockReason="@(Locked ? "سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است (اصلاح فقط با سند اصلاحی)." : null)"
              OnNew="@(() => Tabs.Go("/expenses/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">

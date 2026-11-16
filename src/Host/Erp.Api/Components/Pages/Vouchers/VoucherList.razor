@@ -23,9 +23,11 @@
         }
     </MudSelect>
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <IfAllowed Url="/vouchers/new">
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/vouchers/new">
         سند جدید
     </MudButton>
+    </IfAllowed>
 </MudStack>
 
 @if (!_loading && _years.Count == 0)

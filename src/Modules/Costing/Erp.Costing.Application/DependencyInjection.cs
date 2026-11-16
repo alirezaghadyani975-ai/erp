@@ -9,6 +9,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddCostingApplication(this IServiceCollection services)
     {
+        services.AddSingleton(CostingPermissions.List);
         services.AddScoped<CostSetupService>();
         services.AddScoped<CostFactorService>();
         services.AddScoped<CostCenterService>();

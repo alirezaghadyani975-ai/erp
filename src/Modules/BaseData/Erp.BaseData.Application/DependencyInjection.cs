@@ -10,6 +10,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddBaseDataApplication(this IServiceCollection services)
     {
+        services.AddSingleton(BaseDataPermissions.List);
         services.AddScoped<PersonService>();
         services.AddScoped<LookupService>();
         services.AddScoped<BankService>();

@@ -9,7 +9,9 @@
     <MudText Typo="Typo.h5">شناسایی هزینه</MudText>
     <MudSpacer />
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <IfAllowed Url="/expenses/new">
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/expenses/new"))">شناسایی هزینه جدید</MudButton>
+    </IfAllowed>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
     فاکتورهای خدماتی تأمین‌کنندگان: هزینه با عامل و مرکز هزینه شناسایی و بدهی به تأمین‌کننده ثبت می‌شود؛ پرداخت بعداً از خزانه‌داری.

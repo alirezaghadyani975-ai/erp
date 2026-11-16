@@ -1,0 +1,63 @@
+@page "/admin/users"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject TabService Tabs
+
+<TabTitle Text="کاربران" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">کاربران</MudText>
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="@(() => Tabs.Go("/admin/users/new"))">کاربر جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    کاربران بین همه شرکت‌ها مشترک‌اند؛ در فرم هر کاربر مشخص می‌کنید به کدام شرکت با چه نقش‌هایی دسترسی دارد.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTextField T="string" @bind-Value="_term" Immediate="true" Placeholder="جستجو" Clearable="true" Class="mb-2"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:280px" />
+    <MudTable T="UserListItemDto" Items="Visible" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/admin/users/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>نام کاربری</MudTh>
+            <MudTh>نام</MudTh>
+            <MudTh>شرکت‌ها</MudTh>
+            <MudTh>آخرین ورود</MudTh>
+            <MudTh>وضعیت</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span dir="ltr" class="code">@context.UserName</span></MudTd>
+            <MudTd>@context.DisplayName</MudTd>
+            <MudTd>@context.Companies</MudTd>
+            <MudTd><span class="code">@context.LastLogin</span></MudTd>
+            <MudTd>
+                @if (context.IsSystemAdmin) { <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">مدیر سیستم</MudChip> }
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+                @if (context.IsLocked) { <MudChip T="string" Size="Size.Small" Color="Color.Error">قفل</MudChip> }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<UserListItemDto> _rows = [];
+    private string? _term;
+    private bool _loading;
+
+    private IEnumerable<UserListItemDto> Visible => string.IsNullOrWhiteSpace(_term)
+        ? _rows
+        : _rows.Where(u => u.UserName.Contains(_term.Trim(), StringComparison.OrdinalIgnoreCase) || u.DisplayName.Contains(_term.Trim()));
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<UserAdminService, List<UserListItemDto>>(s => s.ListAsync(null, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

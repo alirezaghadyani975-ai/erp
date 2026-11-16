@@ -1,5 +1,6 @@
 @page "/vouchers/new"
 @page "/vouchers/{Id:long}"
+@inject Erp.Api.Infrastructure.AppSession Session
 @inject Backend Backend
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
@@ -15,7 +16,7 @@
 }
 else
 {
-    <FormToolbar Title="@(Id is null ? "سند جدید" : $"سند حسابداری {_tempNo}")" IsNew="Id is null" Editing="_editing" Busy="_busy"
+    <FormToolbar Title="@(Id is null ? "سند جدید" : $"سند حسابداری {_tempNo}")" Permission="acc.voucher" AuditEntity="Voucher" AuditId="Id" IsNew="Id is null" Editing="_editing" Busy="_busy"
                  CanEdit="CanChange" CanDelete="CanChange" SaveText="ذخیره پیش‌نویس"
                  OnNew="NewVoucher" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
         <Chips>
@@ -29,20 +30,23 @@ else
             }
         </Chips>
         <Extra>
-            @if (_status == VoucherStatus.Draft && !IsSystem)
+            @if (_status == VoucherStatus.Draft && !IsSystem && Session.Has(AccountingPermissions.VoucherTemporary))
             {
                 <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Outlined.FactCheck"
                            OnClick="MakeTemporaryAsync" Disabled="_busy">@(_editing ? "ذخیره و موقت کردن" : "موقت کردن")</MudButton>
             }
             @if (!_editing && _status == VoucherStatus.Temporary)
             {
+                <IfAllowed Permission="@AccountingPermissions.VoucherPermanent">
                 <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Lock" OnClick="MakePermanentAsync" Disabled="_busy">دائم کردن</MudButton>
-                @if (!IsSystem)
+                </IfAllowed>
+                @if (!IsSystem && Session.Has(AccountingPermissions.VoucherDraft))
                 {
                     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Undo" OnClick="ReturnToDraftAsync" Disabled="_busy">برگشت به پیش‌نویس</MudButton>
                 }
             }
-            @if (!_editing && Id is not null && (_status is VoucherStatus.Draft or VoucherStatus.Temporary) && !IsSystem)
+            @if (!_editing && Id is not null && (_status is VoucherStatus.Draft or VoucherStatus.Temporary) && !IsSystem
+                 && Session.Has(AccountingPermissions.VoucherVoid))
             {
                 <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Block" OnClick="VoidAsync" Disabled="_busy">باطل کردن</MudButton>
             }

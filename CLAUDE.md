@@ -39,11 +39,29 @@
 - رابط کاربری تب‌دار: هر فرم یک تب و با جابه‌جایی زنده می‌ماند (`Shared/Tabs`). صفحه‌ها برای رفتن در همان تب `TabService.Go`
   و بعد از حذف `CloseCurrentAndGo` را صدا می‌زنند؛ عنوان تب با `<TabTitle Text="..." />` (به‌جای PageTitle).
 - گزارش‌ها: تراز آزمایشی ۴/۶ ستونی (گروه، کل، معین، تفصیلی) و دفتر معین/تفصیلی (`ReportService`).
-- بعدی: audit.ChangeLog، خروجی اکسل گزارش‌ها، دیتابیس مرکزی و احراز هویت.
+- **دیتابیس مرکزی و امنیت** (`src/Modules/Security`، دیتابیس `ErpCentral`، اسکریپت‌های `database/central`): کاربران (رمز فقط هش
+  PBKDF2-SHA512 با salt؛ `PasswordHasher`)، نقش‌ها (مجموعه مجوز، برای هر شرکت جدا به کاربر)، کاتالوگ شرکت‌ها، محدوده داده
+  (صندوق/بانک/تنخواه/سال مالی + «فقط اسناد خودش»)، لاگ امنیتی، تنظیمات (قفل حساب، خروج خودکار). ورود با کوکی؛ صفحه‌های
+  `Components/Pages/Account` بدون اتصال تعاملی (`ExcludeFromInteractiveRouting`).
+- نشست: `AppSession` (Host/Infrastructure) همزمان `ICurrentUser`، `ICompanyContext`، `IAccessControl` و `IClientInfo` است؛
+  `Backend.Run` نشست اتصال را به scope عملیات کپی می‌کند. رشته اتصال شرکت از کاتالوگ مرکزی می‌آید.
+- **مجوزها**: هر ماژول `XxxPermissions` (کلید `module.form.action`) دارد و در DI با `AddSingleton(XxxPermissions.List)` ثبت می‌کند.
+  هر متد عمومی سرویس که کاری انجام می‌دهد اول `access.Demand(...)` می‌کند؛ محدوده داده با `access.DemandScope`/`CanUse`/`DemandOwner`.
+  جستجو/فهرست‌های پایه‌ای که فرم‌های دیگر لازم دارند آزادند. سرویس‌های داخلی بین ماژول‌ها (`*DetailLinks`، `PostingService`) مجوز نمی‌خواهند.
+  رابط کاربری: `AppMenu` (منو + مجوز هر آدرس)، `FormToolbar Permission="trs.payment" AuditEntity="Payment" AuditId="Id"`، `IfAllowed`.
+  تست‌ها: `TestAccess.As(new Restricted(...))`. هر کار روی یک فرم «مشاهده» همان فرم را هم می‌خواهد
+  (`PermissionCatalog.WithImplied`؛ در ذخیره نقش خودکار اضافه می‌شود).
+- **لاگ تغییرات**: `AuditInterceptor` (Erp.Database) روی همه DbContextهای شرکت (`UseCompanyDatabase`) هر تغییر را در `audit.ChangeLog`
+  می‌نویسد (داده و لاگ در یک تراکنش)؛ نمایش با `AuditLogService` و `AuditTimeline`. «تاریخچه» فقط برای فرمی که کاربر اجازه
+  دیدنش را دارد (`DemandCanSeeAsync`: فرم جدیدِ دارای تاریخچه را آنجا اضافه کن). خطای فنی در `logs/erp-*.log` با کد پیگیری (`ErrorCode`).
+- فرهنگ برنامه ثابت (Invariant) است؛ به تنظیمات منطقه‌ای ویندوز تکیه نکن. ورود ناموفق به ازای IP محدود است (`LoginThrottle`).
+- **`run-test.bat` را هم‌زمان دو بار اجرا نکن** (هر دو روی `ErpCompany_Test` کار می‌کنند و اجرای دوم برنامه را می‌بندد).
+- بعدی: سقف مبلغ و گردش تأیید، خروجی اکسل گزارش‌ها.
 
 ## قواعد مهم
 1. **ساختار دیتابیس فقط با اسکریپت‌های `database/migrations`** (نه EF Migrations). اسکریپت اجراشده را
-   هرگز ویرایش نکن؛ تغییر جدید = فایل جدید با شماره بعدی (`13_...sql`). EF فقط به جدول‌ها نگاشت می‌شود.
+   هرگز ویرایش نکن؛ تغییر جدید = فایل جدید با شماره بعدی (`14_...sql`؛ دیتابیس مرکزی: `database/central/02_...sql`).
+   EF فقط به جدول‌ها نگاشت می‌شود.
 2. جدول‌های دارای تریگر باید در EF با `HasTrigger` معرفی شوند.
 3. قواعد کسب‌وکار در Domain (C#) و پشتیبانش در تریگر/constraint دیتابیس. خطای دامنه = `DomainException` با پیام فارسی.
 4. تاریخ‌ها در دیتابیس میلادی (DATE)؛ API ورودی/خروجی شمسی `1405/07/21` (`PersianDate`).
@@ -60,7 +78,8 @@
 
 ## محیط
 - Windows، .NET 10، SQL Server 2025 نمونه `.\ERP` (سپیدار روی نمونه `SEPIDAR` است؛ به آن دست نزن).
-- دیتابیس توسعه: `ErpCompany_Default` (برنامه در Development خودش می‌سازد/به‌روز می‌کند).
+- دیتابیس توسعه: `ErpCompany_Default` (برنامه در Development خودش می‌سازد/به‌روز می‌کند) و دیتابیس مرکزی `ErpCentral`.
+- ورود: کاربر `admin` (رمز اولیه `admin`، در اولین ورود عوض می‌شود). `run-test.bat` با `ERP_USER`/`ERP_PASS` به API وارد می‌شود.
 - اجرا: `dotnet run --project src/Host/Erp.Api` ← رابط کاربری `http://localhost:5227/` و API در `/scalar`
 - تست کامل: `tools\run-test.bat` (نتیجه در `tools\test-log.txt`).
 - `tools\run-test.bat nobuild` فقط برنامه و smoke test را اجرا می‌کند. `tools\reset-vouchers.bat` از دیتابیس توسعه بکاپ (`D:\Backup\ERP`) می‌گیرد و همه سندها را پاک می‌کند.

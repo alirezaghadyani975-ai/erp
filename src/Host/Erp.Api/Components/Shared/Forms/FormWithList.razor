@@ -1,4 +1,5 @@
 @* فرم با فهرست رکوردهای همان فرم در کنار (جستجو، رفتن به رکورد دیگر در همان تب، رکورد جدید). *@
+@inject Erp.Api.Infrastructure.AppSession Session
 @inject TabService Tabs
 @inject UiPrefs Prefs
 @inject IDialogService Dialogs
@@ -10,7 +11,7 @@
             <div class="side-list-head">
                 <MudText Typo="Typo.subtitle2"><b>@Title</b></MudText>
                 <MudSpacer />
-                @if (NewUrl is not null)
+                @if (NewUrl is not null && AppMenu.CanOpen(Session, NewUrl))
                 {
                     <MudTooltip Text="جدید"><MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" OnClick="New" aria-label="جدید" /></MudTooltip>
                 }

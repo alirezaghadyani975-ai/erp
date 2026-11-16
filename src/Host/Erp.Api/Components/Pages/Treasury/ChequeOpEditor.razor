@@ -1,6 +1,7 @@
 @page "/treasury/cheque-ops/in/new"
 @page "/treasury/cheque-ops/out/new"
 @page "/treasury/cheque-ops/{Id:long}"
+@inject Erp.Api.Infrastructure.AppSession Session
 @inject Backend Backend
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
@@ -16,7 +17,7 @@
 }
 
 <FormWithList Title="@SideTitle" Load="LoadSideAsync" NewUrl="@($"{SideUrl}/new")" CurrentUrl="@SelfUrl">
-<FormToolbar Title="@Heading" IsNew="_view is null" Editing="_view is null" CanDelete="@(_view?.LockReason is null)" Busy="_saving"
+<FormToolbar Title="@Heading" AuditEntity="ChequeOperation" AuditId="Id" IsNew="_view is null" Editing="_view is null" CanDelete="@(_view?.LockReason is null && Session.Has(TreasuryPermissions.Delete(_side)))" Busy="_saving"
              SaveText="ثبت عملیات و صدور سند" VoucherId="_view?.Voucher?.VoucherId" LockReason="@_view?.LockReason"
              OnNew="@(() => Tabs.Go($"{SideUrl}/new"))" OnSave="SaveAsync" OnCancel="ResetAsync" OnDelete="DeleteAsync">
     <Chips>

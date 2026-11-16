@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
   <ItemGroup>
@@ -10,5 +11,7 @@
     <!-- اسکریپت‌ها فقط یک نسخه دارند: پوشه database در ریشه پروژه -->
     <EmbeddedResource Include="..\..\..\database\migrations\*.sql"
                       LogicalName="Erp.Database.Migrations.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\..\database\central\*.sql"
+                      LogicalName="Erp.Database.Central.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

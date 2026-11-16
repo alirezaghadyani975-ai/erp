@@ -14,10 +14,9 @@ public static class DependencyInjection
     public static IServiceCollection AddExpensesModule(this IServiceCollection services)
     {
         services.AddExpensesApplication();
-        services.TryAddScoped<CompanyConnection>();
-        services.TryAddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CompanyConnection>());
+        services.AddCompanyDatabase();
         services.AddDbContext<ExpensesDbContext>((sp, options) =>
-            options.UseSqlServer(sp.GetRequiredService<CompanyConnection>().Connection));
+            options.UseCompanyDatabase(sp));
         services.AddScoped<IExpensesDbContext>(sp => sp.GetRequiredService<ExpensesDbContext>());
         return services;
     }

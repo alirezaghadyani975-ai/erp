@@ -1,6 +1,7 @@
 @* جستجوی سراسری (Ctrl+K): فرم‌ها، معین‌ها (← دفتر معین) و اشخاص *@
 @inject Backend Backend
 @inject NavigationManager Nav
+@inject Erp.Api.Infrastructure.AppSession Session
 
 <div id="global-search" class="global-search">
     <MudAutocomplete T="SearchHit" @ref="_box" Value="_value" ValueChanged="Go" SearchFunc="Search"
@@ -28,15 +29,17 @@
     private async Task<IEnumerable<SearchHit>> Search(string? term, CancellationToken ct)
     {
         term = PersianText.NormalizeOrNull(term);
-        if (term is null) return AppForms.All.Take(10).Select(Form);
+        if (term is null) return AppForms.Visible(Session).Take(10).Select(Form);
 
-        var hits = AppForms.All.Where(f => f.Title.Contains(term) || f.Keywords.Contains(term)).Select(Form).ToList();
+        var hits = AppForms.Visible(Session).Where(f => f.Title.Contains(term) || f.Keywords.Contains(term)).Select(Form).ToList();
 
-        var accounts = await Backend.Run<AccountService, List<AccountDto>>(s => s.SearchPostableAsync(term, ct));
+        var accounts = Session.Has(Erp.Accounting.Application.AccountingPermissions.Ledger)
+            ? await Backend.Run<AccountService, List<AccountDto>>(s => s.SearchPostableAsync(term, ct))
+            : default;
         hits.AddRange((accounts.Value ?? []).Take(6).Select(a => new SearchHit($"{a.Code} - {a.Title}", "دفتر معین",
             $"/reports/ledger?account={a.Code}", Icons.Material.Outlined.MenuBook)));
 
-        if (term.Length >= 2)
+        if (term.Length >= 2 && Session.Has(Erp.BaseData.Application.BaseDataPermissions.PersonView))
         {
             var persons = await Backend.Run<PersonService, List<PersonListItemDto>>(s => s.SearchAsync(term, null, null, false, ct));
             hits.AddRange((persons.Value ?? []).Take(6).Select(p => new SearchHit(p.DisplayName,

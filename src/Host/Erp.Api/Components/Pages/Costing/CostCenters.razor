@@ -10,7 +10,9 @@
     <MudText Typo="Typo.h5">مراکز هزینه</MudText>
     <MudSpacer />
     <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.Lan" Href="/costing/center-types">انواع مرکز</MudButton>
+    <IfAllowed Url="/costing/centers/new">
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/costing/centers/new">مرکز جدید</MudButton>
+    </IfAllowed>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
     مرکز هزینه تفصیلی سطح ۲ معین‌های هزینه است و فقط در معینِ وظیفه نوعش ثبت می‌شود (مرکز خدماتی در «... خدماتی»).

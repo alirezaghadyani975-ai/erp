@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Costing.Application.Abstractions;
 using Erp.Costing.Contracts;
 using Erp.Costing.Domain;
@@ -12,7 +13,7 @@ namespace Erp.Costing.Application.Factors;
 /// عوامل هزینه. هر عامل یک گروه (ماهیت) دارد و یک تفصیلی (گروه «عوامل هزینه») در حسابداری
 /// که در همان تراکنش ساخته و هماهنگ می‌شود.
 /// </summary>
-public class CostFactorService(ICostingDbContext db, IUnitOfWork uow, ICostDetailLinks links)
+public class CostFactorService(ICostingDbContext db, IUnitOfWork uow, ICostDetailLinks links, IAccessControl access)
 {
     public async Task<List<CostFactorDto>> SearchAsync(string? term, CostNature? nature, bool includeInactive, CancellationToken ct)
     {
@@ -33,6 +34,7 @@ public class CostFactorService(ICostingDbContext db, IUnitOfWork uow, ICostDetai
 
     public async Task<int> CreateAsync(SaveCostFactorRequest request, CancellationToken ct)
     {
+        access.Demand(CostingPermissions.FactorCreate);
         var factor = new CostFactor(request.Title, request.Nature, request.Behavior, request.VariablePercent, request.Notes);
         if (!request.IsActive) factor.Deactivate();
         await EnsureUniqueAsync(factor, ct);
@@ -48,6 +50,7 @@ public class CostFactorService(ICostingDbContext db, IUnitOfWork uow, ICostDetai
     /// <summary>ویرایش عامل. عاملی که در سند آمده گروهش عوض نمی‌شود (سندهای قبلی در کل دیگری‌اند).</summary>
     public async Task UpdateAsync(int id, SaveCostFactorRequest request, CancellationToken ct)
     {
+        access.Demand(CostingPermissions.FactorEdit);
         var factor = await db.CostFactors.FirstOrDefaultAsync(f => f.Id == id, ct) ?? throw new NotFoundException("عامل هزینه پیدا نشد.");
         if (factor.Nature != request.Nature && await links.IsUsedAsync(CostDetailKind.Factor, id, ct))
             throw new DomainException($"عامل «{factor.Title}» در سند آمده است؛ گروه هزینه‌اش («{Titles(factor.Nature)}») عوض نمی‌شود.");
@@ -65,6 +68,7 @@ public class CostFactorService(ICostingDbContext db, IUnitOfWork uow, ICostDetai
     /// <summary>حذف عاملی که در سند نیامده؛ تفصیلی‌اش هم حذف می‌شود.</summary>
     public async Task DeleteAsync(int id, CancellationToken ct)
     {
+        access.Demand(CostingPermissions.FactorDelete);
         var factor = await db.CostFactors.FirstOrDefaultAsync(f => f.Id == id, ct) ?? throw new NotFoundException("عامل هزینه پیدا نشد.");
         await using var tx = await uow.BeginAsync(ct);
         await links.DeleteAsync(CostDetailKind.Factor, id, ct);

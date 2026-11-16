@@ -1,4 +1,5 @@
 @* فرم مشترک دریافت و پرداخت؛ صفحه‌های ReceiptPage و PaymentPage آن را با IsPayment باز می‌کنند. *@
+@inject Erp.Api.Infrastructure.AppSession Session
 @inject Backend Backend
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
@@ -13,7 +14,7 @@
 }
 
 <FormWithList Title="@Noun" Load="LoadSideAsync" NewUrl="@($"{BaseUrl}/new")" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
-<FormToolbar Title="@Heading" IsNew="IsNew" Editing="_editing" CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
+<FormToolbar Title="@Heading" Permission="@(IsPayment ? "trs.payment" : "trs.receipt")" AuditEntity="@(IsPayment ? "Payment" : "Receipt")" AuditId="Id" IsNew="IsNew" Editing="_editing" CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
              SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId"
              LockReason="@(Locked ? _lockReason ?? "سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است." : null)"
              OnNew="@(() => Tabs.Go($"{BaseUrl}/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
@@ -29,7 +30,15 @@
 @if (_editing && (_boxes.All(b => !b.IsActive) || _banks.All(b => !b.IsActive) || _types.All(t => !t.IsActive)))
 {
     <MudAlert Severity="Severity.Warning" Class="mb-3">
-        @(MissingSetup) — از <MudLink OnClick="@(() => Tabs.Go("/treasury/setup"))">تعاریف خزانه‌داری</MudLink> تعریف کنید.
+        @(MissingSetup)
+        @if (Session.Has(TreasuryPermissions.Setup))
+        {
+            <span> — از <MudLink OnClick="@(() => Tabs.Go("/treasury/setup"))">تعاریف خزانه‌داری</MudLink> تعریف کنید.</span>
+        }
+        else
+        {
+            <span> — اگر لازم دارید، از مدیر سیستم بخواهید دسترسی بدهد.</span>
+        }
     </MudAlert>
 }
 @if (_error is not null)
@@ -241,7 +250,7 @@
         _boxes.Any(b => b.IsActive) ? null : "صندوقی",
         _banks.Any(b => b.IsActive) ? null : "حساب بانکی‌ای",
         _types.Any(t => t.IsActive) ? null : $"نوع {Noun}ی"
-    }.Where(x => x is not null)) + " تعریف نشده است";
+    }.Where(x => x is not null)) + " تعریف نشده یا در دسترس شما نیست";
     private string Noun => IsPayment ? "پرداخت" : "دریافت";
     private string BaseUrl => IsPayment ? "/treasury/payments" : "/treasury/receipts";
     private string? SelfUrl => Id is long id ? $"{BaseUrl}/{id}" : null;

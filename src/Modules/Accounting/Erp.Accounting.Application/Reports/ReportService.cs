@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Accounting.Application.Abstractions;
 using Erp.Accounting.Domain.ChartOfAccounts;
 using Erp.Accounting.Domain.Vouchers;
@@ -12,10 +13,11 @@ namespace Erp.Accounting.Application.Reports;
 /// فقط اسناد موقت و دائم در گزارش می‌آیند (پیش‌نویس و باطل هرگز).
 /// جمع‌زدن در دیتابیس انجام می‌شود و فقط نتیجه گروه‌بندی‌شده به برنامه می‌آید.
 /// </summary>
-public class ReportService(IAccountingDbContext db)
+public class ReportService(IAccountingDbContext db, IAccessControl access)
 {
     public async Task<TrialBalanceDto> TrialBalanceAsync(TrialBalanceRequest request, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.TrialBalance);
         var range = await ResolveRangeAsync(request.Filter, ct);
         var chart = await LoadChartAsync(ct);
         var scope = ResolveScope(chart, request.AccountCode);
@@ -40,6 +42,7 @@ public class ReportService(IAccountingDbContext db)
 
     public async Task<LedgerDto> LedgerAsync(LedgerRequest request, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.Ledger);
         if (string.IsNullOrWhiteSpace(request.AccountCode) && request.DetailId is null)
             throw new DomainException("برای دفتر، حساب یا تفصیلی را انتخاب کنید.");
 
@@ -222,6 +225,7 @@ public class ReportService(IAccountingDbContext db)
 
     private async Task<DateRange> ResolveRangeAsync(ReportFilter filter, CancellationToken ct)
     {
+        access.DemandScope(ScopeKind.FiscalYear, filter.FiscalYearId);
         var year = await db.FiscalYears.AsNoTracking().FirstOrDefaultAsync(f => f.Id == filter.FiscalYearId, ct)
                    ?? throw new NotFoundException("سال مالی پیدا نشد.");
 

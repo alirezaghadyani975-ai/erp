@@ -5,6 +5,7 @@ using Erp.Expenses.Infrastructure;
 using Erp.Treasury.Infrastructure;
 using Erp.Database;
 using Erp.SharedKernel.Abstractions;
+using Erp.SharedKernel.Security;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -42,6 +43,7 @@ public sealed class SqlFixture : IAsyncLifetime
         services.AddLogging();
         services.AddSingleton<ICompanyContext>(new TestCompany(ConnectionString));
         services.AddSingleton<ICurrentUser>(new TestUser());
+        services.AddSingleton<IAccessControl>(TestAccess.Instance);
         services.AddSingleton(TimeProvider.System);
         services.AddBaseDataModule();
         services.AddCostingModule();
@@ -69,7 +71,7 @@ public sealed class SqlFixture : IAsyncLifetime
         await operation(scope.ServiceProvider.GetRequiredService<TService>());
     }
 
-    private static async Task DropDatabaseAsync(SqlConnectionStringBuilder builder)
+    internal static async Task DropDatabaseAsync(SqlConnectionStringBuilder builder)
     {
         var name = builder.InitialCatalog;
         var master = new SqlConnectionStringBuilder(builder.ConnectionString) { InitialCatalog = "master" };

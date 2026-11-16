@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using System.Globalization;
 using Erp.Accounting.Application.Abstractions;
 using Erp.Accounting.Application.Vouchers;
@@ -18,7 +19,7 @@ public sealed record DashboardDto(
 /// داده‌های صفحه نخست از سندهای موقت و دائم سال مالی جاری. کارت‌ها بر پایه کد کل‌ها و گروه‌های کدینگ استاندارد
 /// (اسکریپت ۰۹) تعریف شده‌اند؛ کد معین با کد کلش شروع می‌شود.
 /// </summary>
-public class DashboardService(IAccountingDbContext db, TimeProvider clock)
+public class DashboardService(IAccountingDbContext db, TimeProvider clock, IAccessControl access)
 {
     private sealed record Kpi(string Key, string Title, string[] Prefixes, bool CreditPositive, bool ThisMonth, string Hint, string? Url);
 
@@ -36,6 +37,7 @@ public class DashboardService(IAccountingDbContext db, TimeProvider clock)
 
     public async Task<DashboardDto> GetAsync(CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.Dashboard);
         var today = DateOnly.FromDateTime(clock.GetLocalNow().DateTime);
         var calendar = new PersianCalendar();
         var dt = today.ToDateTime(TimeOnly.MinValue);

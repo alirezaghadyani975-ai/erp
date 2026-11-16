@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Accounting.Contracts;
 using Erp.SharedKernel.Abstractions;
 using Erp.SharedKernel.Domain;
@@ -28,11 +29,28 @@ public sealed record FundOption(FundKind Kind, int Id, string Title, string? Cod
     public string Display => $"{Title}{(Code is null ? "" : $" ({Code})")}";
 }
 
+/// <summary>نوع محدوده داده هر نوع وجه نقد.</summary>
+public static class TreasuryScopes
+{
+    public static ScopeKind Of(FundKind kind) => kind switch
+    {
+        FundKind.CashBox => ScopeKind.CashBox,
+        FundKind.BankAccount => ScopeKind.BankAccount,
+        _ => ScopeKind.ImprestFund,
+    };
+
+    /// <summary>کنترل دسترسی به صندوق/حساب/تنخواه (null = بدون وجه نقد).</summary>
+    public static void Demand(IAccessControl access, FundKind kind, int? id)
+    {
+        if (id is int value) access.DemandScope(Of(kind), value);
+    }
+}
+
 /// <summary>
 /// تعاریف خزانه‌داری: صندوق‌ها، حساب‌های بانکی، تنخواه‌گردان‌ها و انواع دریافت و پرداخت.
 /// تفصیلی هر صندوق/حساب/تنخواه در همان تراکنش در حسابداری ساخته و هماهنگ می‌شود.
 /// </summary>
-public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks links, IUnitOfWork uow)
+public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks links, IUnitOfWork uow, IAccessControl access)
 {
     // ------------------------------------------------------------ صندوق
     public async Task<List<CashBoxDto>> GetCashBoxesAsync(bool includeInactive, CancellationToken ct)
@@ -40,12 +58,14 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
         var rows = await db.CashBoxes.AsNoTracking().Where(c => includeInactive || c.IsActive).OrderBy(c => c.Title).ToListAsync(ct);
         var codes = await links.GetCodesAsync(TreasuryDetailKind.CashBox, ct);
         var balances = await links.GetBalancesAsync(TreasuryDetailKind.CashBox, null, ct);
+        rows = rows.Where(c => access.CanUse(ScopeKind.CashBox, c.Id)).ToList();
         return rows.Select(c => new CashBoxDto(c.Id, codes.GetValueOrDefault(c.Id), c.Title, c.IsActive, c.Notes,
             balances.GetValueOrDefault(c.Id))).OrderBy(c => c.Code).ToList();
     }
 
     public async Task<int> SaveCashBoxAsync(int? id, SaveCashBoxRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Setup);
         await using var tx = await uow.BeginAsync(ct);
         CashBox box;
         if (id is int existing)
@@ -69,6 +89,7 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
 
     public async Task DeleteCashBoxAsync(int id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Setup);
         var box = await db.CashBoxes.FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw new NotFoundException("صندوق پیدا نشد.");
         if (await db.ReceiptLines.AnyAsync(l => l.CashBoxId == id, ct) || await db.PaymentLines.AnyAsync(l => l.CashBoxId == id, ct)
             || await db.Transfers.AnyAsync(t => (t.FromKind == FundKind.CashBox && t.FromId == id) || (t.ToKind == FundKind.CashBox && t.ToId == id), ct))
@@ -83,7 +104,8 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
     // ------------------------------------------------------------ حساب بانکی
     public async Task<List<TreasuryBankAccountDto>> GetBankAccountsAsync(bool includeInactive, CancellationToken ct)
     {
-        var rows = await db.BankAccounts.AsNoTracking().Where(b => includeInactive || b.IsActive).ToListAsync(ct);
+        var rows = (await db.BankAccounts.AsNoTracking().Where(b => includeInactive || b.IsActive).ToListAsync(ct))
+            .Where(b => access.CanUse(ScopeKind.BankAccount, b.Id)).ToList();
         var banks = await db.Banks.ToDictionaryAsync(b => b.Id, b => b.Title, ct);
         var codes = await links.GetCodesAsync(TreasuryDetailKind.BankAccount, ct);
         var balances = await links.GetBalancesAsync(TreasuryDetailKind.BankAccount, null, ct);
@@ -95,6 +117,7 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
 
     public async Task<int> SaveBankAccountAsync(int? id, SaveTreasuryBankAccountRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Setup);
         await using var tx = await uow.BeginAsync(ct);
         BankAccount account;
         if (id is int existing)
@@ -116,6 +139,7 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
 
     public async Task DeleteBankAccountAsync(int id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Setup);
         var account = await db.BankAccounts.FirstOrDefaultAsync(b => b.Id == id, ct) ?? throw new NotFoundException("حساب بانکی پیدا نشد.");
         if (await db.ReceiptLines.AnyAsync(l => l.BankAccountId == id, ct) || await db.PaymentLines.AnyAsync(l => l.BankAccountId == id, ct)
             || await db.ReceivedCheques.AnyAsync(c => c.BankAccountId == id, ct) || await db.Guarantees.AnyAsync(g => g.BankAccountId == id, ct)
@@ -131,7 +155,8 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
     // ------------------------------------------------------------ تنخواه‌گردان
     public async Task<List<ImprestFundDto>> GetImprestFundsAsync(bool includeInactive, CancellationToken ct)
     {
-        var rows = await db.ImprestFunds.AsNoTracking().Where(f => includeInactive || f.IsActive).ToListAsync(ct);
+        var rows = (await db.ImprestFunds.AsNoTracking().Where(f => includeInactive || f.IsActive).ToListAsync(ct))
+            .Where(f => access.CanUse(ScopeKind.ImprestFund, f.Id)).ToList();
         var holderIds = rows.Select(r => r.HolderPersonId).OfType<int>().Distinct().ToList();
         var holders = await db.Persons.Where(p => holderIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.DisplayName, ct);
         var codes = await links.GetCodesAsync(TreasuryDetailKind.Imprest, ct);
@@ -143,6 +168,7 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
 
     public async Task<int> SaveImprestFundAsync(int? id, SaveImprestFundRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Setup);
         await using var tx = await uow.BeginAsync(ct);
         ImprestFund fund;
         if (id is int existing)
@@ -166,6 +192,7 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
 
     public async Task DeleteImprestFundAsync(int id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Setup);
         var fund = await db.ImprestFunds.FirstOrDefaultAsync(f => f.Id == id, ct) ?? throw new NotFoundException("تنخواه‌گردان پیدا نشد.");
         if (await db.ImprestSettlements.AnyAsync(s => s.ImprestFundId == id, ct)
             || await db.Transfers.AnyAsync(t => (t.FromKind == FundKind.Imprest && t.FromId == id) || (t.ToKind == FundKind.Imprest && t.ToId == id), ct))
@@ -190,7 +217,8 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
             .Select(b => new FundOption(FundKind.BankAccount, b.Id, b.Title, bankCodes.GetValueOrDefault(b.Id), b.IsActive)));
         result.AddRange((await db.ImprestFunds.AsNoTracking().ToListAsync(ct))
             .Select(f => new FundOption(FundKind.Imprest, f.Id, f.Title, imprestCodes.GetValueOrDefault(f.Id), f.IsActive)));
-        return result.OrderBy(f => f.Kind).ThenBy(f => f.Code).ToList();
+        // محدوده داده: فقط صندوق/حساب/تنخواه‌هایی که کاربر مجاز است
+        return result.Where(f => access.CanUse(TreasuryScopes.Of(f.Kind), f.Id)).OrderBy(f => f.Kind).ThenBy(f => f.Code).ToList();
     }
 
     // ------------------------------------------------------------ انواع دریافت و پرداخت
@@ -208,6 +236,7 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
 
     public async Task<short> SaveTypeAsync(short? id, SaveTransactionTypeRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Setup);
         var account = await db.Accounts.FirstOrDefaultAsync(a => a.Code == r.AccountCode.Trim(), ct)
                       ?? throw new DomainException($"حساب با کد {r.AccountCode} وجود ندارد.");
         if (account.Level != 3) throw new DomainException($"«{account.Code} - {account.Title}» معین نیست.");
@@ -233,6 +262,7 @@ public class TreasurySetupService(ITreasuryDbContext db, ITreasuryDetailLinks li
 
     public async Task DeleteTypeAsync(short id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Setup);
         var type = await db.TransactionTypes.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("نوع پیدا نشد.");
         if (await db.Receipts.AnyAsync(r => r.TypeId == id, ct) || await db.Payments.AnyAsync(p => p.TypeId == id, ct))
             throw new DomainException($"«{type.Title}» در فرم‌ها استفاده شده و حذف نمی‌شود؛ غیرفعالش کنید.");

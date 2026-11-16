@@ -9,7 +9,9 @@
     <MudText Typo="Typo.h5">انتقال وجه داخل سازمان</MudText>
     <MudSpacer />
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <IfAllowed Url="/treasury/transfers/new">
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/treasury/transfers/new"))">انتقال جدید</MudButton>
+    </IfAllowed>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">جابه‌جایی وجه بین صندوق، حساب‌های بانکی و تنخواه‌گردان‌ها (مثل شارژ تنخواه یا واریز صندوق به بانک).</MudText>
 

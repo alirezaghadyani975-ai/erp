@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Accounting.Application.Abstractions;
 using Erp.Accounting.Domain.ChartOfAccounts;
 using Erp.Accounting.Domain.Details;
@@ -10,13 +11,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Accounting.Application.Vouchers;
 
-public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProvider clock, IUnitOfWork uow)
+public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProvider clock, IUnitOfWork uow, IAccessControl access)
 {
     private const int NumberingRetries = 3;
 
     public async Task<List<VoucherSummaryDto>> ListAsync(short fiscalYearId, VoucherStatus? status, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.VoucherView);
+        access.DemandScope(ScopeKind.FiscalYear, fiscalYearId);
         var query = db.Vouchers.AsNoTracking().Where(v => v.FiscalYearId == fiscalYearId);
+        if (access.OwnDocsOnly) query = query.Where(v => v.CreatedBy == access.UserId);
         if (status is not null)
             query = query.Where(v => v.Status == status);
 
@@ -31,6 +35,7 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
 
     public async Task<VoucherDto> GetAsync(long id, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.VoucherView);
         var v = await LoadAsync(id, ct, tracking: false);
 
         var accountIds = v.Lines.Select(l => l.AccountId).Distinct().ToList();
@@ -61,6 +66,7 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
     /// <summary>ثبت سند جدید (پیش‌نویس) با شماره موقت بعدی.</summary>
     public async Task<long> CreateAsync(SaveVoucherRequest request, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.VoucherCreate);
         var fiscalYear = await GetFiscalYearAsync(request.FiscalYearId, ct);
         var date = PersianDate.Parse(request.Date);
 
@@ -91,6 +97,7 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
     /// <summary>ویرایش سند پیش‌نویس (سربرگ و جایگزینی کامل ردیف‌ها).</summary>
     public async Task UpdateAsync(long id, SaveVoucherRequest request, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.VoucherEdit);
         var voucher = await LoadAsync(id, ct);
         await EnsureManualAsync(voucher, ct);
         var fiscalYear = await GetFiscalYearAsync(voucher.FiscalYearId, ct);
@@ -108,6 +115,7 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
     /// <summary>حذف سند؛ فقط پیش‌نویس. سند موقت باطل می‌شود و سند دائم هیچ‌وقت حذف نمی‌شود.</summary>
     public async Task DeleteAsync(long id, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.VoucherDelete);
         var voucher = await LoadAsync(id, ct);
         await EnsureManualAsync(voucher, ct);
         if (voucher.Status != VoucherStatus.Draft)
@@ -116,15 +124,28 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
         await db.SaveChangesAsync(ct);
     }
 
-    public Task MarkTemporaryAsync(long id, CancellationToken ct) => ChangeAsync(id, v => v.MarkTemporary(), ct);
+    public Task MarkTemporaryAsync(long id, CancellationToken ct)
+    {
+        access.Demand(AccountingPermissions.VoucherTemporary);
+        return ChangeAsync(id, v => v.MarkTemporary(), ct);
+    }
 
-    public Task ReturnToDraftAsync(long id, CancellationToken ct) => ChangeAsync(id, v => v.ReturnToDraft(), ct, manualOnly: true);
+    public Task ReturnToDraftAsync(long id, CancellationToken ct)
+    {
+        access.Demand(AccountingPermissions.VoucherDraft);
+        return ChangeAsync(id, v => v.ReturnToDraft(), ct, manualOnly: true);
+    }
 
-    public Task VoidAsync(long id, CancellationToken ct) => ChangeAsync(id, v => v.Void(), ct, manualOnly: true);
+    public Task VoidAsync(long id, CancellationToken ct)
+    {
+        access.Demand(AccountingPermissions.VoucherVoid);
+        return ChangeAsync(id, v => v.Void(), ct, manualOnly: true);
+    }
 
     /// <summary>دائم کردن سند با شماره قطعی بعدی (پیوسته و بدون جای خالی در سال مالی).</summary>
     public async Task<int> MarkPermanentAsync(long id, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.VoucherPermanent);
         for (var attempt = 1; ; attempt++)
         {
             var voucher = await LoadAsync(id, ct);
@@ -218,16 +239,22 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
         throw new DomainException($"این سند خودکار از «{source}» صادر شده است؛ اصلاح و حذفش فقط از همان فرم ممکن است.");
     }
 
-    private async Task<FiscalYear> GetFiscalYearAsync(short id, CancellationToken ct) =>
-        await db.FiscalYears.Include(f => f.Periods).FirstOrDefaultAsync(f => f.Id == id, ct)
-        ?? throw new NotFoundException($"سال مالی {id} پیدا نشد.");
+    private async Task<FiscalYear> GetFiscalYearAsync(short id, CancellationToken ct)
+    {
+        access.DemandScope(ScopeKind.FiscalYear, id);
+        return await db.FiscalYears.Include(f => f.Periods).FirstOrDefaultAsync(f => f.Id == id, ct)
+            ?? throw new NotFoundException($"سال مالی {id} پیدا نشد.");
+    }
 
     private async Task<Voucher> LoadAsync(long id, CancellationToken ct, bool tracking = true)
     {
         var query = db.Vouchers.Include(v => v.Lines).AsQueryable();
         if (!tracking) query = query.AsNoTracking();
-        return await query.FirstOrDefaultAsync(v => v.Id == id, ct)
+        var voucher = await query.FirstOrDefaultAsync(v => v.Id == id, ct)
                ?? throw new NotFoundException($"سند با شناسه {id} پیدا نشد.");
+        access.DemandScope(ScopeKind.FiscalYear, voucher.FiscalYearId);
+        access.DemandOwner(voucher.CreatedBy);
+        return voucher;
     }
 
     private static bool IsNumberConflict(DbUpdateException ex) =>

@@ -4,6 +4,7 @@
 @inject Shortcuts Keys
 @inject TabService Tabs
 @inject IDialogService Dialogs
+@inject Erp.Api.Infrastructure.AppSession Session
 
 <div class="form-toolbar no-print">
     <div class="form-toolbar-title">
@@ -12,19 +13,19 @@
         @Chips
     </div>
     <div class="form-toolbar-buttons">
-        @if (OnNew.HasDelegate)
+        @if (OnNew.HasDelegate && Allowed("create"))
         {
             <MudTooltip Text="جدید (Alt+N)">
                 <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="NewAsync" Disabled="Busy">جدید</MudButton>
             </MudTooltip>
         }
-        @if (!IsNew && !Editing && OnEdit.HasDelegate && CanEdit)
+        @if (!IsNew && !Editing && OnEdit.HasDelegate && EditAllowed)
         {
             <MudTooltip Text="اصلاح (F2)">
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Edit" OnClick="OnEdit" Disabled="Busy">اصلاح</MudButton>
             </MudTooltip>
         }
-        @if (!IsNew && !Editing && OnDelete.HasDelegate && CanDelete)
+        @if (!IsNew && !Editing && OnDelete.HasDelegate && CanDelete && Allowed("delete"))
         {
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Outlined.Delete" OnClick="OnDelete" Disabled="Busy">حذف</MudButton>
         }
@@ -46,12 +47,23 @@
             }
         }
         @Extra
-        @if (VoucherId is long vid)
+        @if (VoucherId is long vid && Session.Has(Erp.Accounting.Application.AccountingPermissions.VoucherView))
         {
             <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.ReceiptLong" OnClick="() => Tabs.Go(VoucherUrl(vid))">مشاهده سند</MudButton>
         }
+        @if (!IsNew && AuditEntity is not null && AuditId is long aid && aid > 0
+             && Session.Has(Erp.Security.Application.SecurityPermissions.AuditHistory))
+        {
+            <MudTooltip Text="چه کسی، کی و چه چیزی را تغییر داده است">
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.History" OnClick="() => _historyOpen = true">تاریخچه</MudButton>
+            </MudTooltip>
+        }
     </div>
 </div>
+@if (AuditEntity is not null && AuditId is long historyId)
+{
+    <Erp.Api.Components.Shared.Audit.AuditHistoryDialog @bind-Visible="_historyOpen" Entity="@AuditEntity" Id="historyId" Title="@Title" />
+}
 @if (Busy)
 {
     <MudProgressLinear Indeterminate="true" Class="mb-2" />
@@ -78,6 +90,21 @@
     [Parameter] public RenderFragment? Chips { get; set; }
     [Parameter] public RenderFragment? Extra { get; set; }
 
+    /// <summary>
+    /// پیشوند مجوز فرم (مثلاً trs.payment): دکمه جدید/اصلاح/حذف فقط با مجوز create/edit/delete همین پیشوند دیده می‌شود.
+    /// </summary>
+    [Parameter] public string? Permission { get; set; }
+
+    /// <summary>نام موجودیت در لاگ تغییرات (مثلاً Payment) و شناسه رکورد برای دکمه «تاریخچه».</summary>
+    [Parameter] public string? AuditEntity { get; set; }
+    [Parameter] public long? AuditId { get; set; }
+
+    private bool _historyOpen;
+
+    private bool Allowed(string action) => Permission is null || Session.Has($"{Permission}.{action}");
+
+    private bool EditAllowed => CanEdit && Allowed("edit");
+
     [Parameter] public EventCallback OnNew { get; set; }
     [Parameter] public EventCallback OnEdit { get; set; }
     [Parameter] public EventCallback OnSave { get; set; }
@@ -101,13 +128,13 @@
             case "save" when Editing && OnSave.HasDelegate:
                 await OnSave.InvokeAsync();
                 break;
-            case "edit" when !IsNew && !Editing && CanEdit && OnEdit.HasDelegate:
+            case "edit" when !IsNew && !Editing && EditAllowed && OnEdit.HasDelegate:
                 await OnEdit.InvokeAsync();
                 break;
             case "cancel" when Editing && OnCancel.HasDelegate:
                 if (await ConfirmDiscardAsync()) await OnCancel.InvokeAsync();
                 break;
-            case "new" when OnNew.HasDelegate:
+            case "new" when OnNew.HasDelegate && Allowed("create"):
                 await NewAsync();
                 break;
         }

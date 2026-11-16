@@ -16,6 +16,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddAccountingApplication(this IServiceCollection services)
     {
+        services.AddSingleton(AccountingPermissions.List);
         services.AddScoped<AccountService>();
         services.AddScoped<DetailService>();
         services.AddScoped<IPersonLinks, PersonDetailLinks>();

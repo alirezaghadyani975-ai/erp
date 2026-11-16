@@ -14,7 +14,7 @@
 }
 
 <FormWithList Title="اسناد تضمینی" Load="LoadSideAsync" NewUrl="/treasury/guarantees/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
-<FormToolbar Title="@Heading" IsNew="IsNew" Editing="_editing" CanEdit="!LockedForEdit" CanDelete="!LockedForEdit" Busy="_saving"
+<FormToolbar Title="@Heading" Permission="trs.guarantee" AuditEntity="Guarantee" AuditId="Id" IsNew="IsNew" Editing="_editing" CanEdit="!LockedForEdit" CanDelete="!LockedForEdit" Busy="_saving"
              SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_dto?.Voucher?.VoucherId" LockReason="@LockText"
              OnNew="@(() => Tabs.Go("/treasury/guarantees/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
     <Chips>

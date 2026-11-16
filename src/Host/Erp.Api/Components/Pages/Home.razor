@@ -3,6 +3,7 @@
 @inject Backend Backend
 @inject TabService Tabs
 @inject NavigationManager Nav
+@inject Erp.Api.Infrastructure.AppSession Session
 
 <TabTitle Text="صفحه نخست" />
 
@@ -27,6 +28,10 @@
 }
 
 <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-1">دسترسی سریع</MudText>
+@if (Quick.Count == 0)
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">فرمی برای دسترسی سریع ندارید.</MudText>
+}
 <div class="quick-grid mb-4">
     @foreach (var f in Quick)
     {
@@ -37,7 +42,14 @@
     }
 </div>
 
-@if (_data is null)
+@if (!CanSeeDashboard)
+{
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudText Typo="Typo.h6">@Session.Info?.DisplayName، خوش آمدید</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">فرم‌هایی که به آن‌ها دسترسی دارید در منوی کنار صفحه و جستجوی سریع (Ctrl+K) هستند.</MudText>
+    </MudPaper>
+}
+else if (_data is null)
 {
     <MudProgressLinear Indeterminate="true" />
 }
@@ -110,7 +122,10 @@ else
     private static readonly string[] QuickUrls =
         ["/vouchers/new", "/treasury/receipts/new", "/treasury/payments/new", "/expenses/new", "/persons/new", "/reports/trial-balance", "/reports/ledger", "/treasury/reports/balances"];
 
-    private static readonly List<AppForms.Item> Quick = QuickUrls.Select(u => AppForms.All.First(f => f.Url == u)).ToList();
+    private List<AppForms.Item> Quick => QuickUrls.Select(u => AppForms.All.First(f => f.Url == u))
+        .Where(f => AppMenu.CanOpen(Session, f.Url)).ToList();
+
+    private bool CanSeeDashboard => Session.Has(Erp.Accounting.Application.AccountingPermissions.Dashboard);
 
     private DashboardDto? _data;
     private string? _error;
@@ -124,6 +139,7 @@ else
 
     private async Task LoadAsync()
     {
+        if (!CanSeeDashboard) return;
         var r = await Backend.Run<DashboardService, DashboardDto>(s => s.GetAsync(default));
         if (r.Success) { _data = r.Value; _error = null; } else _error = r.Error;
     }

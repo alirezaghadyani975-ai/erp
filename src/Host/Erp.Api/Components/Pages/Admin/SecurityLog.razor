@@ -1,0 +1,88 @@
+@page "/admin/security-log"
+@inject Backend Backend
+
+<TabTitle Text="لاگ امنیتی" />
+
+<MudText Typo="Typo.h5" Class="mb-1">لاگ امنیتی</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    ورود و خروج، ورود ناموفق، قفل شدن حساب، تغییر و بازنشانی رمز، تغییر کاربران و نقش‌ها و تلاش‌های بدون مجوز (همه شرکت‌ها).
+</MudText>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="6" sm="3" md="3" lg="2"><PersianDateField @bind-Value="_from" Label="از تاریخ" /></MudItem>
+        <MudItem xs="6" sm="3" md="3" lg="2"><PersianDateField @bind-Value="_to" Label="تا تاریخ" /></MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="SecurityEvent?" @bind-Value="_event" Label="رویداد" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var e in Enum.GetValues<SecurityEvent>())
+                {
+                    <MudSelectItem T="SecurityEvent?" Value="e">@SecurityEventTitles.Of(e)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudTextField @bind-Value="_term" Label="کاربر، IP یا متن" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" md="2" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Search" OnClick="SearchAsync" Disabled="_loading">نمایش</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert>
+}
+<MudPaper Elevation="1">
+    <MudTable T="SecurityLogDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading" FixedHeader="true" Height="65vh">
+        <HeaderContent>
+            <MudTh>زمان</MudTh>
+            <MudTh>رویداد</MudTh>
+            <MudTh>کاربر</MudTh>
+            <MudTh>انجام‌دهنده</MudTh>
+            <MudTh>شرکت</MudTh>
+            <MudTh>IP</MudTh>
+            <MudTh>جزئیات</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd Style="white-space:nowrap"><span class="code">@context.At</span></MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="ColorOf(context.EventType)" Class="ma-0">@context.EventTitle</MudChip></MudTd>
+            <MudTd><span dir="ltr">@context.UserName</span></MudTd>
+            <MudTd><span dir="ltr">@(context.ActorName != context.UserName ? context.ActorName : null)</span></MudTd>
+            <MudTd><span dir="ltr">@context.CompanyKey</span></MudTd>
+            <MudTd><span class="code">@context.Ip</span></MudTd>
+            <MudTd>@context.Details</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Typo="Typo.body2">رویدادی پیدا نشد.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string? _from = PersianDate.ToPersian(DateOnly.FromDateTime(DateTime.Now).AddDays(-7));
+    private string? _to;
+    private SecurityEvent? _event;
+    private string? _term;
+    private List<SecurityLogDto> _rows = [];
+    private bool _loading;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => SearchAsync();
+
+    private async Task SearchAsync()
+    {
+        _loading = true;
+        var filter = new SecurityLogFilter(_from, _to, null, _event, _term, 1000);
+        var r = await Backend.Run<SecurityLogService, List<SecurityLogDto>>(s => s.QueryAsync(filter, default));
+        _rows = r.Value ?? [];
+        _error = r.Error;
+        _loading = false;
+    }
+
+    private static Color ColorOf(SecurityEvent e) => e switch
+    {
+        SecurityEvent.LoginFailed or SecurityEvent.AccessDenied => Color.Warning,
+        SecurityEvent.LockedOut or SecurityEvent.UserDeleted or SecurityEvent.RoleDeleted => Color.Error,
+        SecurityEvent.LoginSucceeded or SecurityEvent.CompanySelected => Color.Success,
+        _ => Color.Default,
+    };
+}

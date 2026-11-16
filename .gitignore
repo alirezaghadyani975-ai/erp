@@ -484,5 +484,8 @@ $RECYCLE.BIN/
 # test logs
 tools/*.txt
 
+# لاگ فنی برنامه (پوشه logs کنار برنامه)
+src/Host/Erp.Api/logs/
+
 # VS Code workspace (machine-specific paths)
 *.code-workspace

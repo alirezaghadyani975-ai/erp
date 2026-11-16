@@ -15,7 +15,7 @@
 }
 
 <FormWithList Title="مراکز هزینه" Load="LoadSideAsync" NewUrl="/costing/centers/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
-<FormToolbar Title="@(IsNew ? "مرکز هزینه جدید" : _model.Title)" IsNew="IsNew" Editing="_editing" Busy="_saving"
+<FormToolbar Title="@(IsNew ? "مرکز هزینه جدید" : _model.Title)" Permission="cost.center" AuditEntity="CostCenter" AuditId="Id" IsNew="IsNew" Editing="_editing" Busy="_saving"
              OnNew="@(() => Tabs.Go("/costing/centers/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="OnParametersSetAsync" OnDelete="DeleteAsync">
     <Chips>
         @if (_model.Code is not null)

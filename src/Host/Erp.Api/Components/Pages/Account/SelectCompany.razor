@@ -1,0 +1,80 @@
+@page "/account/company"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Authorize]
+@inject AuthService AuthService
+@inject NavigationManager Nav
+
+<PageTitle>انتخاب شرکت</PageTitle>
+<h1 class="auth-h1">انتخاب شرکت</h1>
+<p class="auth-hint">@(Http.User.FindFirst(ErpClaims.DisplayName)?.Value)، با کدام شرکت کار می‌کنید؟</p>
+
+@if (_message is not null)
+{
+    <div class="auth-alert" role="alert">@_message</div>
+}
+
+@if (_companies.Count == 0)
+{
+    <div class="auth-alert">هیچ شرکتی به حساب شما داده نشده است؛ با مدیر سیستم تماس بگیرید.</div>
+}
+else
+{
+    <EditForm Model="Input!" FormName="company" OnSubmit="SelectAsync" method="post" class="auth-companies">
+        @foreach (var c in _companies)
+        {
+            <button type="submit" name="Input.Key" value="@c.Key" class="auth-company @(c.Key == _current ? "current" : "")">
+                <span>@c.Title</span>
+                @if (c.Key == _current)
+                {
+                    <small>شرکت فعلی</small>
+                }
+            </button>
+        }
+    </EditForm>
+}
+@if (_current is not null)
+{
+    <p class="auth-links"><a href="/">بازگشت به برنامه</a></p>
+}
+<p class="auth-links"><a href="@Auth.LogoutPath">خروج</a></p>
+
+@code {
+    [CascadingParameter] private HttpContext Http { get; set; } = default!;
+    [SupplyParameterFromForm] private CompanyInput? Input { get; set; }
+
+    private IReadOnlyList<CompanyOption> _companies = [];
+    private string? _current;
+    private string? _message;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        _current = Http.User.FindFirst(ErpClaims.Company)?.Value;
+        _companies = await AuthService.CompaniesAsync(ErpClaims.UserIdOf(Http.User) ?? 0, Http.RequestAborted);
+    }
+
+    private async Task SelectAsync()
+    {
+        var company = _companies.FirstOrDefault(c => c.Key == Input!.Key);
+        if (company is null)
+        {
+            _message = "این شرکت پیدا نشد یا به آن دسترسی ندارید.";
+            return;
+        }
+        var user = Http.User;
+        var userId = ErpClaims.UserIdOf(user) ?? 0;
+        var ip = Auth.IpOf(Http);
+        await Auth.SignInAsync(Http, Auth.Principal(userId, user.Identity!.Name!, user.FindFirst(ErpClaims.DisplayName)?.Value ?? "",
+            Guid.Parse(user.FindFirst(ErpClaims.Stamp)!.Value), company.Key,
+            user.HasClaim(c => c.Type == ErpClaims.MustChangePassword), ip));
+        await AuthService.LogAsync(SecurityEvent.CompanySelected, userId, user.Identity.Name, company.Key, ip,
+            _current is null ? null : $"تغییر از {_current}", Http.RequestAborted);
+        Nav.NavigateTo("/");
+    }
+
+    private sealed class CompanyInput
+    {
+        public string? Key { get; set; }
+    }
+}

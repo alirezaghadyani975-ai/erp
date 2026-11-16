@@ -15,11 +15,10 @@ public static class DependencyInjection
     public static IServiceCollection AddBaseDataModule(this IServiceCollection services)
     {
         services.AddBaseDataApplication();
-        services.TryAddScoped<CompanyConnection>();
-        services.TryAddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CompanyConnection>());
+        services.AddCompanyDatabase();
 
         services.AddDbContext<BaseDataDbContext>((sp, options) =>
-            options.UseSqlServer(sp.GetRequiredService<CompanyConnection>().Connection));
+            options.UseCompanyDatabase(sp));
         services.AddScoped<IBaseDataDbContext>(sp => sp.GetRequiredService<BaseDataDbContext>());
         return services;
     }

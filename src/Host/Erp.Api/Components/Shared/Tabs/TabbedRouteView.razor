@@ -2,8 +2,11 @@
 @implements IDisposable
 @inject TabService Tabs
 @inject NavigationManager Nav
+@inject Erp.Api.Infrastructure.AppSession Session
 
 <LayoutView Layout="DefaultLayout">
+@if (_ready)
+{
     <div class="tab-strip no-print">
         @foreach (var tab in Tabs.Tabs)
         {
@@ -45,15 +48,38 @@
             </CascadingValue>
         </div>
     }
+}
 </LayoutView>
 
 @code {
     [Parameter, EditorRequired] public Microsoft.AspNetCore.Components.RouteData RouteData { get; set; } = null!;
     [Parameter] public Type DefaultLayout { get; set; } = null!;
 
-    protected override void OnInitialized() => Tabs.Changed += OnChanged;
+    private bool _ready;
 
-    protected override void OnParametersSet() => Tabs.Open(RouteData, Nav.Uri);
+    protected override async Task OnInitializedAsync()
+    {
+        Tabs.Changed += OnChanged;
+        // نشست (مجوزها) پیش از ساختن صفحه‌ها بارگذاری می‌شود تا صفحه‌ها بتوانند منو و دکمه‌ها را با مجوز نشان دهند
+        try { await Session.EnsureAsync(); }
+        catch (Erp.Api.Infrastructure.SessionExpiredException) { }
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo($"{Erp.Api.Infrastructure.Auth.LoginPath}?expired=1", forceLoad: true);
+            return;
+        }
+        _ready = true;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!_ready) return;
+        // باز کردن مستقیم آدرس صفحه‌ای که کاربر مجوزش را ندارد
+        var route = AppMenu.CanOpen(Session, Nav.ToAbsoluteUri(Nav.Uri).AbsolutePath)
+            ? RouteData
+            : new Microsoft.AspNetCore.Components.RouteData(typeof(AccessDenied), new Dictionary<string, object?>());
+        Tabs.Open(route, Nav.Uri);
+    }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
 

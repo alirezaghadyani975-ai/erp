@@ -89,6 +89,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddTreasuryApplication(this IServiceCollection services)
     {
+        services.AddSingleton(TreasuryPermissions.List);
         services.AddScoped<TreasurySetupService>();
         services.AddScoped<ReceiptService>();
         services.AddScoped<PaymentService>();

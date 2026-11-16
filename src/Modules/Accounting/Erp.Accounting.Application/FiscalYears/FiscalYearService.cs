@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Accounting.Application.Abstractions;
 using Erp.Accounting.Domain.FiscalYears;
 using Erp.SharedKernel.Calendar;
@@ -11,13 +12,14 @@ public sealed record FiscalPeriodDto(byte PeriodNo, string Title, string StartDa
 public sealed record FiscalYearDto(short Id, string Title, string StartDate, string EndDate, PeriodStatus Status,
     List<FiscalPeriodDto> Periods);
 
-public class FiscalYearService(IAccountingDbContext db)
+public class FiscalYearService(IAccountingDbContext db, IAccessControl access)
 {
     public async Task<List<FiscalYearDto>> GetAllAsync(CancellationToken ct)
     {
         var years = await db.FiscalYears.AsNoTracking().Include(f => f.Periods)
             .OrderByDescending(f => f.StartDate).ToListAsync(ct);
-        return years.Select(ToDto).ToList();
+        // محدوده داده: کاربر فقط سال‌های مالی مجازش را می‌بیند
+        return years.Where(y => access.CanUse(ScopeKind.FiscalYear, y.Id)).Select(ToDto).ToList();
     }
 
     /// <summary>
@@ -26,6 +28,7 @@ public class FiscalYearService(IAccountingDbContext db)
     /// </summary>
     public async Task<short> CreateAsync(int persianYear, byte startMonth, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.FiscalCreate);
         if (persianYear is < 1395 or > 1420)
             throw new DomainException("تقویم شمسی فعلاً برای سال‌های ۱۳۹۵ تا ۱۴۲۰ بارگذاری شده است.");
         return await db.CreateFiscalYearAsync(persianYear, startMonth, ct);
@@ -33,6 +36,8 @@ public class FiscalYearService(IAccountingDbContext db)
 
     public async Task SetPeriodStatusAsync(short yearId, byte periodNo, PeriodStatus status, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.FiscalPeriod);
+        access.DemandScope(ScopeKind.FiscalYear, yearId);
         var year = await db.FiscalYears.Include(f => f.Periods).FirstOrDefaultAsync(f => f.Id == yearId, ct)
                    ?? throw new NotFoundException($"سال مالی {yearId} پیدا نشد.");
         year.SetPeriodStatus(periodNo, status);
@@ -42,6 +47,7 @@ public class FiscalYearService(IAccountingDbContext db)
     /// <summary>حذف سال مالی؛ فقط وقتی هیچ سندی (حتی پیش‌نویس یا باطل) ندارد.</summary>
     public async Task DeleteAsync(short id, CancellationToken ct)
     {
+        access.Demand(AccountingPermissions.FiscalDelete);
         var year = await db.FiscalYears.Include(f => f.Periods).FirstOrDefaultAsync(f => f.Id == id, ct)
                    ?? throw new NotFoundException($"سال مالی {id} پیدا نشد.");
         var count = await db.Vouchers.CountAsync(v => v.FiscalYearId == id, ct);

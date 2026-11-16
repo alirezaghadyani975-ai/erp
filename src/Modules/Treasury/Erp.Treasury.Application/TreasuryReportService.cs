@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using System.Globalization;
 using Erp.Accounting.Contracts;
 using Erp.SharedKernel.Calendar;
@@ -24,14 +25,29 @@ public sealed record DueMonthDto(int Year, int Month, string Title, decimal Rece
 }
 
 /// <summary>گزارش‌های خزانه‌داری: چک‌های دریافتنی و پرداختنی، کاردکس چک، موجودی صندوق و بانک، سررسید ماهانه.</summary>
-public class TreasuryReportService(ITreasuryDbContext db, ITreasuryDetailLinks links)
+public class TreasuryReportService(ITreasuryDbContext db, ITreasuryDetailLinks links, IAccessControl access)
 {
     private static readonly string[] Months =
         ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"];
 
-    public async Task<List<ChequeRowDto>> ReceivedChequesAsync(ChequeFilter f, CancellationToken ct)
+    public Task<List<ChequeRowDto>> ReceivedChequesAsync(ChequeFilter f, CancellationToken ct)
+    {
+        access.Demand(TreasuryPermissions.Reports);
+        return ReceivedCoreAsync(f, ct);
+    }
+
+    public Task<List<ChequeRowDto>> IssuedChequesAsync(ChequeFilter f, CancellationToken ct)
+    {
+        access.Demand(TreasuryPermissions.Reports);
+        return IssuedCoreAsync(f, ct);
+    }
+
+    /// <summary>چک‌های دریافتنی (بدون کنترل مجوز گزارش؛ برای فرم عملیات چک هم). فقط چک‌های صندوق/حساب‌های مجاز.</summary>
+    internal async Task<List<ChequeRowDto>> ReceivedCoreAsync(ChequeFilter f, CancellationToken ct)
     {
         var q = db.ReceivedCheques.AsNoTracking();
+        if (access.Ids(ScopeKind.CashBox) is { } boxes) q = q.Where(c => c.CashBoxId == null || boxes.Contains(c.CashBoxId.Value));
+        if (access.Ids(ScopeKind.BankAccount) is { } bankIds) q = q.Where(c => c.BankAccountId == null || bankIds.Contains(c.BankAccountId.Value));
         if (f.Ids is { } ids) q = q.Where(c => ids.Contains(c.Id));
         if (f.Statuses is { Count: > 0 } st) q = q.Where(c => st.Contains((byte)c.Status));
         if (!string.IsNullOrWhiteSpace(f.FromDue)) { var d = PersianDate.Parse(f.FromDue); q = q.Where(c => c.DueDate >= d); }
@@ -58,9 +74,10 @@ public class TreasuryReportService(ITreasuryDbContext db, ITreasuryDetailLinks l
         return Filter(result, f.Term);
     }
 
-    public async Task<List<ChequeRowDto>> IssuedChequesAsync(ChequeFilter f, CancellationToken ct)
+    internal async Task<List<ChequeRowDto>> IssuedCoreAsync(ChequeFilter f, CancellationToken ct)
     {
         var q = db.IssuedCheques.AsNoTracking();
+        if (access.Ids(ScopeKind.BankAccount) is { } bankIds) q = q.Where(c => bankIds.Contains(c.BankAccountId));
         if (f.Ids is { } ids) q = q.Where(c => ids.Contains(c.Id));
         if (f.Statuses is { Count: > 0 } st) q = q.Where(c => st.Contains((byte)c.Status));
         if (!string.IsNullOrWhiteSpace(f.FromDue)) { var d = PersianDate.Parse(f.FromDue); q = q.Where(c => c.DueDate >= d); }
@@ -87,6 +104,7 @@ public class TreasuryReportService(ITreasuryDbContext db, ITreasuryDetailLinks l
     /// <summary>کاردکس چک: ثبت، عملیات‌ها و خرج.</summary>
     public async Task<List<ChequeEventDto>> HistoryAsync(ChequeSide side, long id, CancellationToken ct)
     {
+        access.DemandAny(TreasuryPermissions.Reports, TreasuryPermissions.View(side));
         var events = new List<(DateOnly Date, long Order, ChequeEventDto Event)>();
         var lookups = await LookupsAsync(ct);
         if (side == ChequeSide.Receivable)
@@ -126,6 +144,7 @@ public class TreasuryReportService(ITreasuryDbContext db, ITreasuryDetailLinks l
     /// <summary>مانده صندوق‌ها، حساب‌های بانکی و تنخواه‌ها تا تاریخ (از سندهای موقت و دائم) و چک‌های در صندوق.</summary>
     public async Task<List<FundBalanceDto>> BalancesAsync(string? asOf, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Reports);
         DateOnly? date = string.IsNullOrWhiteSpace(asOf) ? null : PersianDate.Parse(asOf);
         var result = new List<FundBalanceDto>();
         var cheques = await db.ReceivedCheques.AsNoTracking().Where(c => c.Status == ReceivedChequeStatus.InBox && c.CashBoxId != null)
@@ -146,12 +165,13 @@ public class TreasuryReportService(ITreasuryDbContext db, ITreasuryDetailLinks l
         await Add(FundKind.CashBox, TreasuryDetailKind.CashBox, db.CashBoxes.AsNoTracking(), c => (c.Id, c.Title, c.IsActive));
         await Add(FundKind.BankAccount, TreasuryDetailKind.BankAccount, db.BankAccounts.AsNoTracking(), b => (b.Id, b.Title, b.IsActive));
         await Add(FundKind.Imprest, TreasuryDetailKind.Imprest, db.ImprestFunds.AsNoTracking(), f => (f.Id, f.Title, f.IsActive));
-        return result.OrderBy(r => r.Kind).ThenBy(r => r.Code).ToList();
+        return result.Where(r => access.CanUse(TreasuryScopes.Of(r.Kind), r.Id)).OrderBy(r => r.Kind).ThenBy(r => r.Code).ToList();
     }
 
     /// <summary>سررسید ماهانه چک‌های باز: دریافتنی (در صندوق و در جریان وصول) در برابر پرداختنی (پاس‌نشده).</summary>
     public async Task<List<DueMonthDto>> DueScheduleAsync(CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.Reports);
         var received = await db.ReceivedCheques.AsNoTracking()
             .Where(c => c.Status == ReceivedChequeStatus.InBox || c.Status == ReceivedChequeStatus.InCollection)
             .Select(c => new { c.DueDate, c.Amount }).ToListAsync(ct);

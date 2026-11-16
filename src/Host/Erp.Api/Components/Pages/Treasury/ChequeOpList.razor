@@ -12,7 +12,9 @@
     <MudSpacer />
     <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.FactCheck" OnClick="@(() => Tabs.Go(ReportUrl))">گزارش چک‌ها</MudButton>
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <IfAllowed Url=@($"{BaseUrl}/new")>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go($"{BaseUrl}/new"))">عملیات جدید</MudButton>
+    </IfAllowed>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
     @(Side == ChequeSide.Receivable

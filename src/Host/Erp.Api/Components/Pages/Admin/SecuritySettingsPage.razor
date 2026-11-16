@@ -1,0 +1,65 @@
+@page "/admin/settings"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IServiceProvider Services
+
+<TabTitle Text="تنظیمات امنیتی" />
+
+<MudText Typo="Typo.h5" Class="mb-1">تنظیمات امنیتی</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">برای همه کاربران و همه شرکت‌ها.</MudText>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert>
+}
+<MudPaper Class="pa-4" Elevation="1" Style="max-width:640px">
+    <MudGrid Spacing="3">
+        <MudItem xs="12" sm="6">
+            <MudNumericField T="int" @bind-Value="_max" Label="تعداد ورود ناموفق تا قفل شدن" Min="0" Max="50" Variant="Variant.Outlined"
+                             HelperText="۰ = بدون قفل (توصیه نمی‌شود)" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudNumericField T="int" @bind-Value="_lock" Label="مدت قفل (دقیقه)" Min="1" Max="1440" Variant="Variant.Outlined" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudNumericField T="int" @bind-Value="_minLen" Label="حداقل طول رمز عبور" Min="6" Max="64" Variant="Variant.Outlined"
+                             HelperText="رمز باید هم حرف و هم رقم داشته باشد" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudNumericField T="int" @bind-Value="_idle" Label="خروج خودکار بعد از بی‌کاری (دقیقه)" Min="5" Max="720" Variant="Variant.Outlined"
+                             HelperText="برای ورودهای بعدی اعمال می‌شود" />
+        </MudItem>
+    </MudGrid>
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-4">
+        رمزها فقط به‌صورت هش یک‌طرفه (PBKDF2-SHA512 با salt جدا برای هر کاربر) ذخیره می‌شوند و از دیتابیس قابل استخراج نیستند؛
+        رمز فراموش‌شده فقط بازنشانی می‌شود.
+    </MudAlert>
+    <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-3">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_saving">ذخیره</MudButton>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private int _max, _lock, _minLen, _idle;
+    private bool _saving;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Backend.Run<SecuritySettingsService, List<SettingDto>>(s => s.ListAsync(default));
+        if (!r.Success) { _error = r.Error; return; }
+        var s = await Backend.Run<SecuritySettingsService, SecuritySettings>(x => x.GetAsync(default));
+        if (s.Value is { } v) (_max, _lock, _minLen, _idle) = (v.MaxFailedLogins, v.LockoutMinutes, v.PasswordMinLength, v.IdleMinutes);
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        var settings = new SecuritySettings(_max, _lock, _minLen, _idle);
+        var r = await Backend.Run<SecuritySettingsService>(s => s.SaveAsync(settings, default));
+        _saving = false;
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Erp.Api.Infrastructure.Auth.ApplyIdleTimeout(Services, _idle);
+        Snackbar.Add("تنظیمات ذخیره شد.", Severity.Success);
+    }
+}

@@ -1,0 +1,89 @@
+@page "/account/login"
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [AllowAnonymous]
+@inject AuthService AuthService
+@inject NavigationManager Nav
+
+<PageTitle>ورود</PageTitle>
+<h1 class="auth-h1">ورود به سیستم</h1>
+
+@if (_info is not null)
+{
+    <div class="auth-info">@_info</div>
+}
+@if (_message is not null)
+{
+    <div class="auth-alert" role="alert">@_message</div>
+}
+
+<EditForm Model="Input!" FormName="login" OnSubmit="LoginAsync" method="post" class="auth-form">
+    <label for="user">نام کاربری</label>
+    <InputText id="user" @bind-Value="Input!.UserName" autocomplete="username" dir="ltr" autofocus="@(_message is null)" required />
+    <label for="pass">رمز عبور</label>
+    <InputText id="pass" type="password" @bind-Value="Input!.Password" autocomplete="current-password" dir="ltr" required
+               autofocus="@(_message is not null)" />
+    <button type="submit" class="auth-button">ورود</button>
+</EditForm>
+<p class="auth-hint">رمز عبور فراموش‌شده بازیابی نمی‌شود؛ از مدیر سیستم بخواهید آن را بازنشانی کند.</p>
+
+@code {
+    [CascadingParameter] private HttpContext Http { get; set; } = default!;
+    [SupplyParameterFromForm] private LoginInput? Input { get; set; }
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery] private bool? Idle { get; set; }
+    [SupplyParameterFromQuery] private bool? Expired { get; set; }
+
+    private string? _message;
+
+    protected override void OnParametersSet() => Input ??= new();
+    private string? _info;
+
+    protected override void OnInitialized()
+    {
+        if (HttpMethods.IsGet(Http.Request.Method))
+        {
+            if (Idle == true) _info = "به‌دلیل بی‌کاری از سیستم خارج شدید؛ دوباره وارد شوید.";
+            else if (Expired == true) _info = "نشست شما منقضی شد (مثلاً رمز عوض شده یا دسترسی تغییر کرده)؛ دوباره وارد شوید.";
+        }
+    }
+
+    private async Task LoginAsync()
+    {
+        var ip = Auth.IpOf(Http);
+        var result = await AuthService.LoginAsync(Input!.UserName, Input!.Password, ip, Http.RequestAborted);
+        Input!.Password = "";
+        if (result.Status != LoginStatus.Ok)
+        {
+            _message = result.Message;
+            return;
+        }
+
+        var companies = result.Companies ?? [];
+        if (companies.Count == 0 && !result.MustChangePassword)
+        {
+            _message = "هیچ شرکتی به حساب شما داده نشده است؛ با مدیر سیستم تماس بگیرید.";
+            return;
+        }
+
+        var company = companies.Count == 1 ? companies[0].Key : null;
+        await Auth.SignInAsync(Http, Auth.Principal(result.UserId, result.UserName!, result.DisplayName!, result.Stamp, company,
+            result.MustChangePassword, ip));
+        if (company is not null)
+            await AuthService.LogAsync(SecurityEvent.CompanySelected, result.UserId, result.UserName, company, ip, null, Http.RequestAborted);
+
+        if (result.MustChangePassword) Nav.NavigateTo(Auth.ChangePasswordPath);
+        else if (company is null) Nav.NavigateTo(Auth.CompanyPath);
+        else Nav.NavigateTo(SafeReturnUrl(ReturnUrl));
+    }
+
+    /// <summary>فقط آدرس داخلی (جلوی انتقال به سایت دیگر بعد از ورود را می‌گیرد).</summary>
+    internal static string SafeReturnUrl(string? url) =>
+        url is { Length: > 1 } u && u.StartsWith('/') && !u.StartsWith("//") && !u.StartsWith("/\\") && !u.StartsWith("/account")
+            ? u : "/";
+
+    private sealed class LoginInput
+    {
+        public string UserName { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+}

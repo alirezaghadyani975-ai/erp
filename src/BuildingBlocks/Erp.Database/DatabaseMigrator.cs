@@ -8,7 +8,8 @@ using Microsoft.Extensions.Logging;
 namespace Erp.Database;
 
 /// <summary>
-/// ساخت و به‌روزرسانی دیتابیس یک شرکت از روی اسکریپت‌های پوشه database/migrations.
+/// ساخت و به‌روزرسانی دیتابیس یک شرکت (اسکریپت‌های پوشه database/migrations) یا دیتابیس مرکزی
+/// (کاربران و شرکت‌ها، پوشه database/central).
 /// هر اسکریپت فقط یک بار اجرا می‌شود و در جدول dbo.SchemaVersions ثبت می‌شود.
 /// اسکریپت‌ها به ترتیب نام اجرا می‌شوند؛ اسکریپت جدید را با شماره بعدی اضافه کنید
 /// و اسکریپتی را که قبلاً اجرا شده هیچ‌وقت ویرایش نکنید.
@@ -16,12 +17,17 @@ namespace Erp.Database;
 public sealed partial class DatabaseMigrator(ILogger<DatabaseMigrator> logger)
 {
     public const string Collation = "Persian_100_CI_AI";
-    private const string ResourcePrefix = "Erp.Database.Migrations.";
+    private const string CompanyPrefix = "Erp.Database.Migrations.";
+    private const string CentralPrefix = "Erp.Database.Central.";
 
     [GeneratedRegex(@"^\s*GO\s*(?:--.*)?$", RegexOptions.Multiline | RegexOptions.IgnoreCase)]
     private static partial Regex BatchSeparator();
 
-    public async Task<MigrationResult> MigrateAsync(string connectionString, CancellationToken ct = default)
+    /// <summary>دیتابیس شرکت.</summary>
+    public Task<MigrationResult> MigrateAsync(string connectionString, CancellationToken ct = default) =>
+        MigrateAsync(connectionString, ScriptSet.Company, ct);
+
+    public async Task<MigrationResult> MigrateAsync(string connectionString, ScriptSet set, CancellationToken ct = default)
     {
         var created = await EnsureDatabaseAsync(connectionString, ct);
 
@@ -30,11 +36,12 @@ public sealed partial class DatabaseMigrator(ILogger<DatabaseMigrator> logger)
         await EnsureJournalAsync(connection, ct);
 
         var applied = await GetAppliedAsync(connection, ct);
-        var pending = LoadScripts().Where(s => !applied.ContainsKey(s.Name)).ToList();
+        var scripts = LoadScripts(set);
+        var pending = scripts.Where(s => !applied.ContainsKey(s.Name)).ToList();
 
         foreach (var (name, checksum) in applied)
         {
-            var script = LoadScripts().FirstOrDefault(s => s.Name == name);
+            var script = scripts.FirstOrDefault(s => s.Name == name);
             if (script is not null && script.Checksum != checksum)
                 logger.LogWarning("اسکریپت {Script} بعد از اجرا تغییر کرده است. اسکریپت اجراشده را ویرایش نکنید؛ اسکریپت جدید بسازید.", name);
         }
@@ -134,26 +141,30 @@ public sealed partial class DatabaseMigrator(ILogger<DatabaseMigrator> logger)
     internal static IEnumerable<string> SplitBatches(string sql) =>
         BatchSeparator().Split(sql).Where(b => !string.IsNullOrWhiteSpace(b));
 
-    internal static IReadOnlyList<Script> LoadScripts()
+    internal static IReadOnlyList<Script> LoadScripts(ScriptSet set = ScriptSet.Company)
     {
         var assembly = typeof(DatabaseMigrator).Assembly;
+        var prefix = set == ScriptSet.Central ? CentralPrefix : CompanyPrefix;
         return assembly.GetManifestResourceNames()
-            .Where(n => n.StartsWith(ResourcePrefix, StringComparison.Ordinal) && n.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
-            .Select(n => Read(assembly, n))
+            .Where(n => n.StartsWith(prefix, StringComparison.Ordinal) && n.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
+            .Select(n => Read(assembly, n, prefix))
             .OrderBy(s => s.Name, StringComparer.Ordinal)
             .ToList();
     }
 
-    private static Script Read(Assembly assembly, string resource)
+    private static Script Read(Assembly assembly, string resource, string prefix)
     {
         using var stream = assembly.GetManifestResourceStream(resource)!;
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         var sql = reader.ReadToEnd().Replace("\r\n", "\n");
         var checksum = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sql)));
-        return new Script(resource[ResourcePrefix.Length..], sql, checksum);
+        return new Script(resource[prefix.Length..], sql, checksum);
     }
 
     internal sealed record Script(string Name, string Sql, string Checksum);
 }
+
+/// <summary>مجموعه اسکریپت: دیتابیس شرکت یا دیتابیس مرکزی.</summary>
+public enum ScriptSet { Company, Central }
 
 public sealed record MigrationResult(bool DatabaseCreated, IReadOnlyList<string> AppliedScripts);

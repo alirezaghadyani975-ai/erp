@@ -14,7 +14,7 @@
 }
 
 <FormWithList Title="انتقال وجه" Load="LoadSideAsync" NewUrl="/treasury/transfers/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
-<FormToolbar Title="@Heading" IsNew="IsNew" Editing="_editing" CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
+<FormToolbar Title="@Heading" Permission="trs.transfer" AuditEntity="Transfer" AuditId="Id" IsNew="IsNew" Editing="_editing" CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
              SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId"
              LockReason="@(Locked ? "سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است." : null)"
              OnNew="@(() => Tabs.Go("/treasury/transfers/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">

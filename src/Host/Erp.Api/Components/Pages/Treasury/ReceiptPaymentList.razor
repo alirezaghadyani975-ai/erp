@@ -9,7 +9,9 @@
     <MudText Typo="Typo.h5">@Title</MudText>
     <MudSpacer />
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <IfAllowed Url=@($"{BaseUrl}/new")>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go($"{BaseUrl}/new"))">@(IsPayment ? "پرداخت جدید" : "دریافت جدید")</MudButton>
+    </IfAllowed>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
     @(IsPayment

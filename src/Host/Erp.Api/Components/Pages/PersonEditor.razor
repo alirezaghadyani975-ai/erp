@@ -15,7 +15,7 @@
 }
 
 <FormWithList Title="اشخاص" Load="LoadSideAsync" NewUrl="/persons/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
-<FormToolbar Title="@(IsNew ? "شخص جدید" : _model.DisplayName)" IsNew="IsNew" Editing="_editing" Busy="_saving"
+<FormToolbar Title="@(IsNew ? "شخص جدید" : _model.DisplayName)" Permission="base.person" AuditEntity="Person" AuditId="Id" IsNew="IsNew" Editing="_editing" Busy="_saving"
              OnNew="@(() => Tabs.Go("/persons/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
     <Chips>
         @foreach (var l in _model.Links)

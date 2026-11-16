@@ -1,0 +1,110 @@
+@page "/admin/companies"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+
+<TabTitle Text="شرکت‌ها" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">شرکت‌ها</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">شرکت جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر شرکت دیتابیس جداگانه دارد. بعد از تعریف شرکت جدید، «ساخت/به‌روزرسانی دیتابیس» را بزنید تا دیتابیسش با کدینگ و تعاریف پایه ساخته شود.
+    کلید شرکت بعد از ثبت عوض نمی‌شود.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="CompanyDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>نام شرکت</MudTh>
+            <MudTh>کلید</MudTh>
+            <MudTh>رشته اتصال</MudTh>
+            <MudTh>کاربران</MudTh>
+            <MudTh>وضعیت</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Title</MudTd>
+            <MudTd><span class="code">@context.Key</span></MudTd>
+            <MudTd><span class="code" style="font-size:.78rem">@context.ConnectionString</span></MudTd>
+            <MudTd>@context.UserCount</MudTd>
+            <MudTd>@if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }</MudTd>
+            <MudTd Style="text-align:left">
+                <span @onclick:stopPropagation="true">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Storage"
+                               OnClick="() => MigrateAsync(context)" Disabled="_migrating">ساخت/به‌روزرسانی دیتابیس</MudButton>
+                </span>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "شرکت جدید" : "اصلاح شرکت")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_title" Label="نام شرکت" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_key" Label="کلید (لاتین)" Disabled="_editId is not null" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" HelperText="مثل Main یا Branch2" /></MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_connection" Label="رشته اتصال دیتابیس" Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" Class="code"
+                              HelperText="مثلاً Server=.\ERP;Database=ErpCompany_Main;Trusted_Connection=True;TrustServerCertificate=True" />
+            </MudItem>
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<CompanyDto> _rows = [];
+    private bool _loading, _migrating, _editOpen, _active = true;
+    private short? _editId;
+    private string? _title, _key, _connection;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<CompanyAdminService, List<CompanyDto>>(s => s.ListAsync(default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private void New()
+    {
+        (_editId, _title, _key, _connection, _active) = (null, null, null, null, true);
+        _editOpen = true;
+    }
+
+    private void Edit(CompanyDto c)
+    {
+        (_editId, _title, _key, _connection, _active) = (c.Id, c.Title, c.Key, c.ConnectionString, c.IsActive);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveCompanyRequest(_key ?? "", _title ?? "", _connection ?? "", _active);
+        var r = await Backend.Run<CompanyAdminService, short>(s => s.SaveAsync(_editId, request, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add("شرکت ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task MigrateAsync(CompanyDto c)
+    {
+        _migrating = true;
+        Snackbar.Add($"در حال ساخت/به‌روزرسانی دیتابیس «{c.Title}» ...", Severity.Info);
+        var r = await Backend.Run<CompanyAdminService, IReadOnlyList<string>>(s => s.MigrateAsync(c.Id, default));
+        _migrating = false;
+        if (!r.Success) Snackbar.Add(r.Error!, Severity.Error);
+        else Snackbar.Add(r.Value!.Count == 0 ? "دیتابیس به‌روز بود." : $"اسکریپت‌های اجراشده: {string.Join("، ", r.Value!)}", Severity.Success);
+    }
+}

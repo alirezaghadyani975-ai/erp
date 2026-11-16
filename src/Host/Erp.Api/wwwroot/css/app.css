@@ -146,3 +146,72 @@ kbd { font-family: inherit; font-size: .75rem; padding: 1px 5px; border: 1px sol
 .voucher-grid td > .mud-input-control { min-width: 90px; }
 .voucher-grid td > .mud-input-control.num { min-width: 115px; }
 .voucher-grid td > .line-vat { min-width: 135px; }
+
+/* صفحه‌های ورود، تغییر رمز و انتخاب شرکت */
+.auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+    background: linear-gradient(160deg, #1F5F8B 0%, #174a6d 55%, #2E8B6E 140%); }
+.auth-card { width: 100%; max-width: 400px; background: #fff; border-radius: 14px; padding: 28px 28px 20px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.18); }
+.auth-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.auth-logo { width: 42px; height: 42px; border-radius: 10px; background: #1F5F8B; color: #fff; display: flex;
+    align-items: center; justify-content: center; font-weight: 800; font-size: 1.3rem; }
+.auth-title { font-weight: 800; font-size: 1.2rem; color: #1F5F8B; }
+.auth-sub { font-size: .8rem; color: #667; }
+.auth-h1 { font-size: 1.15rem; font-weight: 700; margin: 0 0 14px; color: #222; }
+.auth-form { display: flex; flex-direction: column; gap: 6px; }
+.auth-form label { font-size: .85rem; color: #444; margin-top: 6px; }
+.auth-form input { font: inherit; padding: 10px 12px; border: 1px solid #cfd6dd; border-radius: 8px; outline: none; }
+.auth-form input:focus { border-color: #1F5F8B; box-shadow: 0 0 0 3px rgba(31,95,139,.15); }
+.auth-button { margin-top: 14px; font: inherit; font-weight: 600; padding: 10px; border: 0; border-radius: 8px;
+    background: #1F5F8B; color: #fff; cursor: pointer; }
+.auth-button:hover { background: #174a6d; }
+.auth-alert { background: #fdecea; color: #8a1c13; border-radius: 8px; padding: 10px 12px; font-size: .88rem; margin-bottom: 10px; }
+.auth-info { background: #e8f2fa; color: #174a6d; border-radius: 8px; padding: 10px 12px; font-size: .88rem; margin-bottom: 10px; }
+.auth-hint { font-size: .8rem; color: #667; margin: 10px 0 0; line-height: 1.7; }
+.auth-links { text-align: center; font-size: .85rem; margin: 10px 0 0; }
+.auth-links a { color: #1F5F8B; text-decoration: none; }
+.auth-companies { display: flex; flex-direction: column; gap: 8px; }
+.auth-company { font: inherit; text-align: right; padding: 12px 14px; border: 1px solid #cfd6dd; border-radius: 10px; background: #fff;
+    cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+.auth-company:hover { border-color: #1F5F8B; background: #f3f8fc; }
+.auth-company.current { border-color: #2E8B6E; }
+.auth-company small { color: #2E8B6E; }
+
+/* نوار بالا: کاربر و شرکت */
+.appbar-company { font-size: .85rem; opacity: .9; margin-inline-end: 8px; white-space: nowrap; }
+
+/* لاگ تغییرات */
+.audit-timeline { display: flex; flex-direction: column; gap: 10px; }
+.audit-op { border: 1px solid var(--mud-palette-lines-default); border-radius: 8px; padding: 8px 10px; background: var(--mud-palette-surface); }
+.audit-op-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.audit-entry { padding: 4px 0 4px 0; border-top: 1px dashed var(--mud-palette-lines-default); }
+.audit-entity { font-weight: 600; font-size: .9rem; margin-inline-start: 4px; }
+.audit-changes { margin: 4px 24px 2px 0; border-collapse: collapse; font-size: .85rem; }
+.audit-changes td { padding: 1px 6px; vertical-align: top; }
+.audit-field { color: var(--mud-palette-text-secondary); white-space: nowrap; }
+.audit-old { color: #9b2c20; text-decoration: line-through; text-decoration-color: rgba(155,44,32,.35); }
+.audit-new { color: #1e6b45; }
+.audit-arrow { color: var(--mud-palette-text-secondary); }
+
+/* نقش‌ها و مجوزها */
+.role-layout { display: grid; grid-template-columns: 300px 1fr; gap: 12px; align-items: start; }
+@media (max-width: 900px) { .role-layout { grid-template-columns: 1fr; } }
+.role-list { max-height: 75vh; overflow: auto; }
+.role-selected { background: var(--mud-palette-primary-hover); border-radius: 6px; }
+.perm-tree { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; max-height: 60vh; overflow: auto; padding: 2px; }
+.perm-module { border: 1px solid var(--mud-palette-lines-default); border-radius: 8px; padding: 4px 8px 8px; }
+.perm-module-title .mud-typography { font-weight: 700; }
+.perm-group { margin-inline-start: 14px; }
+.perm-group-title .mud-typography { font-weight: 600; font-size: .9rem; }
+.perm-actions { display: flex; flex-wrap: wrap; margin-inline-start: 26px; }
+.perm-actions .mud-typography { font-size: .82rem; }
+
+/* فرم کاربر: دسترسی به شرکت‌ها */
+.user-company { border: 1px solid var(--mud-palette-lines-default); border-radius: 8px; margin-bottom: 8px; }
+.user-company.granted { border-color: var(--mud-palette-primary); }
+.user-company-title .mud-typography { font-weight: 600; }
+
+/* هشدار خروج خودکار */
+.idle-warning { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3000; max-width: 92vw;
+    background: #8a1c13; color: #fff; padding: 12px 20px; border-radius: 10px; font-weight: 600;
+    box-shadow: 0 8px 28px rgba(0,0,0,.3); }

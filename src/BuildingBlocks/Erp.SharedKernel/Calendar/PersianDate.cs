@@ -51,4 +51,32 @@ public static class PersianDate
     }
 
     public static int PersianYear(DateOnly date) => Calendar.GetYear(date.ToDateTime(TimeOnly.MinValue));
+
+    /// <summary>منطقه زمانی ایران (برای نمایش زمان‌هایی که UTC ذخیره شده‌اند).</summary>
+    public static readonly TimeZoneInfo IranZone = FindIranZone();
+
+    public static DateTime ToIranTime(DateTime utc) =>
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), IranZone);
+
+    /// <summary>زمان UTC به‌صورت «1405/07/30 14:05» به وقت ایران.</summary>
+    public static string ToPersianDateTime(DateTime utc)
+    {
+        var local = ToIranTime(utc);
+        return $"{ToPersian(DateOnly.FromDateTime(local))} {local:HH:mm}";
+    }
+
+    /// <summary>شروع روز شمسی (به وقت ایران) به UTC؛ برای فیلتر بازه تاریخ روی ستون‌های زمان UTC.</summary>
+    public static DateTime IranDayStartUtc(DateOnly date) =>
+        TimeZoneInfo.ConvertTimeToUtc(date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), IranZone);
+
+    private static TimeZoneInfo FindIranZone()
+    {
+        foreach (var id in new[] { "Asia/Tehran", "Iran Standard Time" })
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+            catch (TimeZoneNotFoundException) { }
+            catch (InvalidTimeZoneException) { }
+        }
+        return TimeZoneInfo.CreateCustomTimeZone("Iran", TimeSpan.FromMinutes(210), "Iran", "Iran");
+    }
 }

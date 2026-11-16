@@ -15,11 +15,10 @@ public static class DependencyInjection
     public static IServiceCollection AddCostingModule(this IServiceCollection services)
     {
         services.AddCostingApplication();
-        services.TryAddScoped<CompanyConnection>();
-        services.TryAddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CompanyConnection>());
+        services.AddCompanyDatabase();
 
         services.AddDbContext<CostingDbContext>((sp, options) =>
-            options.UseSqlServer(sp.GetRequiredService<CompanyConnection>().Connection));
+            options.UseCompanyDatabase(sp));
         services.AddScoped<ICostingDbContext>(sp => sp.GetRequiredService<CostingDbContext>());
         return services;
     }

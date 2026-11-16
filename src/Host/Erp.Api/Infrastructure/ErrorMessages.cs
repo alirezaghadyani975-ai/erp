@@ -1,4 +1,5 @@
 using Erp.SharedKernel.Domain;
+using Erp.SharedKernel.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Api.Infrastructure;
@@ -11,7 +12,8 @@ public static class ErrorMessages
         var sqlNumber = SqlErrorNumber(ex);
         return ex switch
         {
-            DomainException or NotFoundException => ex.Message,
+            DomainException or NotFoundException or ForbiddenException => ex.Message,
+            SessionExpiredException => ex.Message,
             FormatException => ex.Message,
             DbUpdateConcurrencyException => "این رکورد همزمان توسط کاربر دیگری تغییر کرده است؛ دوباره بارگذاری کنید.",
             _ when sqlNumber >= 50000 => Innermost(ex).Message,

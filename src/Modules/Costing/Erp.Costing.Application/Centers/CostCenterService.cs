@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Costing.Application.Abstractions;
 using Erp.Costing.Contracts;
 using Erp.Costing.Domain;
@@ -11,7 +12,7 @@ namespace Erp.Costing.Application.Centers;
 /// مراکز هزینه با نوع (وظیفه)، مسئول، مرکز بالادست و تنظیمات تسهیم/جذب.
 /// هر مرکز یک تفصیلی (گروه «مراکز هزینه») در حسابداری دارد که در همان تراکنش هماهنگ می‌شود.
 /// </summary>
-public class CostCenterService(ICostingDbContext db, IUnitOfWork uow, ICostDetailLinks links)
+public class CostCenterService(ICostingDbContext db, IUnitOfWork uow, ICostDetailLinks links, IAccessControl access)
 {
     public async Task<List<CostCenterListItemDto>> GetAllAsync(bool includeInactive, CancellationToken ct)
     {
@@ -40,6 +41,7 @@ public class CostCenterService(ICostingDbContext db, IUnitOfWork uow, ICostDetai
 
     public async Task<CostCenterDetailsDto> GetAsync(int id, CancellationToken ct)
     {
+        access.Demand(CostingPermissions.CenterView);
         var c = await db.CostCenters.AsNoTracking().Include(x => x.Allocations).FirstOrDefaultAsync(x => x.Id == id, ct)
                 ?? throw new NotFoundException("مرکز هزینه پیدا نشد.");
         var codes = await links.GetCodesAsync(CostDetailKind.Center, [id], ct);
@@ -58,6 +60,7 @@ public class CostCenterService(ICostingDbContext db, IUnitOfWork uow, ICostDetai
 
     public async Task<int> CreateAsync(SaveCostCenterRequest request, CancellationToken ct)
     {
+        access.Demand(CostingPermissions.CenterCreate);
         var type = await LoadTypeAsync(request.CenterTypeId, ct);
         var center = new CostCenter(request.Title, type);
         await ApplyAsync(center, type, request, ct);
@@ -72,6 +75,7 @@ public class CostCenterService(ICostingDbContext db, IUnitOfWork uow, ICostDetai
 
     public async Task UpdateAsync(int id, SaveCostCenterRequest request, CancellationToken ct)
     {
+        access.Demand(CostingPermissions.CenterEdit);
         var center = await db.CostCenters.Include(c => c.Allocations).FirstOrDefaultAsync(c => c.Id == id, ct)
                      ?? throw new NotFoundException("مرکز هزینه پیدا نشد.");
         var oldType = await LoadTypeAsync(center.CenterTypeId, ct);
@@ -91,6 +95,7 @@ public class CostCenterService(ICostingDbContext db, IUnitOfWork uow, ICostDetai
     /// <summary>حذف مرکزی که در سند نیامده، زیرمرکز ندارد و گیرنده تسهیم مرکز دیگری نیست.</summary>
     public async Task DeleteAsync(int id, CancellationToken ct)
     {
+        access.Demand(CostingPermissions.CenterDelete);
         var center = await db.CostCenters.Include(c => c.Allocations).FirstOrDefaultAsync(c => c.Id == id, ct)
                      ?? throw new NotFoundException("مرکز هزینه پیدا نشد.");
         if (await db.CostCenters.AnyAsync(c => c.ParentId == id, ct))

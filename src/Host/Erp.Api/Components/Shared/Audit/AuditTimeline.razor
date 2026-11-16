@@ -1,0 +1,101 @@
+@* نمایش لاگ تغییرات: هر عملیات (یک ذخیره) یک کارت، با تغییر هر فیلد از مقدار قبلی به جدید *@
+@using Erp.Api.Infrastructure
+
+@if (Entries.Count == 0)
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-2">تغییری ثبت نشده است.</MudText>
+}
+else
+{
+    <div class="audit-timeline">
+        @foreach (var op in Groups)
+        {
+            var first = op.First();
+            <div class="audit-op">
+                <div class="audit-op-head">
+                    <MudIcon Icon="@IconOf(op)" Size="Size.Small" Color="ColorOf(op)" />
+                    <span class="code">@first.At</span>
+                    <b>@(first.UserName ?? "سیستم")</b>
+                    @if (first.Ip is not null)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true"><span dir="ltr">@first.Ip</span></MudText>
+                    }
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true">@Summary(op)</MudText>
+                </div>
+                @foreach (var e in op.Where(x => ShowDetails || x.ParentEntity is null || x.Changes.Count > 0).Take(MaxPerOperation))
+                {
+                    <div class="audit-entry">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="ColorOf(e.Action)" Class="ma-0">@e.ActionTitle</MudChip>
+                        <span class="audit-entity">@e.EntityTitle@(e.EntityId > 0 ? $" #{e.EntityId}" : "")</span>
+                        @if (ShowParent && e.ParentEntity is not null)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true">(از @AuditLabels.Entity(e.ParentEntity) #@e.ParentId)</MudText>
+                        }
+                        @if (e.Changes.Count > 0)
+                        {
+                            <table class="audit-changes">
+                                @foreach (var c in e.Changes.Where(c => e.Action == 'U' || c.Old is not null || c.New is not null))
+                                {
+                                    <tr>
+                                        <td class="audit-field">@c.FieldTitle</td>
+                                        @if (e.Action == 'U')
+                                        {
+                                            <td class="audit-old">@(c.Old ?? "—")</td>
+                                            <td class="audit-arrow">←</td>
+                                            <td class="audit-new">@(c.New ?? "—")</td>
+                                        }
+                                        else
+                                        {
+                                            <td colspan="3" class="@(e.Action == 'D' ? "audit-old" : "audit-new")">@(c.New ?? c.Old)</td>
+                                        }
+                                    </tr>
+                                }
+                            </table>
+                        }
+                    </div>
+                }
+                @if (op.Count() > MaxPerOperation)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">و @(op.Count() - MaxPerOperation) تغییر دیگر در همین عملیات…</MudText>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public List<AuditEntryDto> Entries { get; set; } = [];
+    /// <summary>ردیف‌های بدون فیلد هم نمایش داده شوند.</summary>
+    [Parameter] public bool ShowDetails { get; set; } = true;
+    [Parameter] public bool ShowParent { get; set; }
+    [Parameter] public int MaxPerOperation { get; set; } = 40;
+
+    private IEnumerable<IGrouping<Guid, AuditEntryDto>> Groups =>
+        Entries.GroupBy(e => e.OperationId ?? Guid.NewGuid());
+
+    private static string Summary(IGrouping<Guid, AuditEntryDto> op)
+    {
+        var parts = op.GroupBy(e => (e.EntityTitle, e.ActionTitle))
+            .Select(g => g.Count() == 1 ? $"{g.Key.ActionTitle} {g.Key.EntityTitle}" : $"{g.Key.ActionTitle} {g.Count()} {g.Key.EntityTitle}");
+        return string.Join("، ", parts.Take(4)) + (parts.Count() > 4 ? "، …" : "");
+    }
+
+    private static char MainAction(IGrouping<Guid, AuditEntryDto> op) =>
+        op.FirstOrDefault(e => e.ParentEntity is null)?.Action ?? op.First().Action;
+
+    private static string IconOf(IGrouping<Guid, AuditEntryDto> op) => MainAction(op) switch
+    {
+        'I' => Icons.Material.Outlined.AddCircleOutline,
+        'D' => Icons.Material.Outlined.DeleteOutline,
+        _ => Icons.Material.Outlined.Edit,
+    };
+
+    private static Color ColorOf(IGrouping<Guid, AuditEntryDto> op) => ColorOf(MainAction(op));
+
+    private static Color ColorOf(char action) => action switch
+    {
+        'I' => Color.Success,
+        'D' => Color.Error,
+        _ => Color.Warning,
+    };
+}

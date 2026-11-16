@@ -1,3 +1,4 @@
+using Erp.SharedKernel.Security;
 using Erp.Accounting.Contracts;
 using Erp.Costing.Contracts;
 using Erp.SharedKernel.Abstractions;
@@ -17,14 +18,18 @@ public sealed record TransferDto(long Id, int DocNo, string Date, FundKind FromK
     TreasuryVoucherDto? Voucher);
 
 /// <summary>انتقال وجه بین صندوق، حساب بانکی و تنخواه‌گردان (مثلاً شارژ تنخواه یا واریز صندوق به بانک).</summary>
-public class TransferService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock)
+public class TransferService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock,
+    IAccessControl access)
 {
     public async Task<List<TransferDto>> ListAsync(string? fromDate, string? toDate, CancellationToken ct)
     {
-        var query = db.Transfers.AsNoTracking();
+        access.Demand(TreasuryPermissions.TransferView);
+        var query = db.Transfers.AsNoTracking().Own(access);
         if (!string.IsNullOrWhiteSpace(fromDate)) { var f = PersianDate.Parse(fromDate); query = query.Where(r => r.DocDate >= f); }
         if (!string.IsNullOrWhiteSpace(toDate)) { var t = PersianDate.Parse(toDate); query = query.Where(r => r.DocDate <= t); }
-        var rows = await query.OrderByDescending(t => t.DocDate).ThenByDescending(t => t.DocNo).ToListAsync(ct);
+        var rows = (await query.OrderByDescending(t => t.DocDate).ThenByDescending(t => t.DocNo).ToListAsync(ct))
+            .Where(t => access.CanUse(TreasuryScopes.Of(t.FromKind), t.FromId) || access.CanUse(TreasuryScopes.Of(t.ToKind), t.ToId))
+            .ToList();
         var titles = await FundTitlesAsync(ct);
         var vouchers = await posting.FindAsync(TreasuryModule.Name, Transfer.DocType, rows.Select(r => r.Id).ToList(), ct);
         return rows.Select(t => ToDto(t, titles, vouchers.GetValueOrDefault(t.Id))).ToList();
@@ -32,13 +37,18 @@ public class TransferService(ITreasuryDbContext db, IVoucherPosting posting, IUn
 
     public async Task<TransferDto> GetAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.TransferView);
         var t = await db.Transfers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("انتقال وجه پیدا نشد.");
+        access.DemandDoc(t);
+        if (!access.CanUse(TreasuryScopes.Of(t.FromKind), t.FromId) && !access.CanUse(TreasuryScopes.Of(t.ToKind), t.ToId))
+            TreasuryScopes.Demand(access, t.FromKind, t.FromId);
         var vouchers = await posting.FindAsync(TreasuryModule.Name, Transfer.DocType, [id], ct);
         return ToDto(t, await FundTitlesAsync(ct), vouchers.GetValueOrDefault(id));
     }
 
     public async Task<long> CreateAsync(SaveTransferRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.TransferCreate);
         await using var tx = await uow.BeginAsync(ct);
         var no = (await db.Transfers.MaxAsync(t => (int?)t.DocNo, ct) ?? 0) + 1;
         var transfer = new Transfer(no, user.UserId, clock.GetUtcNow().UtcDateTime);
@@ -52,9 +62,13 @@ public class TransferService(ITreasuryDbContext db, IVoucherPosting posting, IUn
 
     public async Task UpdateAsync(long id, SaveTransferRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.TransferEdit);
         await posting.EnsureChangeableAsync(TreasuryModule.Name, Transfer.DocType, id, ct);
         await using var tx = await uow.BeginAsync(ct);
         var transfer = await db.Transfers.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("انتقال وجه پیدا نشد.");
+        access.DemandDoc(transfer);
+        TreasuryScopes.Demand(access, transfer.FromKind, transfer.FromId);
+        TreasuryScopes.Demand(access, transfer.ToKind, transfer.ToId);
         await ApplyAsync(transfer, r, ct);
         transfer.Touch(clock.GetUtcNow().UtcDateTime);
         await db.SaveChangesAsync(ct);
@@ -64,8 +78,12 @@ public class TransferService(ITreasuryDbContext db, IVoucherPosting posting, IUn
 
     public async Task DeleteAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.TransferDelete);
         await using var tx = await uow.BeginAsync(ct);
         var transfer = await db.Transfers.FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw new NotFoundException("انتقال وجه پیدا نشد.");
+        access.DemandDoc(transfer);
+        TreasuryScopes.Demand(access, transfer.FromKind, transfer.FromId);
+        TreasuryScopes.Demand(access, transfer.ToKind, transfer.ToId);
         await posting.UnpostAsync(TreasuryModule.Name, Transfer.DocType, id, ct);
         db.Remove(transfer);
         await db.SaveChangesAsync(ct);
@@ -74,6 +92,8 @@ public class TransferService(ITreasuryDbContext db, IVoucherPosting posting, IUn
 
     private async Task ApplyAsync(Transfer t, SaveTransferRequest r, CancellationToken ct)
     {
+        TreasuryScopes.Demand(access, r.FromKind, r.FromId);
+        TreasuryScopes.Demand(access, r.ToKind, r.ToId);
         var titles = await FundTitlesAsync(ct, activeOnly: true);
         if (!titles.ContainsKey((r.FromKind, r.FromId))) throw new DomainException("مبدأ انتخاب نشده یا غیرفعال است.");
         if (!titles.ContainsKey((r.ToKind, r.ToId))) throw new DomainException("مقصد انتخاب نشده یا غیرفعال است.");
@@ -157,11 +177,14 @@ public sealed record ImprestSettlementListItemDto(long Id, int DocNo, string Dat
 /// صورت‌هزینه تنخواه: پرداخت‌های تنخواه‌دار — هزینه (عامل + مرکز) یا پرداخت به طرف حساب (مثلاً بدهی یا مساعده)؛
 /// بستانکار تنخواه‌گردان.
 /// </summary>
-public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock)
+public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting posting, IUnitOfWork uow, ICurrentUser user, TimeProvider clock,
+    IAccessControl access)
 {
     public async Task<List<ImprestSettlementListItemDto>> ListAsync(string? fromDate, string? toDate, CancellationToken ct)
     {
-        var query = db.ImprestSettlements.AsNoTracking();
+        access.Demand(TreasuryPermissions.ImprestView);
+        var query = db.ImprestSettlements.AsNoTracking().Own(access);
+        if (access.Ids(ScopeKind.ImprestFund) is { } funds) query = query.Where(s => funds.Contains(s.ImprestFundId));
         if (!string.IsNullOrWhiteSpace(fromDate)) { var f = PersianDate.Parse(fromDate); query = query.Where(r => r.DocDate >= f); }
         if (!string.IsNullOrWhiteSpace(toDate)) { var t = PersianDate.Parse(toDate); query = query.Where(r => r.DocDate <= t); }
         var rows = await query.OrderByDescending(s => s.DocDate).ThenByDescending(s => s.DocNo)
@@ -178,6 +201,7 @@ public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting pos
 
     public async Task<ImprestSettlementDto> GetAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.ImprestView);
         var s = await LoadAsync(id, false, ct);
         var factorIds = s.Lines.Select(l => l.CostFactorId).OfType<int>().ToList();
         var centerIds = s.Lines.Select(l => l.CostCenterId).OfType<int>().ToList();
@@ -202,6 +226,7 @@ public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting pos
 
     public async Task<long> CreateAsync(SaveImprestSettlementRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.ImprestCreate);
         await using var tx = await uow.BeginAsync(ct);
         var no = (await db.ImprestSettlements.MaxAsync(s => (int?)s.DocNo, ct) ?? 0) + 1;
         var s = new ImprestSettlement(no, user.UserId, clock.GetUtcNow().UtcDateTime);
@@ -215,6 +240,7 @@ public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting pos
 
     public async Task UpdateAsync(long id, SaveImprestSettlementRequest r, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.ImprestEdit);
         await posting.EnsureChangeableAsync(TreasuryModule.Name, ImprestSettlement.DocType, id, ct);
         await using var tx = await uow.BeginAsync(ct);
         var s = await LoadAsync(id, true, ct);
@@ -229,6 +255,7 @@ public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting pos
 
     public async Task DeleteAsync(long id, CancellationToken ct)
     {
+        access.Demand(TreasuryPermissions.ImprestDelete);
         await using var tx = await uow.BeginAsync(ct);
         var s = await LoadAsync(id, true, ct);
         await posting.UnpostAsync(TreasuryModule.Name, ImprestSettlement.DocType, id, ct);
@@ -241,6 +268,7 @@ public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting pos
     {
         var fund = await db.ImprestFunds.AsNoTracking().FirstOrDefaultAsync(f => f.Id == r.ImprestFundId, ct)
                    ?? throw new DomainException("تنخواه‌گردان را انتخاب کنید.");
+        access.DemandScope(ScopeKind.ImprestFund, fund.Id, fund.Title);
         if (!fund.IsActive && fund.Id != s.ImprestFundId) throw new DomainException($"تنخواه‌گردان «{fund.Title}» غیرفعال است.");
         var factorIds = r.Lines.Select(l => l.CostFactorId).OfType<int>().Distinct().ToList();
         var factors = await db.Factors.Where(f => factorIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, ct);
@@ -305,6 +333,9 @@ public class ImprestSettlementService(ITreasuryDbContext db, IVoucherPosting pos
     {
         var query = db.ImprestSettlements.Include(s => s.Lines).AsQueryable();
         if (!tracking) query = query.AsNoTracking();
-        return await query.FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw new NotFoundException("صورت‌هزینه تنخواه پیدا نشد.");
+        var settlement = await query.FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw new NotFoundException("صورت‌هزینه تنخواه پیدا نشد.");
+        access.DemandDoc(settlement);
+        access.DemandScope(ScopeKind.ImprestFund, settlement.ImprestFundId);
+        return settlement;
     }
 }
