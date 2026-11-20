@@ -1,0 +1,134 @@
+@page "/inventory/kardex"
+@inject Backend Backend
+@inject TabService Tabs
+@inject ISnackbar Snackbar
+
+<TabTitle Text="کاردکس کالا" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">کاردکس کالا</MudText>
+    <MudSpacer />
+    <ExcelButton Build="BuildExcel" Disabled="_kardex is null" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    ورود و خروج تعدادی یک کالا به ترتیب تاریخ (در هر روز رسیدها پیش از حواله‌ها). کاردکس ریالی با محاسبه ماهانه بهای تمام‌شده می‌آید.
+</MudText>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center">
+        <div style="min-width:300px">
+            <MudAutocomplete T="ItemDto" Value="_item" ValueChanged="async it => { _item = it; await LoadAsync(); }" SearchFunc="SearchItems"
+                             ToStringFunc="@(it => it is null ? null : $"{it.Code} - {it.Title}")" Label="کالا" Placeholder="کد، نام یا بارکد"
+                             ResetValueOnEmptyText="true" Dense="true" MaxItems="40" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </div>
+        <MudSelect T="int?" Value="_warehouseId" ValueChanged="async w => { _warehouseId = w; await LoadAsync(); }" Label="انبار" Clearable="true"
+                   Placeholder="همه انبارها" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="width:200px">
+            @foreach (var w in _warehouses)
+            {
+                <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem>
+            }
+        </MudSelect>
+        <div style="width:170px"><PersianDateField Value="_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+    </MudStack>
+</MudPaper>
+
+@if (_kardex is null)
+{
+    <MudPaper Class="pa-6 empty-hint" Elevation="0" Outlined="true">
+        <MudIcon Icon="@Icons.Material.Outlined.Inventory" Color="Color.Secondary" />
+        <MudText Typo="Typo.body2" Color="Color.Secondary">کالا را انتخاب کنید تا گردش آن نمایش داده شود.</MudText>
+    </MudPaper>
+}
+else
+{
+    <MudPaper Class="pa-3" Elevation="1">
+        <MudTable T="KardexRowDto" Items="_kardex.Rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+                  OnRowClick="@(a => Open(a.Item!))" RowStyle="cursor:pointer">
+            <HeaderContent>
+                <MudTh>تاریخ</MudTh>
+                <MudTh>سند</MudTh>
+                <MudTh>انبار</MudTh>
+                <MudTh>طرف حساب</MudTh>
+                <MudTh>شرح</MudTh>
+                <MudTh Style="text-align:left">وارده</MudTh>
+                <MudTh Style="text-align:left">صادره</MudTh>
+                <MudTh Style="text-align:left">مانده</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><span class="code">@context.Date</span></MudTd>
+                <MudTd>@context.Type.Title() <span class="code">@Format.No(context.DocNo)</span></MudTd>
+                <MudTd>@context.Warehouse</MudTd>
+                <MudTd>@context.PartyName</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd Class="num">@Qty(context.In)</MudTd>
+                <MudTd Class="num">@Qty(context.Out)</MudTd>
+                <MudTd Class="num"><b>@Qty(context.Balance)</b></MudTd>
+            </RowTemplate>
+            <NoRecordsContent><MudText Class="pa-4">در این بازه گردشی نیست.</MudText></NoRecordsContent>
+            <FooterContent>
+                <MudTd colspan="5"><b>مانده اول @Qty(_kardex.Opening) — جمع گردش</b> (@_kardex.UnitTitle)</MudTd>
+                <MudTd Class="num"><b>@Qty(_kardex.TotalIn)</b></MudTd>
+                <MudTd Class="num"><b>@Qty(_kardex.TotalOut)</b></MudTd>
+                <MudTd Class="num"><b>@Qty(_kardex.Closing)</b></MudTd>
+            </FooterContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "item")] public int? ItemParam { get; set; }
+    [SupplyParameterFromQuery(Name = "warehouse")] public int? WarehouseParam { get; set; }
+
+    private List<ItemDto> _items = [];
+    private List<WarehouseDto> _warehouses = [];
+    private ItemDto? _item;
+    private int? _warehouseId;
+    private string? _from, _to;
+    private KardexDto? _kardex;
+    private bool _loading;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _items = (await Backend.Run<ItemService, List<ItemDto>>(s => s.SearchAsync(null, null, null, true, default))).Value ?? [];
+        _warehouses = (await Backend.Run<WarehouseService, List<WarehouseDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        if (ItemParam is int id) _item = _items.FirstOrDefault(i => i.Id == id);
+        if (WarehouseParam is int w) _warehouseId = w;
+        await LoadAsync();
+    }
+
+    private Task<IEnumerable<ItemDto>> SearchItems(string? term, CancellationToken ct)
+    {
+        IEnumerable<ItemDto> list = _items.Where(i => i.Kind == ItemKind.Goods);
+        term = PersianText.NormalizeOrNull(term);
+        if (term is not null) list = list.Where(i => i.Title.Contains(term) || i.Code.StartsWith(term) || i.Barcode == term);
+        return Task.FromResult(list);
+    }
+
+    private async Task LoadAsync()
+    {
+        if (_item is null) { _kardex = null; return; }
+        _loading = true;
+        var r = await Backend.Run<StockReportService, KardexDto>(s => s.KardexAsync(_item.Id, _warehouseId, _from, _to, default));
+        if (r.Success) _kardex = r.Value; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private void Open(KardexRowDto row) =>
+        Tabs.Go(row.Type.IsReceipt() ? $"/inventory/receipts/{row.DocId}" : $"/inventory/issues/{row.DocId}");
+
+    private static string Qty(decimal q) => q == 0 ? "" : q.ToString("#,0.######");
+
+    private ExcelFile BuildExcel() => ExcelExport.Build($"کاردکس {_kardex!.ItemCode} - {_kardex.ItemTitle}",
+        [_from is null && _to is null ? null : $"از {_from} تا {_to}", $"مانده اول: {_kardex.Opening:#,0.######}"],
+    [
+        new ExcelColumn<KardexRowDto>("تاریخ", r => r.Date, ExcelKind.Code),
+        new("سند", r => $"{r.Type.Title()} {Format.No(r.DocNo)}"),
+        new("انبار", r => r.Warehouse),
+        new("طرف حساب", r => r.PartyName),
+        new("شرح", r => r.Description),
+        new("وارده", r => r.In, ExcelKind.Amount),
+        new("صادره", r => r.Out, ExcelKind.Amount),
+        new("مانده", r => r.Balance, ExcelKind.Amount),
+    ], _kardex.Rows);
+}

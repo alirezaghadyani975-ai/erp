@@ -1,0 +1,87 @@
+@page "/inventory/balances"
+@inject Backend Backend
+@inject TabService Tabs
+@inject ISnackbar Snackbar
+
+<TabTitle Text="موجودی انبارها" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">موجودی انبارها</MudText>
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <ExcelButton Build="BuildExcel" Disabled="_rows.Count == 0" />
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    موجودی تعدادی هر کالا در هر انبار تا پایان تاریخ انتخابی (بدون تاریخ: همه سندها). برای دیدن گردش، روی ردیف بزنید.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudTextField T="string" @bind-Value="_term" Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="_ => LoadAsync()"
+                      Placeholder="کد، نام کالا یا گروه" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:240px" />
+        <MudSelect T="int?" Value="_warehouseId" ValueChanged="async w => { _warehouseId = w; await LoadAsync(); }" Label="انبار" Clearable="true"
+                   Placeholder="همه انبارها" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="width:200px">
+            @foreach (var w in _warehouses)
+            {
+                <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem>
+            }
+        </MudSelect>
+        <div style="width:170px"><PersianDateField Value="_date" ValueChanged="async v => { _date = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+        <MudCheckBox T="bool" Value="_zero" ValueChanged="async v => { _zero = v; await LoadAsync(); }" Label="موجودی صفر هم" Dense="true" />
+    </MudStack>
+
+    <MudTable T="StockBalanceDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/inventory/kardex?item={a.Item!.ItemId}&warehouse={a.Item.WarehouseId}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>کد</MudTh>
+            <MudTh>کالا</MudTh>
+            <MudTh>گروه</MudTh>
+            <MudTh>انبار</MudTh>
+            <MudTh>واحد</MudTh>
+            <MudTh Style="text-align:left">موجودی</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.ItemCode</span></MudTd>
+            <MudTd>@context.ItemTitle</MudTd>
+            <MudTd>@context.GroupTitle</MudTd>
+            <MudTd>@context.Warehouse</MudTd>
+            <MudTd>@context.UnitTitle</MudTd>
+            <MudTd Class="num"><b>@context.Quantity.ToString("#,0.######")</b></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">موجودی‌ای نیست.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<StockBalanceDto> _rows = [];
+    private List<WarehouseDto> _warehouses = [];
+    private int? _warehouseId;
+    private string? _term, _date;
+    private bool _loading = true, _zero;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _warehouses = (await Backend.Run<WarehouseService, List<WarehouseDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<StockReportService, List<StockBalanceDto>>(s => s.BalancesAsync(_warehouseId, _date, _term, _zero, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private ExcelFile BuildExcel() => ExcelExport.Build("موجودی انبارها", [_date is null ? null : $"تا تاریخ {_date}"],
+    [
+        new ExcelColumn<StockBalanceDto>("کد", r => r.ItemCode, ExcelKind.Code),
+        new("کالا", r => r.ItemTitle),
+        new("گروه", r => r.GroupTitle),
+        new("انبار", r => r.Warehouse),
+        new("واحد", r => r.UnitTitle),
+        new("موجودی", r => r.Quantity, ExcelKind.Amount),
+    ], _rows);
+}

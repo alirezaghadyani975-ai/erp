@@ -1,0 +1,117 @@
+@* فهرست رسیدها یا حواله‌های انبار با فیلتر نوع و تاریخ. *@
+@inject Backend Backend
+@inject TabService Tabs
+@inject ISnackbar Snackbar
+
+<TabTitle Text="@Title" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">@Title</MudText>
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <ExcelButton Build="BuildExcel" Disabled="_rows.Count == 0" />
+    <IfAllowed Url="@($"{Base}/new")">
+        <MudMenu Label="@(Receipts ? "رسید جدید" : "حواله جدید")" Variant="Variant.Filled" Color="Color.Primary"
+                 StartIcon="@Icons.Material.Filled.Add" EndIcon="@Icons.Material.Filled.ArrowDropDown" AnchorOrigin="Origin.BottomRight">
+            @foreach (var t in Types)
+            {
+                <MudMenuItem OnClick="@(() => Tabs.Go($"{Base}/new?type={(byte)t}"))">@t.Title()</MudMenuItem>
+            }
+        </MudMenu>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    @(Receipts
+        ? "ورود کالا به انبار: رسید خرید (پیش از فاکتور خرید)، رسید برگشت از فروش و موجودی اول دوره. رسید سند حسابداری ندارد؛ بها با محاسبه ماهانه بهای تمام‌شده می‌آید."
+        : "خروج کالا از انبار: حواله فروش (پیش از فاکتور فروش)، حواله برگشت از خرید و مصرف غیرتولیدی. موجودی هیچ کالایی در هیچ تاریخی منفی نمی‌شود.")
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudTextField T="string" @bind-Value="_term" Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="_ => LoadAsync()"
+                      Placeholder="طرف حساب، انبار، شماره یا شرح" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:260px" />
+        <MudSelect T="StockDocType?" Value="_type" ValueChanged="async t => { _type = t; await LoadAsync(); }" Label="نوع" Clearable="true"
+                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="width:200px">
+            @foreach (var t in Types)
+            {
+                <MudSelectItem T="StockDocType?" Value="t">@t.Title()</MudSelectItem>
+            }
+        </MudSelect>
+        <div style="width:170px"><PersianDateField Value="_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+    </MudStack>
+
+    <MudTable T="StockDocListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"{Base}/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>نوع</MudTh>
+            <MudTh>شماره</MudTh>
+            <MudTh>تاریخ</MudTh>
+            <MudTh>انبار</MudTh>
+            <MudTh>طرف حساب</MudTh>
+            <MudTh>شرح</MudTh>
+            <MudTh Style="text-align:left">ردیف</MudTh>
+            <MudTh Style="text-align:left">جمع مقدار</MudTh>
+            <MudTh>فاکتور</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Type.Title()</MudTd>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd>@context.Warehouse</MudTd>
+            <MudTd>@context.PartyName</MudTd>
+            <MudTd>@context.Description</MudTd>
+            <MudTd Class="num">@context.LineCount</MudTd>
+            <MudTd Class="num">@context.TotalQuantity.ToString("#,0.######")</MudTd>
+            <MudTd>
+                @if (context.Type is not (StockDocType.Opening or StockDocType.Consumption))
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                             Color="@(context.Invoiced == context.LineCount ? Color.Success : context.Invoiced == 0 ? Color.Warning : Color.Info)">
+                        @(context.Invoiced == 0 ? "فاکتورنشده" : context.Invoiced == context.LineCount ? "فاکتورشده" : $"{context.Invoiced} از {context.LineCount}")
+                    </MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">@(Receipts ? "رسیدی" : "حواله‌ای") ثبت نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    [Parameter] public bool Receipts { get; set; }
+
+    private string Title => Receipts ? "رسیدهای انبار" : "حواله‌های انبار";
+    private string Base => Receipts ? "/inventory/receipts" : "/inventory/issues";
+    private StockDocType[] Types => Receipts
+        ? [StockDocType.PurchaseReceipt, StockDocType.SalesReturnReceipt, StockDocType.Opening]
+        : [StockDocType.SalesIssue, StockDocType.PurchaseReturnIssue, StockDocType.Consumption];
+
+    private List<StockDocListItemDto> _rows = [];
+    private bool _loading = true;
+    private string? _term, _from, _to;
+    private StockDocType? _type;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<StockDocService, List<StockDocListItemDto>>(s => s.ListAsync(Receipts, _type, _term, _from, _to, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private ExcelFile BuildExcel() => ExcelExport.Build(Title, [_from is null && _to is null ? null : $"از {_from} تا {_to}"],
+    [
+        new ExcelColumn<StockDocListItemDto>("نوع", r => r.Type.Title()),
+        new("شماره", r => Format.No(r.DocNo), ExcelKind.Code),
+        new("تاریخ", r => r.Date, ExcelKind.Code),
+        new("انبار", r => r.Warehouse),
+        new("طرف حساب", r => r.PartyName),
+        new("شرح", r => r.Description),
+        new("ردیف", r => r.LineCount, ExcelKind.Amount),
+        new("جمع مقدار", r => r.TotalQuantity, ExcelKind.Amount),
+    ], _rows);
+}

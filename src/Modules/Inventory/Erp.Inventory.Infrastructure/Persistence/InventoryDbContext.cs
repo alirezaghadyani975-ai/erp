@@ -17,12 +17,48 @@ public class InventoryDbContext : DbContext, IInventoryDbContext
     public IQueryable<Item> Items => Set<Item>();
     public IQueryable<UnitRef> Units => Set<UnitRef>().AsNoTracking();
     public IQueryable<AccountRef> Accounts => Set<AccountRef>().AsNoTracking();
+    public IQueryable<Warehouse> Warehouses => Set<Warehouse>();
+    public IQueryable<StockDoc> StockDocs => Set<StockDoc>();
+    public IQueryable<PartyRef> Parties => Set<PartyRef>().AsNoTracking();
+    public IQueryable<FactorRef> Factors => Set<FactorRef>().AsNoTracking();
+    public IQueryable<CenterRef> Centers => Set<CenterRef>().AsNoTracking();
+    public IQueryable<FiscalYearRef> FiscalYears => Set<FiscalYearRef>().AsNoTracking();
 
     public async Task<bool> IsItemUsedAsync(int itemId, CancellationToken ct) =>
         await Database.SqlQuery<int>($"""
             SELECT CASE WHEN EXISTS (SELECT 1 FROM pur.PurchaseInvoiceLines WHERE ItemId = {itemId})
-                          OR EXISTS (SELECT 1 FROM sls.SalesInvoiceLines WHERE ItemId = {itemId}) THEN 1 ELSE 0 END AS Value
+                          OR EXISTS (SELECT 1 FROM sls.SalesInvoiceLines WHERE ItemId = {itemId})
+                          OR EXISTS (SELECT 1 FROM inv.StockDocLines WHERE ItemId = {itemId}) THEN 1 ELSE 0 END AS Value
             """).SingleAsync(ct) == 1;
+
+    public async Task<Dictionary<long, InvoiceLink>> InvoiceLinksAsync(IReadOnlyCollection<long> stockLineIds, CancellationToken ct)
+    {
+        if (stockLineIds.Count == 0) return [];
+        var json = System.Text.Json.JsonSerializer.Serialize(stockLineIds.Distinct());
+        var rows = await Database.SqlQuery<InvoiceLinkRow>($"""
+            WITH ids AS (SELECT CAST([value] AS BIGINT) AS Id FROM OPENJSON({json}))
+            SELECT l.ReceiptLineId AS StockLineId, CAST(1 AS TINYINT) AS Kind, d.Id AS DocId, d.DocNo
+              FROM pur.PurchaseInvoiceLines l JOIN pur.PurchaseInvoices d ON d.Id = l.InvoiceId JOIN ids ON ids.Id = l.ReceiptLineId
+            UNION ALL
+            SELECT l.IssueLineId, CAST(2 AS TINYINT), d.Id, d.DocNo
+              FROM pur.PurchaseReturnLines l JOIN pur.PurchaseReturns d ON d.Id = l.ReturnId JOIN ids ON ids.Id = l.IssueLineId
+            UNION ALL
+            SELECT l.IssueLineId, CAST(3 AS TINYINT), d.Id, d.DocNo
+              FROM sls.SalesInvoiceLines l JOIN sls.SalesInvoices d ON d.Id = l.InvoiceId JOIN ids ON ids.Id = l.IssueLineId
+            UNION ALL
+            SELECT l.ReceiptLineId, CAST(4 AS TINYINT), d.Id, d.DocNo
+              FROM sls.SalesReturnLines l JOIN sls.SalesReturns d ON d.Id = l.ReturnId JOIN ids ON ids.Id = l.ReceiptLineId
+            """).ToListAsync(ct);
+        return rows.ToDictionary(r => r.StockLineId, r => new InvoiceLink(r.StockLineId, (InvoiceLinkKind)r.Kind, r.DocId, r.DocNo));
+    }
+
+    private sealed class InvoiceLinkRow
+    {
+        public long StockLineId { get; init; }
+        public byte Kind { get; init; }
+        public long DocId { get; init; }
+        public int DocNo { get; init; }
+    }
 
     void IInventoryDbContext.Add<T>(T entity) => Set<T>().Add(entity);
     void IInventoryDbContext.Remove<T>(T entity) => Set<T>().Remove(entity);
@@ -79,6 +115,86 @@ internal class AccountRefConfiguration : IEntityTypeConfiguration<AccountRef>
     {
         b.HasKey(a => a.Id);
         b.ToSqlQuery("SELECT Id, Code, Title, IsActive FROM fin.Accounts WHERE [Level] = 3");
+    }
+}
+
+internal class WarehouseConfiguration : IEntityTypeConfiguration<Warehouse>
+{
+    public void Configure(EntityTypeBuilder<Warehouse> b)
+    {
+        b.ToTable("Warehouses", "inv");
+        b.HasKey(w => w.Id);
+        b.Property(w => w.Code).HasMaxLength(10);
+        b.Property(w => w.Title).HasMaxLength(100);
+        b.Property(w => w.Notes).HasMaxLength(500);
+        b.Ignore(w => w.DomainEvents);
+    }
+}
+
+internal class StockDocConfiguration : IEntityTypeConfiguration<StockDoc>
+{
+    public void Configure(EntityTypeBuilder<StockDoc> b)
+    {
+        b.ToTable("StockDocs", "inv");
+        b.HasKey(d => d.Id);
+        b.Property(d => d.Description).HasMaxLength(500);
+        b.Property(d => d.CreatedAt).HasColumnType("datetime2(0)");
+        b.Property(d => d.UpdatedAt).HasColumnType("datetime2(0)");
+        b.Property(d => d.RowVer).IsRowVersion();
+        b.HasMany(d => d.Lines).WithOne().HasForeignKey(l => l.DocId).OnDelete(DeleteBehavior.Cascade);
+        b.Navigation(d => d.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+        b.Ignore(d => d.DomainEvents);
+        b.Ignore(d => d.IsReceipt);
+    }
+}
+
+internal class StockDocLineConfiguration : IEntityTypeConfiguration<StockDocLine>
+{
+    public void Configure(EntityTypeBuilder<StockDocLine> b)
+    {
+        b.ToTable("StockDocLines", "inv", t => t.HasTrigger("trg_StockDocLines_Check"));
+        b.HasKey(l => l.Id);
+        b.Property(l => l.Quantity).HasPrecision(24, 6);
+        b.Property(l => l.EnteredPrice).HasPrecision(24, 4);
+        b.Property(l => l.UnitCost).HasPrecision(24, 4);
+        b.Property(l => l.Amount).HasPrecision(24, 4);
+        b.Property(l => l.Description).HasMaxLength(500);
+    }
+}
+
+internal class PartyRefConfiguration : IEntityTypeConfiguration<PartyRef>
+{
+    public void Configure(EntityTypeBuilder<PartyRef> b)
+    {
+        b.ToTable("Persons", "base", t => t.ExcludeFromMigrations());
+        b.HasKey(p => p.Id);
+    }
+}
+
+internal class FactorRefConfiguration : IEntityTypeConfiguration<FactorRef>
+{
+    public void Configure(EntityTypeBuilder<FactorRef> b)
+    {
+        b.ToTable("CostFactors", "cost", t => t.ExcludeFromMigrations());
+        b.HasKey(f => f.Id);
+    }
+}
+
+internal class CenterRefConfiguration : IEntityTypeConfiguration<CenterRef>
+{
+    public void Configure(EntityTypeBuilder<CenterRef> b)
+    {
+        b.ToTable("CostCenters", "cost", t => t.ExcludeFromMigrations());
+        b.HasKey(c => c.Id);
+    }
+}
+
+internal class FiscalYearRefConfiguration : IEntityTypeConfiguration<FiscalYearRef>
+{
+    public void Configure(EntityTypeBuilder<FiscalYearRef> b)
+    {
+        b.HasKey(y => y.Id);
+        b.ToSqlQuery("SELECT Id, StartDate, EndDate FROM fin.FiscalYears");
     }
 }
 

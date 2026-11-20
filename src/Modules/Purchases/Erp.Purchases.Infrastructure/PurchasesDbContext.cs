@@ -1,4 +1,5 @@
 using Erp.Database;
+using Erp.Inventory.Contracts;
 using Erp.Purchases.Application;
 using Erp.Purchases.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,7 @@ public class PurchasesDbContext : DbContext, IPurchasesDbContext
     public IQueryable<PurchaseReturn> PurchaseReturns => Set<PurchaseReturn>();
     public IQueryable<PartyRef> Parties => Set<PartyRef>().AsNoTracking();
     public IQueryable<ItemRef> Items => Set<ItemRef>().AsNoTracking();
+    public IQueryable<StockLineRef> StockLines => Set<StockLineRef>().AsNoTracking();
 
     void IPurchasesDbContext.Add<T>(T entity) => Set<T>().Add(entity);
     void IPurchasesDbContext.Remove<T>(T entity) => Set<T>().Remove(entity);
@@ -48,7 +50,7 @@ public class PurchasesDbContext : DbContext, IPurchasesDbContext
         });
         b.Entity<PurchaseInvoiceLine>(e =>
         {
-            e.ToTable("PurchaseInvoiceLines", "pur");
+            e.ToTable("PurchaseInvoiceLines", "pur", t => t.HasTrigger("trg_PurchaseInvoiceLines_Stock"));
             e.HasKey(l => l.Id);
             e.Property(l => l.Quantity).HasPrecision(24, 6);
             e.Property(l => l.UnitPrice).HasPrecision(24, 4);
@@ -74,11 +76,23 @@ public class PurchasesDbContext : DbContext, IPurchasesDbContext
         });
         b.Entity<PurchaseReturnLine>(e =>
         {
-            e.ToTable("PurchaseReturnLines", "pur", t => t.HasTrigger("trg_PurchaseReturnLines_Quantity"));
+            e.ToTable("PurchaseReturnLines", "pur", t =>
+            {
+                t.HasTrigger("trg_PurchaseReturnLines_Quantity");
+                t.HasTrigger("trg_PurchaseReturnLines_Stock");
+            });
             e.HasKey(l => l.Id);
             e.Property(l => l.Quantity).HasPrecision(24, 6);
             e.Property(l => l.Amount).HasPrecision(24, 4);
             e.Property(l => l.VatAmount).HasPrecision(24, 4);
+        });
+        b.Entity<StockLineRef>(e =>
+        {
+            e.HasKey(l => l.Id);
+            e.Ignore(l => l.Title);
+            e.Property(l => l.Quantity).HasPrecision(24, 6);
+            e.Property(l => l.EnteredPrice).HasPrecision(24, 4);
+            e.ToSqlQuery(StockLineRef.Sql);
         });
         b.Entity<PartyRef>(e =>
         {

@@ -17,6 +17,9 @@ public interface IPurchasesDbContext
     /// <summary>فقط‌خواندنی از کالا: کالا با معین‌های گروهش.</summary>
     IQueryable<ItemRef> Items { get; }
 
+    /// <summary>فقط‌خواندنی از انبار: ردیف‌های رسید و حواله با سربرگشان.</summary>
+    IQueryable<StockLineRef> StockLines { get; }
+
     void Add<T>(T entity) where T : class;
     void Remove<T>(T entity) where T : class;
     Task<int> SaveChangesAsync(CancellationToken ct);
@@ -63,8 +66,9 @@ public sealed record PurchaseVoucherDto(long VoucherId, int TempNo, int? Voucher
     public static PurchaseVoucherDto? Of(PostedVoucher? v) => v is null ? null : new(v.VoucherId, v.TempNo, v.VoucherNo, v.Status);
 }
 
+/// <param name="ReceiptLineId">ردیف رسید خرید؛ کالا و مقدار باید همان رسید باشد.</param>
 public sealed record PurchaseLineRequest(int ItemId, decimal Quantity, decimal UnitPrice, decimal Discount = 0, decimal VatAmount = 0,
-    string? Description = null);
+    string? Description = null, long? ReceiptLineId = null);
 
 /// <summary>تاریخ‌ها شمسی، مثل 1405/07/21.</summary>
 public sealed record SavePurchaseInvoiceRequest(string Date, int SupplierId, PayableKind PayableKind, string? InvoiceNo,
@@ -74,14 +78,16 @@ public sealed record PurchaseInvoiceListItemDto(long Id, int DocNo, string Date,
     decimal NetAmount, decimal DiscountAmount, decimal VatAmount, decimal Total, string? Description, PurchaseVoucherDto? Voucher);
 
 public sealed record PurchaseLineDto(long Id, short RowNo, int ItemId, string ItemCode, string ItemTitle, string UnitTitle,
-    decimal Quantity, decimal UnitPrice, decimal Discount, decimal Amount, decimal VatAmount, string? Description, decimal ReturnedQuantity);
+    decimal Quantity, decimal UnitPrice, decimal Discount, decimal Amount, decimal VatAmount, string? Description, decimal ReturnedQuantity,
+    long? ReceiptLineId, string? Receipt);
 
 public sealed record PurchaseInvoiceDto(long Id, int DocNo, string Date, int SupplierId, string SupplierName, PayableKind PayableKind,
     string? InvoiceNo, string? InvoiceDate, string? SellerTaxId, string? Description,
     decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, decimal VatAmount, decimal Total,
     List<PurchaseLineDto> Lines, PurchaseVoucherDto? Voucher, int ReturnCount);
 
-public sealed record ReturnLineRequest(long InvoiceLineId, decimal Quantity);
+/// <param name="IssueLineId">ردیف حواله برگشت از خرید؛ مقدار باید همان حواله باشد.</param>
+public sealed record ReturnLineRequest(long InvoiceLineId, decimal Quantity, long? IssueLineId = null);
 
 public sealed record SavePurchaseReturnRequest(string Date, long InvoiceId, string? Description, List<ReturnLineRequest> Lines);
 
@@ -89,7 +95,7 @@ public sealed record PurchaseReturnListItemDto(long Id, int DocNo, string Date, 
     decimal Amount, decimal VatAmount, decimal Total, string? Description, PurchaseVoucherDto? Voucher);
 
 public sealed record PurchaseReturnLineDto(long InvoiceLineId, short RowNo, string ItemCode, string ItemTitle, string UnitTitle,
-    decimal Quantity, decimal Amount, decimal VatAmount);
+    decimal Quantity, decimal Amount, decimal VatAmount, long? IssueLineId, string? Issue);
 
 public sealed record PurchaseReturnDto(long Id, int DocNo, string Date, long InvoiceId, int InvoiceDocNo, string InvoiceDate,
     int SupplierId, string SupplierName, string? Description, decimal Amount, decimal VatAmount, decimal Total,

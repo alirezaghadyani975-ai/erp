@@ -2,7 +2,7 @@
 @inject Backend Backend
 
 <MudAutocomplete T="PersonListItemDto" Value="_value" ValueChanged="OnChanged" SearchFunc="Search"
-                 ToStringFunc="@(p => p?.DisplayName)" Label="@Label" Required="Required" Disabled="Disabled"
+                 ToStringFunc="@(p => p?.DisplayName)" Label="@Label" Required="Required" RequiredError="@($"{Label} را انتخاب کنید")" Disabled="Disabled"
                  Error="@(ShowErrors && Required && PersonId is null)" ErrorText="@($"{Label} را انتخاب کنید")"
                  ResetValueOnEmptyText="true" DebounceInterval="250" Dense="true" MaxItems="30"
                  HelperText="@(_value?.DetailCode is { } c ? $"تفصیلی {c}" : HelperText)"

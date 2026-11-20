@@ -1,0 +1,122 @@
+@page "/inventory/warehouses"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="انبارها" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">انبارها</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">انبار جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    موجودی و بهای میانگین هر کالا جدا برای هر انبار حساب می‌شود. انباری که سند دارد حذف نمی‌شود؛ غیرفعالش کنید.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="WarehouseDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>کد</MudTh>
+            <MudTh>عنوان</MudTh>
+            <MudTh>انباردار</MudTh>
+            <MudTh Style="text-align:left">تعداد سند</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Code</span></MudTd>
+            <MudTd>
+                @context.Title
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd>@context.KeeperName</MudTd>
+            <MudTd Class="num">@context.DocCount</MudTd>
+            <MudTd Style="text-align:left">
+                <span @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="@($"حذف {context.Title}")"
+                                   Disabled="context.DocCount > 0" OnClick="() => DeleteAsync(context)" />
+                </span>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">انباری تعریف نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "انبار جدید" : "ویرایش انبار")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_code" Immediate="true" Label="کد" MaxLength="10" AutoFocus="true" Class="code"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_title" Immediate="true" Label="عنوان" MaxLength="100" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12">
+                <PersonPicker @bind-PersonId="_keeperId" PersonName="@_keeperName" Label="انباردار (اختیاری)" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_notes" Label="توضیحات" MaxLength="500" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_title))">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<WarehouseDto> _rows = [];
+    private bool _loading = true;
+
+    private bool _editOpen, _active = true;
+    private int? _editId, _keeperId;
+    private string? _code, _title, _notes, _keeperName;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<WarehouseService, List<WarehouseDto>>(s => s.GetAllAsync(true, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private void New()
+    {
+        (_editId, _code, _title, _notes, _keeperId, _keeperName, _active) = (null, null, null, null, null, null, true);
+        _editOpen = true;
+    }
+
+    private void Edit(WarehouseDto w)
+    {
+        (_editId, _code, _title, _notes, _keeperId, _keeperName, _active) = (w.Id, w.Code, w.Title, w.Notes, w.KeeperId, w.KeeperName, w.IsActive);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveWarehouseRequest(_code!, _title!, _keeperId, _notes, _active);
+        var error = _editId is int id
+            ? (await Backend.Run<WarehouseService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<WarehouseService, int>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add("انبار ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(WarehouseDto w)
+    {
+        if (!await Dialogs.DeleteAsync($"انبار «{w.Title}»", "فقط انبار بدون سند حذف می‌شود.")) return;
+        var r = await Backend.Run<WarehouseService>(s => s.DeleteAsync(w.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

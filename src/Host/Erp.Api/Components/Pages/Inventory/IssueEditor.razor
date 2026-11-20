@@ -1,0 +1,9 @@
+@page "/inventory/issues/new"
+@page "/inventory/issues/{Id:long}"
+
+<StockDocForm Receipts="false" Id="Id" NewType="@(Type is int t ? (StockDocType)t : null)" />
+
+@code {
+    [Parameter] public long? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "type")] public int? Type { get; set; }
+}

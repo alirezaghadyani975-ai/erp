@@ -12,7 +12,9 @@ public enum PayableKind : byte
 }
 
 /// <summary>ردیف ورودی فاکتور خرید.</summary>
-public sealed record PurchaseLineInput(int ItemId, decimal Quantity, decimal UnitPrice, decimal Discount, decimal VatAmount, string? Description);
+/// <param name="ReceiptLineId">ردیف رسید خرید (هر ردیف رسید یک بار و با همان کالا و مقدار فاکتور می‌شود).</param>
+public sealed record PurchaseLineInput(int ItemId, decimal Quantity, decimal UnitPrice, decimal Discount, decimal VatAmount, string? Description,
+    long ReceiptLineId);
 
 /// <summary>
 /// فاکتور خرید داخلی کالا (pur.PurchaseInvoices). بدهکار معین خرید (موجودی) گروه هر کالا و ارزش افزوده دریافتنی،
@@ -88,8 +90,9 @@ public class PurchaseInvoice : AggregateRoot<long>
         {
             row++;
             var (gross, discount) = Lines2.Amounts(row, l.ItemId, l.Quantity, l.UnitPrice, l.Discount, l.VatAmount);
+            if (l.ReceiptLineId <= 0) throw new DomainException($"ردیف {row}: ردیف رسید خرید الزامی است.");
             _lines.Add(new PurchaseInvoiceLine(row, l.ItemId, Math.Round(l.Quantity, 6), Math.Round(l.UnitPrice, 4), discount,
-                gross - discount, TradeMath.Rial(l.VatAmount), Lines2.Optional(l.Description, $"شرح ردیف {row}", 500)));
+                gross - discount, TradeMath.Rial(l.VatAmount), Lines2.Optional(l.Description, $"شرح ردیف {row}", 500), l.ReceiptLineId));
         }
         GrossAmount = _lines.Sum(l => l.Amount + l.Discount);
         DiscountAmount = _lines.Sum(l => l.Discount);
@@ -107,7 +110,7 @@ public class PurchaseInvoiceLine
     private PurchaseInvoiceLine() { } // EF
 
     internal PurchaseInvoiceLine(short rowNo, int itemId, decimal quantity, decimal unitPrice, decimal discount, decimal amount,
-        decimal vatAmount, string? description)
+        decimal vatAmount, string? description, long receiptLineId)
     {
         RowNo = rowNo;
         ItemId = itemId;
@@ -117,6 +120,7 @@ public class PurchaseInvoiceLine
         Amount = amount;
         VatAmount = vatAmount;
         Description = description;
+        ReceiptLineId = receiptLineId;
     }
 
     public long Id { get; private set; }
@@ -130,10 +134,13 @@ public class PurchaseInvoiceLine
     public decimal Amount { get; private set; }
     public decimal VatAmount { get; private set; }
     public string? Description { get; private set; }
+    /// <summary>ردیف رسید خرید (inv.StockDocLines).</summary>
+    public long? ReceiptLineId { get; private set; }
 }
 
 /// <summary>ردیف محاسبه‌شده برگشت (سهم مبلغ و ارزش افزوده را سرویس از ردیف فاکتور حساب می‌کند).</summary>
-public sealed record PurchaseReturnLineInput(long InvoiceLineId, decimal Quantity, decimal Amount, decimal VatAmount);
+/// <param name="IssueLineId">ردیف حواله برگشت از خرید (از همان ردیف رسید فاکتور).</param>
+public sealed record PurchaseReturnLineInput(long InvoiceLineId, decimal Quantity, decimal Amount, decimal VatAmount, long IssueLineId);
 
 /// <summary>
 /// برگشت از خرید (pur.PurchaseReturns): همیشه با ارجاع به فاکتور خرید؛ مقدار برگشتی هر ردیف از مانده ردیف فاکتور
@@ -181,14 +188,15 @@ public class PurchaseReturn : AggregateRoot<long>
     {
         var list = lines.Where(l => l.Quantity != 0).ToList();
         if (list.Count == 0) throw new DomainException("مقدار برگشتی حداقل یک ردیف را وارد کنید.");
-        if (list.Select(l => l.InvoiceLineId).Distinct().Count() != list.Count) throw new DomainException("یک ردیف فاکتور دو بار آمده است.");
+        if (list.Select(l => l.IssueLineId).Distinct().Count() != list.Count) throw new DomainException("یک ردیف حواله برگشت دو بار آمده است.");
         _lines.Clear();
         short row = 0;
         foreach (var l in list)
         {
             row++;
             if (l.Quantity < 0) throw new DomainException($"ردیف {row}: مقدار برگشتی نمی‌تواند منفی باشد.");
-            _lines.Add(new PurchaseReturnLine(row, l.InvoiceLineId, Math.Round(l.Quantity, 6), l.Amount, l.VatAmount));
+            if (l.IssueLineId <= 0) throw new DomainException($"ردیف {row}: ردیف حواله برگشت از خرید الزامی است.");
+            _lines.Add(new PurchaseReturnLine(row, l.InvoiceLineId, Math.Round(l.Quantity, 6), l.Amount, l.VatAmount, l.IssueLineId));
         }
         Amount = _lines.Sum(l => l.Amount);
         VatAmount = _lines.Sum(l => l.VatAmount);
@@ -204,13 +212,14 @@ public class PurchaseReturnLine
 {
     private PurchaseReturnLine() { } // EF
 
-    internal PurchaseReturnLine(short rowNo, long invoiceLineId, decimal quantity, decimal amount, decimal vatAmount)
+    internal PurchaseReturnLine(short rowNo, long invoiceLineId, decimal quantity, decimal amount, decimal vatAmount, long issueLineId)
     {
         RowNo = rowNo;
         InvoiceLineId = invoiceLineId;
         Quantity = quantity;
         Amount = amount;
         VatAmount = vatAmount;
+        IssueLineId = issueLineId;
     }
 
     public long Id { get; private set; }
@@ -220,6 +229,8 @@ public class PurchaseReturnLine
     public decimal Quantity { get; private set; }
     public decimal Amount { get; private set; }
     public decimal VatAmount { get; private set; }
+    /// <summary>ردیف حواله برگشت از خرید (inv.StockDocLines).</summary>
+    public long? IssueLineId { get; private set; }
 }
 
 /// <summary>کنترل‌های مشترک ردیف‌های فاکتور.</summary>

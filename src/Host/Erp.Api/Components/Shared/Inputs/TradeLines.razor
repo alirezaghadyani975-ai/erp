@@ -20,16 +20,24 @@
             <tr>
                 <td class="code">@(i + 1)</td>
                 <td>
-                    <MudAutocomplete T="ItemDto" Value="line.Item" ValueChanged="it => ItemChanged(line, it)" SearchFunc="Search"
-                                     ToStringFunc="@(it => it is null ? null : $"{it.Code} - {it.Title}")" Placeholder="کد، نام یا بارکد"
-                                     ResetValueOnEmptyText="true" Dense="true" MaxItems="40" Disabled="ReadOnly"
-                                     Error="@(ShowErrors && line.Item is null)" ErrorText="کالا یا خدمت را انتخاب کنید"
-                                     Variant="Variant.Outlined" Margin="Margin.Dense">
-                        <ItemTemplate Context="it">
-                            <span class="code ml-2">@it.Code</span> @it.Title
-                            <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true" Class="mr-1">(@it.UnitTitle)</MudText>
-                        </ItemTemplate>
-                    </MudAutocomplete>
+                    @if (line.StockLineId is not null)
+                    {
+                        <div><span class="code ml-1">@line.Item?.Code</span> @line.Item?.Title</div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">از @line.StockRef</MudText>
+                    }
+                    else
+                    {
+                        <MudAutocomplete T="ItemDto" Value="line.Item" ValueChanged="it => ItemChanged(line, it)" SearchFunc="Search"
+                                         ToStringFunc="@(it => it is null ? null : $"{it.Code} - {it.Title}")" Placeholder="@(StockMode ? "خدمت: کد یا نام" : "کد، نام یا بارکد")"
+                                         ResetValueOnEmptyText="true" Dense="true" MaxItems="40" Disabled="ReadOnly"
+                                         Error="@(ShowErrors && line.Item is null)" ErrorText="کالا یا خدمت را انتخاب کنید"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <ItemTemplate Context="it">
+                                <span class="code ml-2">@it.Code</span> @it.Title
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true" Class="mr-1">(@it.UnitTitle)</MudText>
+                            </ItemTemplate>
+                        </MudAutocomplete>
+                    }
                     @if (line.Item?.TaxItemId is null && line.Item is not null && WarnTaxId)
                     {
                         <MudText Typo="Typo.caption" Color="Color.Warning">شناسه مودیان ندارد</MudText>
@@ -37,7 +45,7 @@
                 </td>
                 <td>
                     <MudNumericField T="decimal" @bind-Value="line.Quantity" @bind-Value:after="Notify" Format="#,0.######" HideSpinButtons="true" Min="0" Class="num"
-                                     Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Disabled="@(ReadOnly || line.StockLineId is not null)" Variant="Variant.Outlined" Margin="Margin.Dense"
                                      HelperText="@line.Item?.UnitTitle" />
                 </td>
                 <td>
@@ -69,7 +77,7 @@
                                            Color="@(HasDescription(line) ? Color.Primary : Color.Default)" aria-label="شرح ردیف" />
                         </MudTooltip>
                         <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error"
-                                       Disabled="Lines.Count == 1" OnClick="() => RemoveAsync(line)" aria-label="حذف ردیف" />
+                                       Disabled="@(Lines.Count == 1 && !StockMode)" OnClick="() => RemoveAsync(line)" aria-label="حذف ردیف" />
                         </div>
                     }
                 </td>
@@ -88,10 +96,63 @@
     </tbody>
 </table>
 </div>
+@if (StockMode && Lines.Count == 0)
+{
+    <MudPaper Class="pa-6 my-2 empty-hint" Elevation="0" Outlined="true">
+        <MudIcon Icon="@Icons.Material.Outlined.Inventory" Color="Color.Secondary" />
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            کالا از @StockTitle می‌آید: طرف حساب را انتخاب کنید و «افزودن از @StockTitle» را بزنید@(GoodsOnly ? "" : "؛ خدمت را با «ردیف خدمت» اضافه کنید").
+        </MudText>
+    </MudPaper>
+}
 @if (!ReadOnly)
 {
-    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAsync" Class="mt-1">ردیف جدید</MudButton>
+    <MudStack Row="true" Spacing="1" Class="mt-1">
+        @if (StockMode)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.PlaylistAdd" OnClick="OpenPendingAsync">
+                افزودن از @StockTitle
+            </MudButton>
+        }
+        @if (!StockMode || !GoodsOnly)
+        {
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAsync">@(StockMode ? "ردیف خدمت" : "ردیف جدید")</MudButton>
+        }
+    </MudStack>
 }
+
+<MudDialog @bind-Visible="_pendingOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">ردیف‌های فاکتورنشده @StockTitle</MudText></TitleContent>
+    <DialogContent>
+        @if (_pending.Count == 0)
+        {
+            <MudText Class="pa-4" Color="Color.Secondary">ردیف فاکتورنشده‌ای از @StockTitle برای این طرف حساب نیست؛ اول سند انبار را ثبت کنید.</MudText>
+        }
+        else
+        {
+            <MudTable T="PendingStockLineDto" Items="_pending" Dense="true" Hover="true" Elevation="0" MultiSelection="true" @bind-SelectedItems="_picked">
+                <HeaderContent>
+                    <MudTh>سند</MudTh>
+                    <MudTh>تاریخ</MudTh>
+                    <MudTh>انبار</MudTh>
+                    <MudTh>کالا</MudTh>
+                    <MudTh Style="text-align:left">مقدار</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><span class="code">@Format.No(context.DocNo)</span> ردیف @context.RowNo</MudTd>
+                    <MudTd><span class="code">@context.Date</span></MudTd>
+                    <MudTd>@context.Warehouse</MudTd>
+                    <MudTd><span class="code ml-1">@context.ItemCode</span> @context.ItemTitle</MudTd>
+                    <MudTd Class="num">@context.Quantity.ToString("#,0.######") <span class="select-hint">@context.UnitTitle</span></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _pendingOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddPendingAsync" Disabled="_picked.Count == 0">افزودن @_picked.Count ردیف</MudButton>
+    </DialogActions>
+</MudDialog>
 
 @code {
     public sealed class LineModel
@@ -103,6 +164,9 @@
         public decimal Discount { get; set; }
         public decimal Vat { get; set; }
         public string? Description { get; set; }
+        /// <summary>ردیف رسید خرید یا حواله فروشی که این ردیف از آن آمده (کالا و مقدار قفل).</summary>
+        public long? StockLineId { get; set; }
+        public string? StockRef { get; set; }
 
         public decimal Gross => Math.Round(Quantity * UnitPrice, 0, MidpointRounding.AwayFromZero);
         public decimal Net => Gross - Math.Round(Discount, 0, MidpointRounding.AwayFromZero);
@@ -123,6 +187,43 @@
     /// <summary>بعد از تلاش برای ذخیره: ردیف بدون کالا قرمز شود.</summary>
     [Parameter] public bool ShowErrors { get; set; }
 
+    /// <summary>
+    /// ردیف‌های فاکتورنشده سند انبار (رسید خرید یا حواله فروش) برای انتخاب؛ null یعنی طرف حساب انتخاب نشده.
+    /// با تنظیمش کالا فقط از سند انبار می‌آید و ردیف آزاد فقط خدمت است.
+    /// </summary>
+    [Parameter] public Func<Task<List<PendingStockLineDto>?>>? LoadPending { get; set; }
+    [Parameter] public string StockTitle { get; set; } = "سند انبار";
+
+    private bool StockMode => LoadPending is not null;
+    private List<PendingStockLineDto> _pending = [];
+    private HashSet<PendingStockLineDto> _picked = [];
+    private bool _pendingOpen;
+
+    private async Task OpenPendingAsync()
+    {
+        var list = await LoadPending!();
+        if (list is null) return;
+        var taken = Lines.Select(l => l.StockLineId).ToHashSet();
+        _pending = list.Where(p => !taken.Contains(p.LineId)).ToList();
+        _picked = [];
+        _pendingOpen = true;
+    }
+
+    private async Task AddPendingAsync()
+    {
+        foreach (var p in _picked.OrderBy(x => x.DocNo).ThenBy(x => x.RowNo))
+        {
+            var item = Items.FirstOrDefault(i => i.Id == p.ItemId);
+            Lines.Add(new LineModel
+            {
+                Item = item, Quantity = p.Quantity, UnitPrice = p.Price ?? 0, StockLineId = p.LineId, StockRef = p.Title,
+                Vat = 0
+            });
+        }
+        _pendingOpen = false;
+        await Notify();
+    }
+
     private readonly HashSet<LineModel> _descOpen = [];
 
     private bool HasDescription(LineModel line) => _descOpen.Contains(line) || !string.IsNullOrEmpty(line.Description);
@@ -140,7 +241,7 @@
 
     private Task<IEnumerable<ItemDto>> Search(string? term, CancellationToken ct)
     {
-        IEnumerable<ItemDto> list = Items.Where(i => i.IsActive && (!GoodsOnly || i.Kind == ItemKind.Goods));
+        IEnumerable<ItemDto> list = Items.Where(i => i.IsActive && (StockMode ? i.Kind == ItemKind.Service : !GoodsOnly || i.Kind == ItemKind.Goods));
         term = PersianText.NormalizeOrNull(term);
         if (term is not null)
             list = list.Where(i => i.Title.Contains(term) || i.Code.StartsWith(term) || i.Barcode == term);

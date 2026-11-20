@@ -20,6 +20,9 @@ public interface ISalesDbContext
     /// <summary>فقط‌خواندنی از حسابداری: عنوان حساب تفصیلی (پروژه).</summary>
     IQueryable<DetailRef> Details { get; }
 
+    /// <summary>فقط‌خواندنی از انبار: ردیف‌های رسید و حواله با سربرگشان.</summary>
+    IQueryable<StockLineRef> StockLines { get; }
+
     void Add<T>(T entity) where T : class;
     void Remove<T>(T entity) where T : class;
     Task<int> SaveChangesAsync(CancellationToken ct);
@@ -43,6 +46,7 @@ public sealed class SalesItemRef
     public string UnitTitle { get; init; } = "";
     public int SalesAccountId { get; init; }
     public int SalesReturnAccountId { get; init; }
+    public decimal? SalesPrice { get; init; }
 }
 
 public sealed class DetailRef
@@ -74,8 +78,9 @@ public sealed record SalesVoucherDto(long VoucherId, int TempNo, int? VoucherNo,
     public static SalesVoucherDto? Of(PostedVoucher? v) => v is null ? null : new(v.VoucherId, v.TempNo, v.VoucherNo, v.Status);
 }
 
+/// <param name="IssueLineId">کالا: ردیف حواله فروش (کالا و مقدار باید همان حواله باشد)؛ خدمت: خالی.</param>
 public sealed record SalesLineRequest(int ItemId, decimal Quantity, decimal UnitPrice, decimal Discount = 0, decimal VatAmount = 0,
-    string? Description = null);
+    string? Description = null, long? IssueLineId = null);
 
 /// <param name="ProjectDetailId">تفصیلی پروژه (برای معین‌هایی مثل درآمد خدمات که پروژه می‌خواهند).</param>
 public sealed record SaveSalesInvoiceRequest(string Date, int CustomerId, TaxInvoiceType InvoiceType, SettlementMethod Settlement,
@@ -86,14 +91,16 @@ public sealed record SalesInvoiceListItemDto(long Id, int DocNo, string Date, in
     SalesVoucherDto? Voucher);
 
 public sealed record SalesLineDto(long Id, short RowNo, int ItemId, string ItemCode, string ItemTitle, string UnitTitle,
-    decimal Quantity, decimal UnitPrice, decimal Discount, decimal Amount, decimal VatAmount, string? Description, decimal ReturnedQuantity);
+    decimal Quantity, decimal UnitPrice, decimal Discount, decimal Amount, decimal VatAmount, string? Description, decimal ReturnedQuantity,
+    long? IssueLineId, string? Issue);
 
 public sealed record SalesInvoiceDto(long Id, int DocNo, string Date, int CustomerId, string CustomerName, TaxInvoiceType InvoiceType,
     SettlementMethod Settlement, decimal? CashAmount, int? ProjectDetailId, string? ProjectTitle, string? Description,
     decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, decimal VatAmount, decimal Total, TaxStatus TaxStatus,
     List<SalesLineDto> Lines, SalesVoucherDto? Voucher, int ReturnCount);
 
-public sealed record SalesReturnLineRequest(long InvoiceLineId, decimal Quantity);
+/// <param name="ReceiptLineId">کالا: ردیف رسید برگشت از فروش (مقدار باید همان رسید باشد)؛ خدمت: خالی.</param>
+public sealed record SalesReturnLineRequest(long InvoiceLineId, decimal Quantity, long? ReceiptLineId = null);
 
 public sealed record SaveSalesReturnRequest(string Date, long InvoiceId, string? Description, List<SalesReturnLineRequest> Lines);
 
@@ -101,14 +108,14 @@ public sealed record SalesReturnListItemDto(long Id, int DocNo, string Date, lon
     decimal NetAmount, decimal VatAmount, decimal Total, string? Description, SalesVoucherDto? Voucher);
 
 public sealed record SalesReturnLineDto(long InvoiceLineId, short RowNo, string ItemCode, string ItemTitle, string UnitTitle,
-    decimal Quantity, decimal GrossAmount, decimal Discount, decimal Amount, decimal VatAmount);
+    decimal Quantity, decimal GrossAmount, decimal Discount, decimal Amount, decimal VatAmount, long? ReceiptLineId, string? Receipt);
 
 public sealed record SalesReturnDto(long Id, int DocNo, string Date, long InvoiceId, int InvoiceDocNo, string InvoiceDate,
     int CustomerId, string CustomerName, string? Description, decimal GrossAmount, decimal DiscountAmount, decimal VatAmount, decimal Total,
     List<SalesReturnLineDto> Lines, SalesVoucherDto? Voucher);
 
 public sealed record SalesReturnableLineDto(long InvoiceLineId, short RowNo, string ItemCode, string ItemTitle, string UnitTitle,
-    decimal Quantity, decimal UnitPrice, decimal Amount, decimal VatAmount, decimal ReturnedQuantity, decimal Remaining);
+    decimal Quantity, decimal UnitPrice, decimal Amount, decimal VatAmount, decimal ReturnedQuantity, decimal Remaining, long? IssueLineId = null);
 
 public static class DependencyInjection
 {

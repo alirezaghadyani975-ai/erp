@@ -51,6 +51,27 @@ public class TradeTests(SqlFixture db)
 
     private Task<VoucherDto> Voucher(long id) => db.Run<VoucherService, VoucherDto>(s => s.GetAsync(id, default));
 
+    private async Task<int> WarehouseAsync() =>
+        (await db.Run<WarehouseService, List<WarehouseDto>>(s => s.GetAllAsync(false, default))).First(w => w.Code == "01").Id;
+
+    /// <summary>ثبت سند انبار و برگرداندن شناسه ردیف‌هایش به ترتیب.</summary>
+    private async Task<List<long>> StockAsync(StockDocType type, string date, int? party, params StockLineRequest[] lines)
+    {
+        var warehouse = await WarehouseAsync();
+        var id = await db.Run<StockDocService, long>(s => s.CreateAsync(
+            new SaveStockDocRequest(type, date, warehouse, party, null, [.. lines]), default));
+        return (await db.Run<StockDocService, StockDocDto>(s => s.GetAsync(id, default))).Lines.Select(l => l.Id).ToList();
+    }
+
+    private Task<long> StockDocIdAsync(long lineId) =>
+        db.Run<StockDocService, long>(async s =>
+        {
+            foreach (var receipts in new[] { true, false })
+                foreach (var d in await s.ListAsync(receipts, null, null, null, null, default))
+                    if ((await s.GetAsync(d.Id, default)).Lines.Any(l => l.Id == lineId)) return d.Id;
+            throw new InvalidOperationException();
+        });
+
     [Fact]
     public async Task Item_code_is_generated_and_kind_follows_group()
     {
@@ -71,9 +92,34 @@ public class TradeTests(SqlFixture db)
     {
         if (!db.Enabled) return;
         var s = await SeedAsync();
+        var receipt = await StockAsync(StockDocType.PurchaseReceipt, "1417/03/01", s.Supplier,
+            new StockLineRequest(s.Goods, 3, EnteredPrice: 900), new StockLineRequest(s.Exempt, 2));
+
+        // بدون رسید یا با مقدار دیگر پذیرفته نمی‌شود
+        var noReceipt = await Assert.ThrowsAsync<DomainException>(() => db.Run<PurchaseInvoiceService, long>(x => x.CreateAsync(
+            new SavePurchaseInvoiceRequest("1417/03/01", s.Supplier, PayableKind.Trade, null, null, null, null,
+                [new PurchaseLineRequest(s.Goods, 3, 1000)]), default)));
+        Assert.Contains("رسید خرید", noReceipt.Message);
+        var otherQty = await Assert.ThrowsAsync<DomainException>(() => db.Run<PurchaseInvoiceService, long>(x => x.CreateAsync(
+            new SavePurchaseInvoiceRequest("1417/03/01", s.Supplier, PayableKind.Trade, null, null, null, null,
+                [new PurchaseLineRequest(s.Goods, 2, 1000, ReceiptLineId: receipt[0])]), default)));
+        Assert.Contains("کالا و مقدار", otherQty.Message);
+
+        Assert.Equal(2, (await db.Run<PurchaseInvoiceService, List<Erp.Inventory.Contracts.PendingStockLineDto>>(
+            x => x.PendingReceiptsAsync(s.Supplier, null, default))).Count(p => receipt.Contains(p.LineId)));
         var id = await db.Run<PurchaseInvoiceService, long>(x => x.CreateAsync(new SavePurchaseInvoiceRequest("1417/03/01", s.Supplier,
             PayableKind.Trade, "P-1", "1417/03/01", null, "خرید تست",
-            [new PurchaseLineRequest(s.Goods, 3, 1000, 300, 270), new PurchaseLineRequest(s.Exempt, 2, 500)]), default));
+            [new PurchaseLineRequest(s.Goods, 3, 1000, 300, 270, ReceiptLineId: receipt[0]),
+             new PurchaseLineRequest(s.Exempt, 2, 500, ReceiptLineId: receipt[1])]), default));
+
+        // رسید فاکتورشده اصلاح و حذف نمی‌شود و دوباره فاکتور نمی‌شود
+        var receiptDoc = await StockDocIdAsync(receipt[0]);
+        var locked = await Assert.ThrowsAsync<DomainException>(() => db.Run<StockDocService>(x => x.DeleteAsync(receiptDoc, default)));
+        Assert.Contains("فاکتور خرید", locked.Message);
+        var twice = await Assert.ThrowsAsync<DomainException>(() => db.Run<PurchaseInvoiceService, long>(x => x.CreateAsync(
+            new SavePurchaseInvoiceRequest("1417/03/02", s.Supplier, PayableKind.Trade, null, null, null, null,
+                [new PurchaseLineRequest(s.Goods, 3, 1000, ReceiptLineId: receipt[0])]), default)));
+        Assert.Contains("قبلاً", twice.Message);
 
         var invoice = await db.Run<PurchaseInvoiceService, PurchaseInvoiceDto>(x => x.GetAsync(id, default));
         Assert.Equal((4000m, 300m, 3700m, 270m, 3970m),
@@ -83,10 +129,15 @@ public class TradeTests(SqlFixture db)
         Assert.Equal(["2206", "2541", "5011"], v.Lines.Select(l => l.AccountCode)); // دو کالای یک گروه در یک ردیف
         Assert.Equal(3700m, v.Lines[0].Debit);
 
-        // برگشت ۱ از ۳: سهم مبلغ پس از تخفیف و ارزش افزوده
+        // برگشت ۱ از ۳: اول حواله برگشت انبار، بعد برگشت از خرید با سهم مبلغ پس از تخفیف و ارزش افزوده
         var lineId = invoice.Lines[0].Id;
+        var issue1 = await StockAsync(StockDocType.PurchaseReturnIssue, "1417/03/05", s.Supplier,
+            new StockLineRequest(s.Goods, 1, SourceLineId: receipt[0]));
+        var noIssue = await Assert.ThrowsAsync<DomainException>(() => db.Run<PurchaseReturnService, long>(x => x.CreateAsync(
+            new SavePurchaseReturnRequest("1417/03/05", id, null, [new ReturnLineRequest(lineId, 1)]), default)));
+        Assert.Contains("حواله برگشت", noIssue.Message);
         var retId = await db.Run<PurchaseReturnService, long>(x => x.CreateAsync(
-            new SavePurchaseReturnRequest("1417/03/05", id, null, [new ReturnLineRequest(lineId, 1)]), default));
+            new SavePurchaseReturnRequest("1417/03/05", id, null, [new ReturnLineRequest(lineId, 1, issue1[0])]), default));
         var ret = await db.Run<PurchaseReturnService, PurchaseReturnDto>(x => x.GetAsync(retId, default));
         Assert.Equal((900m, 90m), (ret.Amount, ret.VatAmount));
         var rv = await Voucher(ret.Voucher!.VoucherId);
@@ -94,12 +145,14 @@ public class TradeTests(SqlFixture db)
         Assert.Equal(990m, rv.Lines[0].Debit);
 
         // برگشت بقیه: باقی مبلغ دقیق (بدون اختلاف گرد کردن)
+        var issue2 = await StockAsync(StockDocType.PurchaseReturnIssue, "1417/03/06", s.Supplier,
+            new StockLineRequest(s.Goods, 2, SourceLineId: receipt[0]));
         var ret2 = await db.Run<PurchaseReturnService, long>(x => x.CreateAsync(
-            new SavePurchaseReturnRequest("1417/03/06", id, null, [new ReturnLineRequest(lineId, 2)]), default));
+            new SavePurchaseReturnRequest("1417/03/06", id, null, [new ReturnLineRequest(lineId, 2, issue2[0])]), default));
         Assert.Equal(1800m, (await db.Run<PurchaseReturnService, PurchaseReturnDto>(x => x.GetAsync(ret2, default))).Amount);
 
-        var over = await Assert.ThrowsAsync<DomainException>(() => db.Run<PurchaseReturnService, long>(x => x.CreateAsync(
-            new SavePurchaseReturnRequest("1417/03/07", id, null, [new ReturnLineRequest(lineId, 1)]), default)));
+        var over = await Assert.ThrowsAsync<DomainException>(() => StockAsync(StockDocType.PurchaseReturnIssue, "1417/03/07", s.Supplier,
+            new StockLineRequest(s.Goods, 1, SourceLineId: receipt[0])));
         Assert.Contains("قابل برگشت", over.Message);
 
         // فاکتور دارای برگشت اصلاح و حذف نمی‌شود
@@ -128,9 +181,16 @@ public class TradeTests(SqlFixture db)
     {
         if (!db.Enabled) return;
         var s = await SeedAsync();
+        await StockAsync(StockDocType.PurchaseReceipt, "1417/04/01", s.Supplier, new StockLineRequest(s.Goods, 10));
+        var issue = await StockAsync(StockDocType.SalesIssue, "1417/04/01", s.Customer, new StockLineRequest(s.Goods, 4));
+        var noIssue = await Assert.ThrowsAsync<DomainException>(() => db.Run<SalesInvoiceService, long>(x => x.CreateAsync(
+            new SaveSalesInvoiceRequest("1417/04/01", s.Customer, TaxInvoiceType.WithBuyer, SettlementMethod.Credit, null, null, null,
+                [new SalesLineRequest(s.Goods, 4, 2500)]), default)));
+        Assert.Contains("حواله فروش", noIssue.Message);
+
         var id = await db.Run<SalesInvoiceService, long>(x => x.CreateAsync(new SaveSalesInvoiceRequest("1417/04/01", s.Customer,
             TaxInvoiceType.WithBuyer, SettlementMethod.Credit, null, null, "فروش تست",
-            [new SalesLineRequest(s.Goods, 4, 2500, 1000, 900)]), default));
+            [new SalesLineRequest(s.Goods, 4, 2500, 1000, 900, IssueLineId: issue[0])]), default));
 
         var invoice = await db.Run<SalesInvoiceService, SalesInvoiceDto>(x => x.GetAsync(id, default));
         Assert.Equal((10000m, 1000m, 900m, 9900m), (invoice.GrossAmount, invoice.DiscountAmount, invoice.VatAmount, invoice.Total));
@@ -139,8 +199,10 @@ public class TradeTests(SqlFixture db)
         Assert.Equal(["2411", "6301", "6003", "5141"], v.Lines.Select(l => l.AccountCode));
         Assert.Equal((9900m, 1000m, 10000m, 900m), (v.Lines[0].Debit, v.Lines[1].Debit, v.Lines[2].Credit, v.Lines[3].Credit));
 
+        // اول رسید برگشت انبار از همان حواله، بعد برگشت از فروش با سهم نسبی
+        var back = await StockAsync(StockDocType.SalesReturnReceipt, "1417/04/03", s.Customer, new StockLineRequest(s.Goods, 1, SourceLineId: issue[0]));
         var retId = await db.Run<SalesReturnService, long>(x => x.CreateAsync(
-            new SaveSalesReturnRequest("1417/04/03", id, "مرجوعی", [new SalesReturnLineRequest(invoice.Lines[0].Id, 1)]), default));
+            new SaveSalesReturnRequest("1417/04/03", id, "مرجوعی", [new SalesReturnLineRequest(invoice.Lines[0].Id, 1, back[0])]), default));
         var ret = await db.Run<SalesReturnService, SalesReturnDto>(x => x.GetAsync(retId, default));
         Assert.Equal((2500m, 250m, 225m, 2475m), (ret.GrossAmount, ret.DiscountAmount, ret.VatAmount, ret.Total));
         var rv = await Voucher(ret.Voucher!.VoucherId);
@@ -149,9 +211,10 @@ public class TradeTests(SqlFixture db)
 
         // اصلاح برگشت همان سند را بازنویسی می‌کند؛ حذف برگشت، فاکتور را دوباره قابل اصلاح می‌کند
         await db.Run<SalesReturnService>(x => x.UpdateAsync(retId,
-            new SaveSalesReturnRequest("1417/04/03", id, null, [new SalesReturnLineRequest(invoice.Lines[0].Id, 2)]), default));
+            new SaveSalesReturnRequest("1417/04/03", id, null, [new SalesReturnLineRequest(invoice.Lines[0].Id, 1, back[0])]), default));
         Assert.Equal(ret.Voucher.VoucherId, (await db.Run<SalesReturnService, SalesReturnDto>(x => x.GetAsync(retId, default))).Voucher!.VoucherId);
         await db.Run<SalesReturnService>(x => x.DeleteAsync(retId, default));
+        await db.Run<StockDocService>(async x => await x.DeleteAsync(await StockDocIdAsync(back[0]), default));
         await db.Run<SalesInvoiceService>(x => x.DeleteAsync(id, default));
         await Assert.ThrowsAsync<Erp.SharedKernel.Domain.NotFoundException>(() => Voucher(invoice.Voucher.VoucherId));
     }
@@ -167,9 +230,111 @@ public class TradeTests(SqlFixture db)
                 [new SalesLineRequest(s.Service, 1, 5000)]), default)));
         Assert.Contains("6101", project.Message);
 
+        await StockAsync(StockDocType.PurchaseReceipt, "1417/04/02", s.Supplier, new StockLineRequest(s.Goods, 1));
+        var issue = await StockAsync(StockDocType.SalesIssue, "1417/04/02", s.Customer, new StockLineRequest(s.Goods, 1));
         var mixed = await Assert.ThrowsAsync<DomainException>(() => db.Run<SalesInvoiceService, long>(x => x.CreateAsync(
             new SaveSalesInvoiceRequest("1417/04/02", s.Customer, TaxInvoiceType.WithBuyer, SettlementMethod.Mixed, 9000, null, null,
-                [new SalesLineRequest(s.Goods, 1, 5000)]), default)));
+                [new SalesLineRequest(s.Goods, 1, 5000, IssueLineId: issue[0])]), default)));
         Assert.Contains("نقد و نسیه", mixed.Message);
+    }
+
+    // ------------------------------------------------------------------ انبار
+
+    [Fact]
+    public async Task Stock_never_goes_negative_on_any_date()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var item = await NewItemAsync("کالای تست موجودی");
+        var first = await StockAsync(StockDocType.PurchaseReceipt, "1417/05/10", s.Supplier, new StockLineRequest(item, 5));
+
+        var tooMuch = await Assert.ThrowsAsync<DomainException>(() =>
+            StockAsync(StockDocType.SalesIssue, "1417/05/11", s.Customer, new StockLineRequest(item, 6)));
+        Assert.Contains("منفی", tooMuch.Message);
+        // حواله با تاریخ پیش از رسید
+        var early = await Assert.ThrowsAsync<DomainException>(() =>
+            StockAsync(StockDocType.SalesIssue, "1417/05/09", s.Customer, new StockLineRequest(item, 1)));
+        Assert.Contains("1417/05/09", early.Message);
+
+        // رسید و حواله در یک روز: رسید اول حساب می‌شود
+        await StockAsync(StockDocType.PurchaseReceipt, "1417/05/12", s.Supplier, new StockLineRequest(item, 1));
+        Assert.Single(await StockAsync(StockDocType.SalesIssue, "1417/05/12", s.Customer, new StockLineRequest(item, 6)));
+
+        // حذف رسیدی که حواله بعدی به آن تکیه دارد
+        var receiptDoc = await StockDocIdAsync(first[0]);
+        var delete = await Assert.ThrowsAsync<DomainException>(() => db.Run<StockDocService>(x => x.DeleteAsync(receiptDoc, default)));
+        Assert.Contains("منفی", delete.Message);
+
+        // کاردکس: ورود ۶، خروج ۶، مانده صفر
+        var kardex = await db.Run<StockReportService, KardexDto>(x => x.KardexAsync(item, null, null, null, default));
+        Assert.Equal((6m, 6m, 0m), (kardex.TotalIn, kardex.TotalOut, kardex.Closing));
+        Assert.Equal([StockDocType.PurchaseReceipt, StockDocType.PurchaseReceipt, StockDocType.SalesIssue], kardex.Rows.Select(r => r.Type));
+    }
+
+    [Fact]
+    public async Task Return_receipt_needs_invoiced_issue_and_opening_is_first_doc_of_warehouse()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var item = await NewItemAsync("کالای تست برگشت انبار");
+        await StockAsync(StockDocType.PurchaseReceipt, "1417/06/01", s.Supplier, new StockLineRequest(item, 3));
+        var issue = await StockAsync(StockDocType.SalesIssue, "1417/06/02", s.Customer, new StockLineRequest(item, 3));
+        var notInvoiced = await Assert.ThrowsAsync<DomainException>(() =>
+            StockAsync(StockDocType.SalesReturnReceipt, "1417/06/03", s.Customer, new StockLineRequest(item, 1, SourceLineId: issue[0])));
+        Assert.Contains("فاکتور نشده", notInvoiced.Message);
+
+        // موجودی اول دوره: روز اول سال مالی، یکی برای هر انبار، فی الزامی
+        var wh = await db.Run<WarehouseService, int>(x => x.CreateAsync(new SaveWarehouseRequest("T9", "انبار تست اول دوره"), default));
+        var notFirstDay = await Assert.ThrowsAsync<DomainException>(() => db.Run<StockDocService, long>(x => x.CreateAsync(
+            new SaveStockDocRequest(StockDocType.Opening, "1417/02/01", wh, null, null, [new StockLineRequest(item, 1, EnteredPrice: 100)]), default)));
+        Assert.Contains("روز اول", notFirstDay.Message);
+        await db.Run<StockDocService, long>(x => x.CreateAsync(
+            new SaveStockDocRequest(StockDocType.Opening, "1417/01/01", wh, null, null, [new StockLineRequest(item, 2, EnteredPrice: 100)]), default));
+        var second = await Assert.ThrowsAsync<DomainException>(() => db.Run<StockDocService, long>(x => x.CreateAsync(
+            new SaveStockDocRequest(StockDocType.Opening, "1417/01/01", wh, null, null, [new StockLineRequest(item, 1, EnteredPrice: 100)]), default)));
+        Assert.Contains("موجودی اول دوره دارد", second.Message);
+
+        var balances = await db.Run<StockReportService, List<StockBalanceDto>>(x => x.BalancesAsync(wh, null, null, false, default));
+        Assert.Equal(2m, balances.Single(b => b.ItemId == item).Quantity);
+
+        // انبار دارای سند حذف نمی‌شود
+        var del = await Assert.ThrowsAsync<DomainException>(() => db.Run<WarehouseService>(x => x.DeleteAsync(wh, default)));
+        Assert.Contains("سند انبار دارد", del.Message);
+    }
+
+    [Fact]
+    public async Task Consumption_issue_needs_cost_factor_and_center()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var item = await NewItemAsync("کالای تست مصرف");
+        await StockAsync(StockDocType.PurchaseReceipt, "1417/07/01", s.Supplier, new StockLineRequest(item, 4));
+        var factor = (await db.Run<Erp.Costing.Application.Factors.CostFactorService, List<Erp.Costing.Application.CostFactorDto>>(
+            x => x.SearchAsync(null, null, false, default))).First(f => f.Nature != Erp.Costing.Contracts.CostNature.Finance);
+        var type = (await db.Run<Erp.Costing.Application.Setup.CostSetupService, List<Erp.Costing.Application.CostCenterTypeDto>>(
+            x => x.GetCenterTypesAsync(true, default))).First(t => t.Function == Erp.Costing.Contracts.CostFunction.Admin && t.IsSystem);
+        var centerId = await db.Run<Erp.Costing.Application.Centers.CostCenterService, int>(x => x.CreateAsync(
+            new Erp.Costing.Application.SaveCostCenterRequest { Title = "اداری تست انبار", CenterTypeId = type.Id }, default));
+        var center = (Id: centerId, Title: "اداری تست انبار");
+
+        var noFactor = await Assert.ThrowsAsync<DomainException>(() =>
+            StockAsync(StockDocType.Consumption, "1417/07/02", null, new StockLineRequest(item, 1)));
+        Assert.Contains("عامل هزینه", noFactor.Message);
+        var noCenter = await Assert.ThrowsAsync<DomainException>(() =>
+            StockAsync(StockDocType.Consumption, "1417/07/02", null, new StockLineRequest(item, 1, CostFactorId: factor.Id)));
+        Assert.Contains("مرکز هزینه", noCenter.Message);
+
+        var lines = await StockAsync(StockDocType.Consumption, "1417/07/02", null,
+            new StockLineRequest(item, 1, CostFactorId: factor.Id, CostCenterId: center.Id));
+        var doc = await db.Run<StockDocService, StockDocDto>(async x => await x.GetAsync(await StockDocIdAsync(lines[0]), default));
+        Assert.Equal((factor.Title, center.Title), (doc.Lines[0].CostFactor, doc.Lines[0].CostCenter));
+    }
+
+    private async Task<int> NewItemAsync(string title)
+    {
+        var groups = await db.Run<ItemGroupService, List<ItemGroupDto>>(x => x.GetAllAsync(false, default));
+        var unit = (await db.Run<ItemService, List<ItemUnitDto>>(x => x.GetUnitsAsync(default)))[0].Id;
+        return await db.Run<ItemService, int>(x => x.CreateAsync(
+            new SaveItemRequest(null, title, groups.Single(g => g.Title == "کالای بازرگانی").Id, unit), default));
     }
 }

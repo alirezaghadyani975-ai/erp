@@ -53,7 +53,8 @@
             <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" ShowErrors="_check" />
         </MudItem>
         <MudItem xs="12" sm="6" md="5">
-            <PersonPicker @bind-PersonId="_supplierId" PersonName="@_supplierName" Label="تأمین‌کننده" Required="true" Disabled="ReadOnly" ShowErrors="_check" />
+            <PersonPicker @bind-PersonId="_supplierId" PersonName="@_supplierName" Label="تأمین‌کننده" Required="true" ShowErrors="_check"
+                          Disabled="@(ReadOnly || _lines.Any(l => l.StockLineId is not null))" />
         </MudItem>
         <MudItem xs="12" md="4">
             <MudText Typo="Typo.caption" Color="Color.Secondary">طرف بستانکار</MudText>
@@ -85,7 +86,8 @@
         <MudSpacer />
         <VatRateHint Date="@_date" />
     </MudStack>
-    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" GoodsOnly="true" ShowErrors="_check" Changed="() => { }" />
+    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" GoodsOnly="true" ShowErrors="_check" Changed="() => { }"
+                LoadPending="LoadPendingAsync" StockTitle="رسید خرید" />
     @if (_returned.Count > 0)
     {
         <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-1">
@@ -115,7 +117,7 @@
     private (string, decimal)[] Totals => [("جمع ناخالص", Gross), ("تخفیف", Gross - Net), ("ارزش افزوده", Vat)];
 
     private List<ItemDto> _items = [];
-    private List<TradeLines.LineModel> _lines = [new()];
+    private List<TradeLines.LineModel> _lines = [];
     private List<PurchaseLineDto> _returned = [];
     private int? _supplierId;
     private string? _supplierName;
@@ -148,7 +150,7 @@
         _lines = x.Lines.Select(l => new TradeLines.LineModel
         {
             Id = l.Id, Item = _items.FirstOrDefault(i => i.Id == l.ItemId), Quantity = l.Quantity, UnitPrice = l.UnitPrice,
-            Discount = l.Discount, Vat = l.VatAmount, Description = l.Description
+            Discount = l.Discount, Vat = l.VatAmount, Description = l.Description, StockLineId = l.ReceiptLineId, StockRef = l.Receipt
         }).ToList();
         _returned = x.Lines.Where(l => l.ReturnedQuantity > 0).ToList();
     }
@@ -160,6 +162,15 @@
             $"{x.Date}{(x.InvoiceNo is null ? "" : $" · فاکتور {x.InvoiceNo}")}", Format.Amount(x.Total))).ToList();
     }
 
+    /// <summary>ردیف‌های رسید خرید فاکتورنشده تأمین‌کننده.</summary>
+    private async Task<List<PendingStockLineDto>?> LoadPendingAsync()
+    {
+        if (_supplierId is not int supplier) { Snackbar.Add("اول تأمین‌کننده را انتخاب کنید.", Severity.Warning); return null; }
+        var r = await Backend.Run<PurchaseInvoiceService, List<PendingStockLineDto>>(s => s.PendingReceiptsAsync(supplier, Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return null; }
+        return r.Value;
+    }
+
     private async Task CancelAsync()
     {
         _error = null;
@@ -168,7 +179,7 @@
         else
         {
             (_supplierId, _supplierName, _invoiceNo, _invoiceDate, _sellerTaxId, _description, _payable) = (null, null, null, null, null, null, P.PayableKind.Trade);
-            _lines = [new()];
+            _lines = [];
         }
     }
 
@@ -179,11 +190,12 @@
         List<string> errors = [];
         if (_date is null) errors.Add("تاریخ الزامی است.");
         if (_supplierId is null) errors.Add("تأمین‌کننده را انتخاب کنید.");
+        if (_lines.Count == 0) errors.Add("حداقل یک ردیف لازم است؛ کالا را از رسید خرید اضافه کنید.");
         errors.AddRange(_lines.Select((l, i) => (l, i)).Where(x => x.l.Item is null).Select(x => $"ردیف {x.i + 1}: کالا را انتخاب کنید."));
         if (errors.Count > 0) { _error = string.Join("\n", errors); return; }
 
         var request = new SavePurchaseInvoiceRequest(_date!, _supplierId!.Value, _payable, _invoiceNo, _invoiceDate, _sellerTaxId, _description,
-            _lines.Select(l => new PurchaseLineRequest(l.Item!.Id, l.Quantity, l.UnitPrice, l.Discount, l.Vat, l.Description)).ToList());
+            _lines.Select(l => new PurchaseLineRequest(l.Item!.Id, l.Quantity, l.UnitPrice, l.Discount, l.Vat, l.Description, l.StockLineId)).ToList());
 
         _saving = true;
         if (Id is long id)

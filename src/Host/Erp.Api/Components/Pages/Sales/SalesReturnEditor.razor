@@ -66,11 +66,10 @@
             <thead>
                 <tr>
                     <th style="width:4%">ردیف</th>
-                    <th>کالا</th>
+                    <th>کالا / خدمت</th>
                     <th style="width:10%">مقدار فاکتور</th>
                     <th style="width:10%">برگشت قبلی</th>
-                    <th style="width:10%">مانده</th>
-                    <th style="width:12%">مقدار برگشتی</th>
+                    <th style="width:14%">مقدار برگشتی</th>
                     <th style="width:13%">مبلغ (تقریبی)</th>
                     <th style="width:12%">ارزش افزوده</th>
                 </tr>
@@ -80,13 +79,27 @@
                 {
                     <tr>
                         <td class="code">@l.Line.RowNo</td>
-                        <td><span class="code ml-2">@l.Line.ItemCode</span> @l.Line.ItemTitle <span class="select-hint">(@l.Line.UnitTitle)</span></td>
+                        <td>
+                            <span class="code ml-2">@l.Line.ItemCode</span> @l.Line.ItemTitle <span class="select-hint">(@l.Line.UnitTitle)</span>
+                            @if (l.Stock is { } s)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">از @s.Title (@s.Date)</MudText>
+                            }
+                        </td>
                         <td class="num">@l.Line.Quantity.ToString("0.######")</td>
                         <td class="num">@l.Line.ReturnedQuantity.ToString("0.######")</td>
-                        <td class="num">@l.Line.Remaining.ToString("0.######")</td>
                         <td>
-                            <MudNumericField T="decimal" @bind-Value="l.Quantity" Format="#,0.######" HideSpinButtons="true" Min="0" Max="l.Line.Remaining"
-                                             Class="num" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            @if (l.Stock is { } st)
+                            {
+                                <MudCheckBox T="bool" Value="l.Quantity > 0" ValueChanged="v => l.Quantity = v ? st.Quantity : 0" Disabled="ReadOnly" Dense="true"
+                                             Label="@st.Quantity.ToString("#,0.######")" Color="Color.Primary" />
+                            }
+                            else
+                            {
+                                <MudNumericField T="decimal" @bind-Value="l.Quantity" Format="#,0.######" HideSpinButtons="true" Min="0" Max="l.Line.Remaining"
+                                                 Class="num" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                 HelperText="@($"مانده {l.Line.Remaining:0.######}")" />
+                            }
                         </td>
                         <td class="num">@Format.Amount(Share(l.Line.Amount, l))</td>
                         <td class="num">@Format.Amount(Share(l.Line.VatAmount, l))</td>
@@ -97,7 +110,7 @@
         @if (!ReadOnly)
         {
             <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.DoneAll" Class="mt-1"
-                       OnClick="@(() => _lines.ForEach(l => l.Quantity = l.Line.Remaining))">برگشت همه مانده</MudButton>
+                       OnClick="@(() => _lines.ForEach(l => l.Quantity = l.Stock?.Quantity ?? l.Line.Remaining))">برگشت همه</MudButton>
         }
         <MudDivider Class="my-3" />
         <TotalsBar Items="Totals" Total="Amount + Vat" TotalLabel="کاهش طلب از مشتری" />
@@ -111,6 +124,15 @@ else if (IsNew && _invoice is null)
         <MudText Typo="Typo.body2" Color="Color.Secondary">فاکتور فروش مرجع را انتخاب کنید تا ردیف‌هایش برای تعیین مقدار برگشتی نمایش داده شود.</MudText>
     </MudPaper>
 }
+else if (_invoice is not null)
+{
+    <MudPaper Class="pa-6 mb-3 empty-hint" Elevation="0" Outlined="true">
+        <MudIcon Icon="@Icons.Material.Outlined.MoveToInbox" Color="Color.Secondary" />
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            این فاکتور ردیف قابل برگشتی ندارد. برای برگشت کالا اول «رسید برگشت از فروش» را در انبار از حواله همین فاکتور ثبت کنید.
+        </MudText>
+    </MudPaper>
+}
 </div>
 </FormWithList>
 
@@ -118,9 +140,11 @@ else if (IsNew && _invoice is null)
     [Parameter] public long? Id { get; set; }
     [SupplyParameterFromQuery(Name = "invoice")] public long? InvoiceParam { get; set; }
 
-    private sealed class LineModel(SalesReturnableLineDto line)
+    /// <summary>ردیف کالا از یک رسید برگشت از فروش (Stock) یا ردیف خدمت فاکتور (بدون رسید).</summary>
+    private sealed class LineModel(SalesReturnableLineDto line, PendingStockLineDto? stock)
     {
         public SalesReturnableLineDto Line { get; } = line;
+        public PendingStockLineDto? Stock { get; } = stock;
         public decimal Quantity { get; set; }
     }
 
@@ -167,14 +191,21 @@ else if (IsNew && _invoice is null)
         (_docNo, _date, _description, _voucher) = (x.DocNo, x.Date, x.Description, x.Voucher);
         _invoice = _invoices.FirstOrDefault(i => i.Id == x.InvoiceId);
         await LoadLinesAsync(x.InvoiceId, id);
-        foreach (var l in _lines) l.Quantity = x.Lines.FirstOrDefault(rl => rl.InvoiceLineId == l.Line.InvoiceLineId)?.Quantity ?? 0;
+        foreach (var l in _lines)
+            l.Quantity = x.Lines.FirstOrDefault(rl => l.Stock is { } s ? rl.ReceiptLineId == s.LineId
+                                                                       : rl.ReceiptLineId is null && rl.InvoiceLineId == l.Line.InvoiceLineId)?.Quantity ?? 0;
     }
 
     private async Task LoadLinesAsync(long invoiceId, long? exceptReturnId)
     {
         var r = await Backend.Run<SalesReturnService, List<SalesReturnableLineDto>>(s => s.ReturnableAsync(invoiceId, exceptReturnId, default));
-        if (!r.Success) { _error = r.Error; _lines = []; return; }
-        _lines = r.Value!.Select(l => new LineModel(l)).ToList();
+        var p = await Backend.Run<SalesReturnService, List<PendingStockLineDto>>(s => s.PendingReceiptsAsync(invoiceId, exceptReturnId, default));
+        if (!r.Success || !p.Success) { _error = r.Error ?? p.Error; _lines = []; return; }
+        var byLine = r.Value!.ToDictionary(l => l.InvoiceLineId);
+        _lines = p.Value!.Where(s => s.InvoiceLineId is long il && byLine.ContainsKey(il))
+            .Select(s => new LineModel(byLine[s.InvoiceLineId!.Value], s))
+            .Concat(r.Value!.Where(l => l.IssueLineId is null && l.Remaining > 0).Select(l => new LineModel(l, null)))
+            .OrderBy(l => l.Line.RowNo).ToList();
     }
 
     private async Task InvoiceChanged(SalesInvoiceListItemDto? invoice)
@@ -217,7 +248,7 @@ else if (IsNew && _invoice is null)
         if (_invoice is null) errors.Add("فاکتور فروش مرجع را انتخاب کنید.");
         if (errors.Count > 0) { _error = string.Join("\n", errors); return; }
         var request = new SaveSalesReturnRequest(_date!, _invoice!.Id, _description,
-            _lines.Where(l => l.Quantity > 0).Select(l => new SalesReturnLineRequest(l.Line.InvoiceLineId, l.Quantity)).ToList());
+            _lines.Where(l => l.Quantity > 0).Select(l => new SalesReturnLineRequest(l.Line.InvoiceLineId, l.Quantity, l.Stock?.LineId)).ToList());
 
         _saving = true;
         if (Id is long id)

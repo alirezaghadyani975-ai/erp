@@ -4,5 +4,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Erp.Inventory.Domain\Erp.Inventory.Domain.csproj" />
+    <ProjectReference Include="..\..\Costing\Erp.Costing.Contracts\Erp.Costing.Contracts.csproj" />
   </ItemGroup>
 </Project>

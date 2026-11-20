@@ -59,6 +59,8 @@ public class SalesInvoiceService(ISalesDbContext db, IVoucherPosting posting, IU
             ? await db.Details.Where(d => d.Id == pid).Select(d => d.Code + " - " + d.Title).FirstOrDefaultAsync(ct)
             : null;
         var vouchers = await posting.FindAsync(SalesInvoice.Module, SalesInvoice.DocType, [id], ct);
+        var issueIds = invoice.Lines.Where(l => l.IssueLineId is not null).Select(l => l.IssueLineId!.Value).ToList();
+        var issues = await db.StockLines.Where(s => issueIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Title, ct);
 
         return new SalesInvoiceDto(invoice.Id, invoice.DocNo, PersianDate.ToPersian(invoice.DocDate), invoice.CustomerId, customer ?? "?",
             invoice.InvoiceType, invoice.SettlementMethod, invoice.CashAmount, invoice.ProjectDetailId, project, invoice.Description,
@@ -67,9 +69,29 @@ public class SalesInvoiceService(ISalesDbContext db, IVoucherPosting posting, IU
             {
                 var item = items.GetValueOrDefault(l.ItemId);
                 return new SalesLineDto(l.Id, l.RowNo, l.ItemId, item?.Code ?? "?", item?.Title ?? "?", item?.UnitTitle ?? "",
-                    l.Quantity, l.UnitPrice, l.Discount, l.Amount, l.VatAmount, l.Description, returned.GetValueOrDefault(l.Id));
+                    l.Quantity, l.UnitPrice, l.Discount, l.Amount, l.VatAmount, l.Description, returned.GetValueOrDefault(l.Id),
+                    l.IssueLineId, l.IssueLineId is long s ? issues.GetValueOrDefault(s) : null);
             }).ToList(),
             SalesVoucherDto.Of(vouchers.GetValueOrDefault(id)), returnCount);
+    }
+
+    /// <summary>ردیف‌های حواله فروش مشتری که هنوز فاکتور نشده‌اند (ردیف‌های همین فاکتور در حال اصلاح هم می‌آیند).</summary>
+    public async Task<List<PendingStockLineDto>> PendingIssuesAsync(int customerId, long? exceptInvoiceId, CancellationToken ct)
+    {
+        access.Demand(SalesPermissions.InvoiceView);
+        var invoiced = db.SalesInvoices.Where(i => i.Id != (exceptInvoiceId ?? 0)).SelectMany(i => i.Lines)
+            .Where(l => l.IssueLineId != null).Select(l => l.IssueLineId!.Value);
+        var lines = await db.StockLines
+            .Where(s => s.DocType == StockDocType.SalesIssue && s.PartyId == customerId && !invoiced.Contains(s.Id))
+            .OrderBy(s => s.DocDate).ThenBy(s => s.DocNo).ThenBy(s => s.RowNo).ToListAsync(ct);
+        var itemIds = lines.Select(l => l.ItemId).Distinct().ToList();
+        var items = await db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+        return lines.Select(s =>
+        {
+            var item = items.GetValueOrDefault(s.ItemId);
+            return new PendingStockLineDto(s.Id, s.DocId, s.DocType, s.DocNo, PersianDate.ToPersian(s.DocDate), s.WarehouseTitle, s.RowNo,
+                s.ItemId, item?.Code ?? "?", item?.Title ?? "?", item?.UnitTitle ?? "", s.Quantity, item?.SalesPrice);
+        }).ToList();
     }
 
     public async Task<long> CreateAsync(SaveSalesInvoiceRequest request, CancellationToken ct)
@@ -144,6 +166,14 @@ public class SalesInvoiceService(ISalesDbContext db, IVoucherPosting posting, IU
         var previous = invoice.Lines.Select(l => l.ItemId).ToHashSet();
         var itemIds = request.Lines.Select(l => l.ItemId).Distinct().ToList();
         var items = await db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+        // کالا از یک ردیف حواله فروش همین مشتری که در فاکتور دیگری نیامده، با همان کالا و مقدار؛ خدمت بدون حواله
+        var issueIds = request.Lines.Where(l => l.IssueLineId is not null).Select(l => l.IssueLineId!.Value).ToList();
+        if (issueIds.Distinct().Count() != issueIds.Count) throw new DomainException("یک ردیف حواله دو بار در فاکتور آمده است.");
+        var issues = await db.StockLines.Where(s => issueIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, ct);
+        var taken = await db.SalesInvoices.Where(i => i.Id != invoice.Id).SelectMany(i => i.Lines.Select(l => new { l.IssueLineId, i.DocNo }))
+            .Where(x => x.IssueLineId != null && issueIds.Contains(x.IssueLineId.Value))
+            .ToDictionaryAsync(x => x.IssueLineId!.Value, x => x.DocNo, ct);
+
         var row = 0;
         foreach (var line in request.Lines)
         {
@@ -151,11 +181,26 @@ public class SalesInvoiceService(ISalesDbContext db, IVoucherPosting posting, IU
             var item = items.GetValueOrDefault(line.ItemId) ?? throw new DomainException($"ردیف {row}: کالا انتخاب نشده یا پیدا نشد.");
             if (!item.IsActive && !previous.Contains(item.Id)) throw new DomainException($"ردیف {row}: «{item.Title}» غیرفعال است.");
             if (item.VatExempt && line.VatAmount != 0) throw new DomainException($"ردیف {row}: «{item.Title}» معاف از ارزش افزوده است.");
+            if (item.Kind == ItemKind.Service)
+            {
+                if (line.IssueLineId is not null) throw new DomainException($"ردیف {row}: «{item.Title}» خدمت است و حواله انبار ندارد.");
+                continue;
+            }
+            var issue = line.IssueLineId is long iid ? issues.GetValueOrDefault(iid) : null;
+            if (issue is null || issue.DocType != StockDocType.SalesIssue)
+                throw new DomainException($"ردیف {row}: «{item.Title}» باید از حواله فروش انتخاب شود (اول حواله انبار، بعد فاکتور).");
+            if (issue.PartyId != request.CustomerId)
+                throw new DomainException($"ردیف {row}: {issue.Title} مال مشتری این فاکتور نیست.");
+            if (taken.TryGetValue(issue.Id, out var takenBy))
+                throw new DomainException($"ردیف {row}: {issue.Title} قبلاً در فاکتور فروش {takenBy:000000} آمده است.");
+            if (issue.ItemId != line.ItemId || issue.Quantity != line.Quantity)
+                throw new DomainException($"ردیف {row}: کالا و مقدار باید همان {issue.Title} باشد.");
         }
 
         invoice.SetHeader(PersianDate.Parse(request.Date), customer.Id, request.InvoiceType, request.Settlement, request.ProjectDetailId,
             request.Description);
-        invoice.SetLines(request.Lines.Select(l => new SalesLineInput(l.ItemId, l.Quantity, l.UnitPrice, l.Discount, l.VatAmount, l.Description)),
+        invoice.SetLines(request.Lines.Select(l => new SalesLineInput(l.ItemId, l.Quantity, l.UnitPrice, l.Discount, l.VatAmount, l.Description,
+                items[l.ItemId].Kind == ItemKind.Goods ? l.IssueLineId : null)),
             request.CashAmount);
         return (customer, items);
     }
@@ -238,6 +283,8 @@ public class SalesReturnService(ISalesDbContext db, IVoucherPosting posting, IUn
         var items = await db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
         var customer = await db.Customers.Where(c => c.Id == invoice.CustomerId).Select(c => c.DisplayName).FirstOrDefaultAsync(ct);
         var vouchers = await posting.FindAsync(SalesInvoice.Module, SalesReturn.DocType, [id], ct);
+        var receiptIds = ret.Lines.Where(l => l.ReceiptLineId is not null).Select(l => l.ReceiptLineId!.Value).ToList();
+        var receipts = await db.StockLines.Where(s => receiptIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Title, ct);
 
         return new SalesReturnDto(ret.Id, ret.DocNo, PersianDate.ToPersian(ret.DocDate), invoice.Id, invoice.DocNo,
             PersianDate.ToPersian(invoice.DocDate), invoice.CustomerId, customer ?? "?", ret.Description, ret.GrossAmount, ret.DiscountAmount,
@@ -247,9 +294,38 @@ public class SalesReturnService(ISalesDbContext db, IVoucherPosting posting, IUn
                 var il = invoice.Lines.First(x => x.Id == l.InvoiceLineId);
                 var item = items.GetValueOrDefault(il.ItemId);
                 return new SalesReturnLineDto(l.InvoiceLineId, il.RowNo, item?.Code ?? "?", item?.Title ?? "?", item?.UnitTitle ?? "",
-                    l.Quantity, l.GrossAmount, l.Discount, l.Amount, l.VatAmount);
+                    l.Quantity, l.GrossAmount, l.Discount, l.Amount, l.VatAmount,
+                    l.ReceiptLineId, l.ReceiptLineId is long s ? receipts.GetValueOrDefault(s) : null);
             }).ToList(),
             SalesVoucherDto.Of(vouchers.GetValueOrDefault(id)));
+    }
+
+    /// <summary>
+    /// ردیف‌های رسید برگشت از فروش که از حواله‌های این فاکتور برگشت خورده و هنوز در برگشت از فروش نیامده‌اند
+    /// (ردیف‌های همین برگشت در حال اصلاح هم می‌آیند).
+    /// </summary>
+    public async Task<List<PendingStockLineDto>> PendingReceiptsAsync(long invoiceId, long? exceptReturnId, CancellationToken ct)
+    {
+        access.Demand(SalesPermissions.ReturnView);
+        var invoice = await db.SalesInvoices.Include(i => i.Lines).AsNoTracking().FirstOrDefaultAsync(i => i.Id == invoiceId, ct)
+                      ?? throw new NotFoundException("فاکتور فروش پیدا نشد.");
+        access.DemandOwner(invoice.CreatedBy);
+        var byIssue = invoice.Lines.Where(l => l.IssueLineId is not null).ToDictionary(l => l.IssueLineId!.Value);
+        var issueIds = byIssue.Keys.ToList();
+        var used = db.SalesReturns.Where(r => r.Id != (exceptReturnId ?? 0)).SelectMany(r => r.Lines)
+            .Where(l => l.ReceiptLineId != null).Select(l => l.ReceiptLineId!.Value);
+        var lines = await db.StockLines
+            .Where(s => s.DocType == StockDocType.SalesReturnReceipt && s.SourceLineId != null && issueIds.Contains(s.SourceLineId.Value)
+                        && !used.Contains(s.Id))
+            .OrderBy(s => s.DocDate).ThenBy(s => s.DocNo).ThenBy(s => s.RowNo).ToListAsync(ct);
+        var items = await db.Items.Where(i => invoice.Lines.Select(l => l.ItemId).Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+        return lines.Select(s =>
+        {
+            var il = byIssue[s.SourceLineId!.Value];
+            var item = items.GetValueOrDefault(s.ItemId);
+            return new PendingStockLineDto(s.Id, s.DocId, s.DocType, s.DocNo, PersianDate.ToPersian(s.DocDate), s.WarehouseTitle, s.RowNo,
+                s.ItemId, item?.Code ?? "?", item?.Title ?? "?", item?.UnitTitle ?? "", s.Quantity, il.UnitPrice, il.Id);
+        }).ToList();
     }
 
     public async Task<List<SalesReturnableLineDto>> ReturnableAsync(long invoiceId, long? exceptReturnId, CancellationToken ct)
@@ -265,7 +341,7 @@ public class SalesReturnService(ISalesDbContext db, IVoucherPosting posting, IUn
             var p = previous.GetValueOrDefault(l.Id) ?? new Prev(0, 0, 0, 0);
             var item = items.GetValueOrDefault(l.ItemId);
             return new SalesReturnableLineDto(l.Id, l.RowNo, item?.Code ?? "?", item?.Title ?? "?", item?.UnitTitle ?? "", l.Quantity,
-                l.UnitPrice, l.Amount, l.VatAmount, p.Quantity, l.Quantity - p.Quantity);
+                l.UnitPrice, l.Amount, l.VatAmount, p.Quantity, l.Quantity - p.Quantity, l.IssueLineId);
         }).ToList();
     }
 
@@ -338,19 +414,47 @@ public class SalesReturnService(ISalesDbContext db, IVoucherPosting posting, IUn
         var previous = await PreviousAsync(invoice, ret.Id == 0 ? null : ret.Id, ct);
         var none = new Prev(0, 0, 0, 0);
 
+        // کالا از یک ردیف رسید برگشت از فروش که از حواله همان ردیف فاکتور برگشت خورده، با همان مقدار؛ خدمت بدون رسید
+        var receiptIds = request.Lines.Where(l => l.ReceiptLineId is not null).Select(l => l.ReceiptLineId!.Value).ToList();
+        var receipts = await db.StockLines.Where(s => receiptIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, ct);
+        var taken = await db.SalesReturns.Where(x => x.Id != ret.Id).SelectMany(x => x.Lines.Select(l => new { l.ReceiptLineId, x.DocNo }))
+            .Where(x => x.ReceiptLineId != null && receiptIds.Contains(x.ReceiptLineId.Value))
+            .ToDictionaryAsync(x => x.ReceiptLineId!.Value, x => x.DocNo, ct);
+
         var inputs = new List<SalesReturnLineInput>();
         foreach (var r in request.Lines.Where(l => l.Quantity != 0))
         {
             var line = invoice.Lines.FirstOrDefault(l => l.Id == r.InvoiceLineId) ?? throw new DomainException("ردیف برگشت در فاکتور فروش مرجع نیست.");
             var p = previous.GetValueOrDefault(line.Id) ?? none;
-            var title = items.GetValueOrDefault(line.ItemId)?.Title ?? "?";
+            var item = items.GetValueOrDefault(line.ItemId);
+            var title = item?.Title ?? "?";
             if (r.Quantity < 0) throw new DomainException($"ردیف {line.RowNo} فاکتور («{title}»): مقدار برگشتی نمی‌تواند منفی باشد.");
             if (r.Quantity > line.Quantity - p.Quantity)
                 throw new DomainException($"ردیف {line.RowNo} فاکتور («{title}»): حداکثر {line.Quantity - p.Quantity:0.######} قابل برگشت است.");
-            inputs.Add(new SalesReturnLineInput(line.Id, r.Quantity,
+
+            long? receiptId = null;
+            if (item?.Kind == ItemKind.Goods)
+            {
+                var receipt = r.ReceiptLineId is long rid ? receipts.GetValueOrDefault(rid) : null;
+                if (receipt is null || receipt.DocType != StockDocType.SalesReturnReceipt || receipt.SourceLineId != line.IssueLineId)
+                    throw new DomainException($"ردیف {line.RowNo} فاکتور («{title}»): برگشت کالا باید از رسید برگشت از فروش همان حواله باشد " +
+                                              "(اول رسید برگشت انبار، بعد برگشت از فروش).");
+                if (taken.TryGetValue(receipt.Id, out var takenBy))
+                    throw new DomainException($"{receipt.Title} قبلاً در برگشت از فروش {takenBy:000000} آمده است.");
+                if (receipt.Quantity != r.Quantity)
+                    throw new DomainException($"ردیف {line.RowNo} فاکتور («{title}»): مقدار برگشتی باید همان {receipt.Title} ({receipt.Quantity:0.######}) باشد.");
+                receiptId = receipt.Id;
+            }
+            else if (r.ReceiptLineId is not null)
+                throw new DomainException($"ردیف {line.RowNo} فاکتور («{title}»): خدمت رسید انبار ندارد.");
+
+            var input = new SalesReturnLineInput(line.Id, r.Quantity,
                 TradeMath.Share(line.GrossAmount, line.Quantity, p.Quantity, p.Gross, r.Quantity),
                 TradeMath.Share(line.Discount, line.Quantity, p.Quantity, p.Discount, r.Quantity),
-                TradeMath.Share(line.VatAmount, line.Quantity, p.Quantity, p.Vat, r.Quantity)));
+                TradeMath.Share(line.VatAmount, line.Quantity, p.Quantity, p.Vat, r.Quantity), receiptId);
+            inputs.Add(input);
+            // دو ردیف انباری از یک ردیف فاکتور در یک برگشت: سهم دومی بعد از اولی حساب شود
+            previous[line.Id] = new Prev(p.Quantity + r.Quantity, p.Gross + input.GrossAmount, p.Discount + input.Discount, p.Vat + input.VatAmount);
         }
 
         ret.SetHeader(PersianDate.Parse(request.Date), invoice.DocDate, request.Description);

@@ -27,7 +27,9 @@ public enum TaxStatus : byte
     NotSent = 0
 }
 
-public sealed record SalesLineInput(int ItemId, decimal Quantity, decimal UnitPrice, decimal Discount, decimal VatAmount, string? Description);
+/// <param name="IssueLineId">کالا: ردیف حواله فروش؛ خدمت: خالی.</param>
+public sealed record SalesLineInput(int ItemId, decimal Quantity, decimal UnitPrice, decimal Discount, decimal VatAmount, string? Description,
+    long? IssueLineId = null);
 
 /// <summary>
 /// فاکتور فروش (sls.SalesInvoices). سند: بدهکار مشتری (دریافتنی تجاری) و تخفیف فروش، بستانکار معین فروش گروه هر کالا
@@ -107,7 +109,7 @@ public class SalesInvoice : AggregateRoot<long>
             var discount = TradeMath.Rial(l.Discount);
             if (discount > gross) throw new DomainException($"ردیف {row}: تخفیف از مبلغ ردیف بیشتر است.");
             _lines.Add(new SalesInvoiceLine(row, l.ItemId, Math.Round(l.Quantity, 6), Math.Round(l.UnitPrice, 4), discount, gross - discount,
-                TradeMath.Rial(l.VatAmount), Lines3.Optional(l.Description, $"شرح ردیف {row}", 500)));
+                TradeMath.Rial(l.VatAmount), Lines3.Optional(l.Description, $"شرح ردیف {row}", 500), l.IssueLineId));
         }
         GrossAmount = _lines.Sum(l => l.Amount + l.Discount);
         DiscountAmount = _lines.Sum(l => l.Discount);
@@ -134,7 +136,7 @@ public class SalesInvoiceLine
     private SalesInvoiceLine() { } // EF
 
     internal SalesInvoiceLine(short rowNo, int itemId, decimal quantity, decimal unitPrice, decimal discount, decimal amount,
-        decimal vatAmount, string? description)
+        decimal vatAmount, string? description, long? issueLineId)
     {
         RowNo = rowNo;
         ItemId = itemId;
@@ -144,6 +146,7 @@ public class SalesInvoiceLine
         Amount = amount;
         VatAmount = vatAmount;
         Description = description;
+        IssueLineId = issueLineId;
     }
 
     public long Id { get; private set; }
@@ -158,11 +161,16 @@ public class SalesInvoiceLine
     public decimal VatAmount { get; private set; }
     public string? Description { get; private set; }
 
+    /// <summary>ردیف حواله فروش (inv.StockDocLines)؛ خدمت ندارد.</summary>
+    public long? IssueLineId { get; private set; }
+
     public decimal GrossAmount => Amount + Discount;
 }
 
 /// <summary>ردیف محاسبه‌شده برگشت از فروش (سهم‌ها را سرویس از ردیف فاکتور حساب می‌کند).</summary>
-public sealed record SalesReturnLineInput(long InvoiceLineId, decimal Quantity, decimal GrossAmount, decimal Discount, decimal VatAmount);
+/// <param name="ReceiptLineId">کالا: ردیف رسید برگشت از فروش؛ خدمت: خالی.</param>
+public sealed record SalesReturnLineInput(long InvoiceLineId, decimal Quantity, decimal GrossAmount, decimal Discount, decimal VatAmount,
+    long? ReceiptLineId = null);
 
 /// <summary>
 /// برگشت از فروش (sls.SalesReturns) با ارجاع به فاکتور فروش؛ در سامانه مودیان صورتحساب «برگشت از فروش» با ارجاع به
@@ -213,7 +221,7 @@ public class SalesReturn : AggregateRoot<long>
     {
         var list = lines.Where(l => l.Quantity != 0).ToList();
         if (list.Count == 0) throw new DomainException("مقدار برگشتی حداقل یک ردیف را وارد کنید.");
-        if (list.Select(l => l.InvoiceLineId).Distinct().Count() != list.Count) throw new DomainException("یک ردیف فاکتور دو بار آمده است.");
+        if (list.Select(l => (l.InvoiceLineId, l.ReceiptLineId)).Distinct().Count() != list.Count) throw new DomainException("یک ردیف دو بار آمده است.");
         _lines.Clear();
         short row = 0;
         foreach (var l in list)
@@ -221,7 +229,7 @@ public class SalesReturn : AggregateRoot<long>
             row++;
             if (l.Quantity < 0) throw new DomainException($"ردیف {row}: مقدار برگشتی نمی‌تواند منفی باشد.");
             _lines.Add(new SalesReturnLine(row, l.InvoiceLineId, Math.Round(l.Quantity, 6), l.GrossAmount, l.Discount,
-                l.GrossAmount - l.Discount, l.VatAmount));
+                l.GrossAmount - l.Discount, l.VatAmount, l.ReceiptLineId));
         }
         GrossAmount = _lines.Sum(l => l.GrossAmount);
         DiscountAmount = _lines.Sum(l => l.Discount);
@@ -239,7 +247,7 @@ public class SalesReturnLine
     private SalesReturnLine() { } // EF
 
     internal SalesReturnLine(short rowNo, long invoiceLineId, decimal quantity, decimal grossAmount, decimal discount, decimal amount,
-        decimal vatAmount)
+        decimal vatAmount, long? receiptLineId)
     {
         RowNo = rowNo;
         InvoiceLineId = invoiceLineId;
@@ -248,6 +256,7 @@ public class SalesReturnLine
         Discount = discount;
         Amount = amount;
         VatAmount = vatAmount;
+        ReceiptLineId = receiptLineId;
     }
 
     public long Id { get; private set; }
@@ -259,6 +268,8 @@ public class SalesReturnLine
     public decimal Discount { get; private set; }
     public decimal Amount { get; private set; }
     public decimal VatAmount { get; private set; }
+    /// <summary>ردیف رسید برگشت از فروش (inv.StockDocLines)؛ خدمت ندارد.</summary>
+    public long? ReceiptLineId { get; private set; }
 }
 
 internal static class Lines3

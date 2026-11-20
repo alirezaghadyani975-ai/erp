@@ -1,0 +1,483 @@
+@* فرم مشترک رسید و حواله انبار. نوع سند (اول دوره، خرید، برگشت، فروش، مصرف) ستون‌های ردیف را تعیین می‌کند. *@
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="@Heading" />
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<FormWithList Title="@(Receipts ? "رسیدهای انبار" : "حواله‌های انبار")" Load="LoadSideAsync" NewUrl="@NewUrl(_type)" CurrentUrl="@SelfUrl"
+              Version="_listVersion" Editing="Dirty">
+<FormToolbar Title="@Heading" Permission="@InventoryPermissions.Prefix(_type)" AuditEntity="StockDoc" AuditId="Id" IsNew="IsNew" Editing="_editing"
+             CanEdit="LockReason is null" CanDelete="LockReason is null" Busy="_saving" LockReason="@LockReason"
+             OnNew="@(() => Tabs.Go(NewUrl(_type)))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
+    <Chips>
+        @if (!IsNew && HasInvoicing)
+        {
+            var invoiced = _lines.Count(l => l.Invoice is not null);
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@(invoiced == _lines.Count ? Color.Success : Color.Warning)"
+                     Icon="@Icons.Material.Outlined.Receipt">
+                @(invoiced == 0 ? "فاکتورنشده" : invoiced == _lines.Count ? "فاکتورشده" : $"{invoiced} از {_lines.Count} ردیف فاکتورشده")
+            </MudChip>
+        }
+    </Chips>
+</FormToolbar>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" Style="white-space:pre-line" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
+<div class="@(ReadOnly ? "view-mode" : null)">
+<MudPaper Class="pa-4 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="StockDocType" Value="_type" ValueChanged="TypeChanged" Label="نوع سند" Disabled="@(!IsNew)"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                @foreach (var t in Types)
+                {
+                    <MudSelectItem T="StockDocType" Value="t">@t.Title()</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" ShowErrors="_check" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="int?" @bind-Value="_warehouseId" Label="انبار" Required="true" RequiredError="انبار را انتخاب کنید" Disabled="ReadOnly"
+                       Error="@(_check && _warehouseId is null)" ErrorText="انبار را انتخاب کنید"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                @foreach (var w in _warehouses.Where(w => w.IsActive || w.Id == _warehouseId))
+                {
+                    <MudSelectItem T="int?" Value="w.Id"><span class="code ml-1">@w.Code</span> @w.Title</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        @if (_type.HasParty())
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <PersonPicker PersonId="_partyId" PersonIdChanged="PartyChanged" PersonName="@_partyName" Label="@_type.PartyTitle()"
+                              Required="true" Disabled="@(ReadOnly || (_type.IsReturn() && _lines.Count > 0))" ShowErrors="_check" />
+            </MudItem>
+        }
+        <MudItem xs="12">
+            <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+    </MudGrid>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2" Style="display:block">@Hint</MudText>
+</MudPaper>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudText Typo="Typo.subtitle1"><b>ردیف‌های کالا</b></MudText>
+        <MudSpacer />
+        @if (!ReadOnly && _type.IsReturn())
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.PlaylistAdd" OnClick="OpenSourcesAsync"
+                       Disabled="_partyId is null">انتخاب از @(_type.SourceType()!.Value.Title())</MudButton>
+        }
+    </MudStack>
+
+    @if (_type.IsReturn() && _lines.Count == 0)
+    {
+        <MudPaper Class="pa-6 empty-hint" Elevation="0" Outlined="true">
+            <MudIcon Icon="@Icons.Material.Outlined.Undo" Color="Color.Secondary" />
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @_type.PartyTitle() را انتخاب کنید و با «انتخاب از @(_type.SourceType()!.Value.Title())» ردیف‌های فاکتورشده‌ای را که برمی‌گردد اضافه کنید.
+            </MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <div style="overflow-x:auto">
+        <table class="voucher-grid trade-lines">
+            <thead>
+                <tr>
+                    <th style="width:24px">#</th>
+                    <th style="min-width:200px">کالا</th>
+                    <th style="width:110px">مقدار</th>
+                    @if (HasPrice)
+                    {
+                        <th style="width:140px">@(_type == StockDocType.Opening ? "فی" : "فی تقریبی")</th>
+                    }
+                    @if (_type == StockDocType.Consumption)
+                    {
+                        <th style="min-width:170px">عامل هزینه</th>
+                        <th style="min-width:150px">مرکز هزینه</th>
+                    }
+                    <th style="min-width:140px">شرح</th>
+                    <th style="width:36px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var (line, i) in _lines.Select((l, i) => (l, i)))
+                {
+                    <tr>
+                        <td class="code">@(i + 1)</td>
+                        <td>
+                            @if (line.SourceLineId is not null)
+                            {
+                                <div><span class="code ml-1">@line.Item?.Code</span> @line.Item?.Title</div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">از @line.Source</MudText>
+                            }
+                            else
+                            {
+                                <MudAutocomplete T="ItemDto" Value="line.Item" ValueChanged="it => line.Item = it" SearchFunc="SearchItems"
+                                                 ToStringFunc="@(it => it is null ? null : $"{it.Code} - {it.Title}")" Placeholder="کد، نام یا بارکد"
+                                                 ResetValueOnEmptyText="true" Dense="true" MaxItems="40" Disabled="ReadOnly"
+                                                 Error="@(_check && line.Item is null)" ErrorText="کالا را انتخاب کنید"
+                                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            }
+                            @if (line.Invoice is { } inv)
+                            {
+                                <MudLink Typo="Typo.caption" OnClick="@(() => Tabs.Go(inv.Url))">@inv.Title @Format.No(inv.DocNo)</MudLink>
+                            }
+                        </td>
+                        <td>
+                            <MudNumericField T="decimal" @bind-Value="line.Quantity" Format="#,0.######" HideSpinButtons="true" Min="0" Class="num"
+                                             Max="@(line.MaxQuantity ?? decimal.MaxValue)" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                             HelperText="@(line.MaxQuantity is { } m ? $"حداکثر {m:0.######}" : line.Item?.UnitTitle)" />
+                        </td>
+                        @if (HasPrice)
+                        {
+                            <td>
+                                <MudNumericField T="decimal?" @bind-Value="line.Price" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
+                                                 Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                 Error="@(_check && _type == StockDocType.Opening && line.Price is null)" ErrorText="فی الزامی است" />
+                            </td>
+                        }
+                        @if (_type == StockDocType.Consumption)
+                        {
+                            <td>
+                                <MudAutocomplete T="CostFactorDto" Value="line.Factor" ValueChanged="f => FactorChanged(line, f)" SearchFunc="SearchFactors"
+                                                 ToStringFunc="@(f => f?.Title)" Placeholder="عامل هزینه" ResetValueOnEmptyText="true" Dense="true"
+                                                 Disabled="ReadOnly" Error="@(_check && line.Factor is null)" ErrorText="عامل هزینه را انتخاب کنید"
+                                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            </td>
+                            <td>
+                                @if (line.Factor?.Nature == CostNature.Finance)
+                                {
+                                    <span class="select-hint">بدون مرکز (هزینه مالی)</span>
+                                }
+                                else
+                                {
+                                    <MudSelect T="int?" @bind-Value="line.CenterId" Placeholder="مرکز هزینه" Dense="true" Disabled="ReadOnly"
+                                               Error="@(_check && line.CenterId is null)" ErrorText="مرکز هزینه را انتخاب کنید"
+                                               Variant="Variant.Outlined" Margin="Margin.Dense">
+                                        @foreach (var c in _centers.Where(c => c.IsActive || c.Id == line.CenterId).OrderBy(c => c.Title))
+                                        {
+                                            <MudSelectItem T="int?" Value="c.Id">@c.Title</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                }
+                            </td>
+                        }
+                        <td>
+                            <MudTextField @bind-Value="line.Description" MaxLength="500" Disabled="ReadOnly" Placeholder="شرح ردیف"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </td>
+                        <td class="trade-line-actions">
+                            @if (!ReadOnly)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error"
+                                               Disabled="@(_lines.Count == 1 && !_type.IsReturn())" OnClick="() => _lines.Remove(line)" aria-label="حذف ردیف" />
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+        @if (!ReadOnly && !_type.IsReturn())
+        {
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="() => _lines.Add(new LineModel())" Class="mt-1">ردیف جدید</MudButton>
+        }
+        <MudDivider Class="my-3" />
+        <MudText Typo="Typo.body2">جمع مقدار: <b class="num">@_lines.Sum(l => l.Quantity).ToString("#,0.######")</b> در @_lines.Count ردیف</MudText>
+    }
+</MudPaper>
+</div>
+</FormWithList>
+
+<MudDialog @bind-Visible="_sourcesOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">ردیف‌های @(_type.SourceType()?.Title()) قابل برگشت</MudText></TitleContent>
+    <DialogContent>
+        @if (_sources.Count == 0)
+        {
+            <MudText Class="pa-4" Color="Color.Secondary">
+                ردیف فاکتورشده‌ای با مانده برای این @_type.PartyTitle() نیست. ردیفی که هنوز فاکتور نشده برگشت نمی‌خورد؛ خود @(_type.SourceType()?.Title()) را اصلاح کنید.
+            </MudText>
+        }
+        else
+        {
+            <MudTable T="ReturnSourceDto" Items="_sources" Dense="true" Hover="true" Elevation="0" MultiSelection="true" @bind-SelectedItems="_picked">
+                <HeaderContent>
+                    <MudTh>سند</MudTh>
+                    <MudTh>تاریخ</MudTh>
+                    <MudTh>انبار</MudTh>
+                    <MudTh>کالا</MudTh>
+                    <MudTh>فاکتور</MudTh>
+                    <MudTh Style="text-align:left">مقدار</MudTh>
+                    <MudTh Style="text-align:left">برگشت‌شده</MudTh>
+                    <MudTh Style="text-align:left">مانده</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><span class="code">@Format.No(context.DocNo)</span> ردیف @context.RowNo</MudTd>
+                    <MudTd><span class="code">@context.Date</span></MudTd>
+                    <MudTd>@context.Warehouse</MudTd>
+                    <MudTd><span class="code ml-1">@context.ItemCode</span> @context.ItemTitle</MudTd>
+                    <MudTd>@context.Invoice.Title @Format.No(context.Invoice.DocNo)</MudTd>
+                    <MudTd Class="num">@context.Quantity.ToString("#,0.######")</MudTd>
+                    <MudTd Class="num">@context.Returned.ToString("#,0.######")</MudTd>
+                    <MudTd Class="num"><b>@context.Remaining.ToString("#,0.######")</b></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _sourcesOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddSources" Disabled="_picked.Count == 0">افزودن @_picked.Count ردیف</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public bool Receipts { get; set; }
+    [Parameter] public long? Id { get; set; }
+    /// <summary>نوع سند تازه (از آدرس، مثلاً ?type=11).</summary>
+    [Parameter] public StockDocType? NewType { get; set; }
+
+    private sealed class LineModel
+    {
+        public long? Id { get; set; }
+        public ItemDto? Item { get; set; }
+        public decimal Quantity { get; set; } = 1;
+        public decimal? MaxQuantity { get; set; }
+        public decimal? Price { get; set; }
+        public CostFactorDto? Factor { get; set; }
+        public int? CenterId { get; set; }
+        public long? SourceLineId { get; set; }
+        public string? Source { get; set; }
+        public string? Description { get; set; }
+        public InvoiceLink? Invoice { get; set; }
+    }
+
+    private bool IsNew => Id is null;
+    private string Base => Receipts ? "/inventory/receipts" : "/inventory/issues";
+    private string NewUrl(StockDocType t) => $"{Base}/new?type={(byte)t}";
+    private string? SelfUrl => Id is long id ? $"{Base}/{id}" : null;
+    private string Heading => IsNew ? $"{_type.Title()} جدید" : $"{_type.Title()} {Format.No(_docNo)}";
+    private bool ReadOnly => !_editing || LockReason is not null;
+    private bool Dirty => _editing && !IsNew;
+    private bool HasPrice => _type is StockDocType.Opening or StockDocType.PurchaseReceipt;
+    private bool HasInvoicing => _type is not (StockDocType.Opening or StockDocType.Consumption);
+    private string? LockReason => _dto?.LockReason;
+
+    private StockDocType[] Types => Receipts
+        ? [StockDocType.PurchaseReceipt, StockDocType.SalesReturnReceipt, StockDocType.Opening]
+        : [StockDocType.SalesIssue, StockDocType.PurchaseReturnIssue, StockDocType.Consumption];
+
+    private string Hint => _type switch
+    {
+        StockDocType.Opening => "موجودی اول دوره: یک بار برای هر انبار، روز اول سال مالی و پیش از همه سندهای آن انبار. فی هر کالا بهای اول دوره است.",
+        StockDocType.PurchaseReceipt => "اول رسید، بعد فاکتور خرید: فاکتور خرید ردیف‌هایش را از همین رسید برمی‌دارد. فی تقریبی تا رسیدن فاکتور برای بهای تمام‌شده به کار می‌رود.",
+        StockDocType.SalesReturnReceipt => "از ردیف‌های حواله فروشِ فاکتورشده؛ بعد از ثبت، «برگشت از فروش» را از روی این رسید صادر کنید.",
+        StockDocType.SalesIssue => "اول حواله (تحویل کالا و انتقال ریسک)، بعد فاکتور فروش از روی همین حواله. موجودی هیچ کالایی در هیچ تاریخی منفی نمی‌شود.",
+        StockDocType.PurchaseReturnIssue => "از ردیف‌های رسید خریدِ فاکتورشده؛ بعد از ثبت، «برگشت از خرید» را از روی این حواله صادر کنید.",
+        _ => "مصرف غیرتولیدی: هر ردیف با عامل هزینه و مرکز هزینه؛ بها و سند هزینه با محاسبه ماهانه بهای تمام‌شده ثبت می‌شود.",
+    };
+
+    private StockDocType _type;
+    private StockDocDto? _dto;
+    private List<ItemDto> _items = [];
+    private List<WarehouseDto> _warehouses = [];
+    private List<CostFactorDto> _factors = [];
+    private List<CostCenterListItemDto> _centers = [];
+    private List<LineModel> _lines = [new()];
+    private string? _date = Format.Today(), _description, _partyName, _error;
+    private int? _warehouseId, _partyId;
+    private int _docNo, _listVersion;
+    private bool _loading = true, _saving, _editing, _check;
+
+    private List<ReturnSourceDto> _sources = [];
+    private HashSet<ReturnSourceDto> _picked = [];
+    private bool _sourcesOpen;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        _check = false;
+        _items = (await Backend.Run<ItemService, List<ItemDto>>(s => s.SearchAsync(null, null, null, true, default))).Value ?? [];
+        _warehouses = (await Backend.Run<WarehouseService, List<WarehouseDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        if (Id is long id) await LoadAsync(id);
+        else
+        {
+            _type = NewType is { } t && Types.Contains(t) ? t : Types[0];
+            _dto = null;
+            _warehouseId ??= _warehouses.FirstOrDefault(w => w.IsActive)?.Id;
+            Reset();
+        }
+        if (_type == StockDocType.Consumption) await LoadCostingAsync();
+        _editing = IsNew;
+        _loading = false;
+    }
+
+    private async Task LoadCostingAsync()
+    {
+        if (_factors.Count > 0) return;
+        _factors = (await Backend.Run<CostFactorService, List<CostFactorDto>>(s => s.SearchAsync(null, null, true, default))).Value ?? [];
+        _centers = (await Backend.Run<CostCenterService, List<CostCenterListItemDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+    }
+
+    private async Task LoadAsync(long id)
+    {
+        var r = await Backend.Run<StockDocService, StockDocDto>(s => s.GetAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        var x = _dto = r.Value!;
+        (_type, _docNo, _date, _warehouseId, _partyId, _partyName, _description) =
+            (x.Type, x.DocNo, x.Date, x.WarehouseId, x.PartyId, x.PartyName, x.Description);
+        if (_type == StockDocType.Consumption) await LoadCostingAsync();
+        _lines = x.Lines.Select(l => new LineModel
+        {
+            Id = l.Id, Item = _items.FirstOrDefault(i => i.Id == l.ItemId), Quantity = l.Quantity, Price = l.EnteredPrice,
+            Factor = _factors.FirstOrDefault(f => f.Id == l.CostFactorId), CenterId = l.CostCenterId,
+            SourceLineId = l.SourceLineId, Source = l.Source, Description = l.Description, Invoice = l.Invoice
+        }).ToList();
+    }
+
+    private void Reset()
+    {
+        (_partyId, _partyName, _description) = (null, null, null);
+        _lines = _type.IsReturn() ? [] : [new()];
+    }
+
+    private async Task TypeChanged(StockDocType type)
+    {
+        _type = type;
+        Reset();
+        if (type == StockDocType.Consumption) await LoadCostingAsync();
+    }
+
+    private void PartyChanged(int? id) => _partyId = id;
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var r = await Backend.Run<StockDocService, List<StockDocListItemDto>>(s => s.ListAsync(Receipts, null, null, null, null, default));
+        return (r.Value ?? []).Select(x => new SideItem($"{Base}/{x.Id}", $"{x.Type.Title()} {Format.No(x.DocNo)}",
+            $"{x.Date} · {x.PartyName ?? x.Warehouse}", x.TotalQuantity.ToString("#,0.######"))).ToList();
+    }
+
+    private Task<IEnumerable<ItemDto>> SearchItems(string? term, CancellationToken ct)
+    {
+        IEnumerable<ItemDto> list = _items.Where(i => i.IsActive && i.Kind == ItemKind.Goods);
+        term = PersianText.NormalizeOrNull(term);
+        if (term is not null) list = list.Where(i => i.Title.Contains(term) || i.Code.StartsWith(term) || i.Barcode == term);
+        return Task.FromResult(list);
+    }
+
+    private Task<IEnumerable<CostFactorDto>> SearchFactors(string? term, CancellationToken ct)
+    {
+        IEnumerable<CostFactorDto> list = _factors.Where(f => f.IsActive);
+        term = PersianText.NormalizeOrNull(term);
+        if (term is not null) list = list.Where(f => f.Title.Contains(term) || (f.Code ?? "").StartsWith(term));
+        return Task.FromResult(list);
+    }
+
+    private static void FactorChanged(LineModel line, CostFactorDto? factor)
+    {
+        line.Factor = factor;
+        if (factor?.Nature == CostNature.Finance) line.CenterId = null;
+    }
+
+    private async Task OpenSourcesAsync()
+    {
+        if (_partyId is not int party) return;
+        var r = await Backend.Run<StockDocService, List<ReturnSourceDto>>(s => s.ReturnSourcesAsync(_type, party, Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        var taken = _lines.Select(l => l.SourceLineId).ToHashSet();
+        _sources = r.Value!.Where(x => !taken.Contains(x.LineId)).ToList();
+        _picked = [];
+        _sourcesOpen = true;
+    }
+
+    private void AddSources()
+    {
+        foreach (var s in _picked.OrderBy(x => x.Date).ThenBy(x => x.DocNo).ThenBy(x => x.RowNo))
+            _lines.Add(new LineModel
+            {
+                Item = _items.FirstOrDefault(i => i.Id == s.ItemId), Quantity = s.Remaining, MaxQuantity = s.Remaining,
+                SourceLineId = s.LineId, Source = $"{_type.SourceType()!.Value.Title()} {Format.No(s.DocNo)} ردیف {s.RowNo} ({s.Invoice.Title} {Format.No(s.Invoice.DocNo)})"
+            });
+        _sourcesOpen = false;
+    }
+
+    private async Task CancelAsync()
+    {
+        _error = null;
+        _check = false;
+        if (Id is long id) { await LoadAsync(id); _editing = false; }
+        else Reset();
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        _check = true;
+        List<string> errors = [];
+        if (_date is null) errors.Add("تاریخ الزامی است.");
+        if (_warehouseId is null) errors.Add("انبار را انتخاب کنید.");
+        if (_type.HasParty() && _partyId is null) errors.Add($"{_type.PartyTitle()} را انتخاب کنید.");
+        if (_lines.Count == 0) errors.Add("حداقل یک ردیف کالا لازم است.");
+        foreach (var (l, i) in _lines.Select((l, i) => (l, i + 1)))
+        {
+            if (l.Item is null) errors.Add($"ردیف {i}: کالا را انتخاب کنید.");
+            if (l.Quantity <= 0) errors.Add($"ردیف {i}: مقدار باید بزرگتر از صفر باشد.");
+            if (_type == StockDocType.Opening && l.Price is null) errors.Add($"ردیف {i}: فی موجودی اول دوره را وارد کنید.");
+            if (_type == StockDocType.Consumption && l.Factor is null) errors.Add($"ردیف {i}: عامل هزینه را انتخاب کنید.");
+            if (_type == StockDocType.Consumption && l.Factor?.Nature != CostNature.Finance && l.CenterId is null)
+                errors.Add($"ردیف {i}: مرکز هزینه را انتخاب کنید.");
+        }
+        if (errors.Count > 0) { _error = string.Join("\n", errors); return; }
+
+        var request = new SaveStockDocRequest(_type, _date!, _warehouseId!.Value, _type.HasParty() ? _partyId : null, _description,
+            _lines.Select(l => new StockLineRequest(l.Item!.Id, l.Quantity, l.SourceLineId, l.Factor?.Id,
+                l.Factor?.Nature == CostNature.Finance ? null : l.CenterId, HasPrice ? l.Price : null, l.Description)).ToList());
+
+        _saving = true;
+        if (Id is long id)
+        {
+            var r = await Backend.Run<StockDocService>(s => s.UpdateAsync(id, request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add($"{_type.Title()} ذخیره شد.", Severity.Success);
+            _listVersion++;
+            await LoadAsync(id);
+            _editing = false;
+            _check = false;
+        }
+        else
+        {
+            var r = await Backend.Run<StockDocService, long>(s => s.CreateAsync(request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add($"{_type.Title()} ثبت شد.", Severity.Success);
+            Tabs.Go($"{Base}/{r.Value}");
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Id is not long id) return;
+        if (!await Dialogs.DeleteAsync($"{_type.Title()} شماره {Format.No(_docNo)}", "ردیف‌هایش از کاردکس حذف می‌شود.")) return;
+        var r = await Backend.Run<StockDocService>(s => s.DeleteAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add($"{_type.Title()} حذف شد.", Severity.Success);
+        Tabs.CloseCurrentAndGo(Base);
+    }
+}

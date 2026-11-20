@@ -171,14 +171,19 @@ BEGIN TRY
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد کالا با نوع متفاوت از گروه', N'50201', CAST(@err AS NVARCHAR(50)));
 
--- 12) برگشت از خرید بیش از مقدار فاکتور (اسکریپت ۱۷)
+-- 12) برگشت از خرید بیش از مقدار فاکتور (اسکریپت ۱۷)؛ فاکتور از روی رسید خرید (اسکریپت ۱۸)
 INSERT inv.Items (Code, Title, Kind, GroupId, UnitId) VALUES (N'SMOKE-1', N'کالای تست', 1, @GoodsGroup, @Unit);
 SET @Item = SCOPE_IDENTITY();
+DECLARE @Wh INT = (SELECT TOP (1) Id FROM inv.Warehouses ORDER BY Id), @SRec BIGINT, @SRecLine BIGINT, @SIss BIGINT;
+INSERT inv.StockDocs (DocType, DocNo, DocDate, WarehouseId, PartyId, CreatedBy) VALUES (2, -1, @D1, @Wh, @PersonId, 1);
+SET @SRec = SCOPE_IDENTITY();
+INSERT inv.StockDocLines (DocId, RowNo, ItemId, Quantity) VALUES (@SRec, 1, @Item, 2);
+SET @SRecLine = SCOPE_IDENTITY();
 INSERT pur.PurchaseInvoices (DocNo, DocDate, SupplierId, GrossAmount, DiscountAmount, VatAmount, CreatedBy)
 VALUES (-1, @D1, @PersonId, 200, 0, 0, 1);
 SET @PInv = SCOPE_IDENTITY();
-INSERT pur.PurchaseInvoiceLines (InvoiceId, RowNo, ItemId, Quantity, UnitPrice, Discount, Amount, VatAmount)
-VALUES (@PInv, 1, @Item, 2, 100, 0, 200, 0);
+INSERT pur.PurchaseInvoiceLines (InvoiceId, RowNo, ItemId, Quantity, UnitPrice, Discount, Amount, VatAmount, ReceiptLineId)
+VALUES (@PInv, 1, @Item, 2, 100, 0, 200, 0, @SRecLine);
 SET @PLine = SCOPE_IDENTITY();
 INSERT pur.PurchaseReturns (DocNo, DocDate, InvoiceId, Amount, VatAmount, CreatedBy) VALUES (-1, @D1, @PInv, 300, 0, 1);
 SET @PRet = SCOPE_IDENTITY();
@@ -187,8 +192,27 @@ BEGIN TRY
     SET @err = 0;
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد برگشت از خرید بیش از مقدار فاکتور', N'50210', CAST(@err AS NVARCHAR(50)));
+
+-- 13) ردیف کالای فاکتور خرید بدون رسید (اسکریپت ۱۸)
+BEGIN TRY
+    INSERT pur.PurchaseInvoiceLines (InvoiceId, RowNo, ItemId, Quantity, UnitPrice, Discount, Amount, VatAmount)
+    VALUES (@PInv, 2, @Item, 1, 100, 0, 100, 0);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد ردیف فاکتور خرید بدون رسید انبار', N'50310', CAST(@err AS NVARCHAR(50)));
+
+-- 14) حواله بیش از موجودی (اسکریپت ۱۸)
+INSERT inv.StockDocs (DocType, DocNo, DocDate, WarehouseId, PartyId, CreatedBy) VALUES (11, -1, @D1, @Wh, @PersonId, 1);
+SET @SIss = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT inv.StockDocLines (DocId, RowNo, ItemId, Quantity) VALUES (@SIss, 1, @Item, 3);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد حواله‌ای که موجودی را منفی می‌کند', N'50305', CAST(@err AS NVARCHAR(50)));
+
 DELETE pur.PurchaseReturns WHERE Id = @PRet;
 DELETE pur.PurchaseInvoices WHERE Id = @PInv;
+DELETE inv.StockDocs WHERE Id IN (@SRec, @SIss);
 DELETE inv.Items WHERE Code IN (N'SMOKE-1', N'SMOKE-X');
 
 -- نتیجه

@@ -1,4 +1,5 @@
 using Erp.Database;
+using Erp.Inventory.Contracts;
 using Erp.Sales.Application;
 using Erp.Sales.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ public class SalesDbContext : DbContext, ISalesDbContext
     public IQueryable<SalesReturn> SalesReturns => Set<SalesReturn>();
     public IQueryable<CustomerRef> Customers => Set<CustomerRef>().AsNoTracking();
     public IQueryable<SalesItemRef> Items => Set<SalesItemRef>().AsNoTracking();
+    public IQueryable<StockLineRef> StockLines => Set<StockLineRef>().AsNoTracking();
     public IQueryable<DetailRef> Details => Set<DetailRef>().AsNoTracking();
 
     void ISalesDbContext.Add<T>(T entity) => Set<T>().Add(entity);
@@ -47,7 +49,7 @@ public class SalesDbContext : DbContext, ISalesDbContext
         });
         b.Entity<SalesInvoiceLine>(e =>
         {
-            e.ToTable("SalesInvoiceLines", "sls");
+            e.ToTable("SalesInvoiceLines", "sls", t => t.HasTrigger("trg_SalesInvoiceLines_Stock"));
             e.HasKey(l => l.Id);
             e.Property(l => l.Quantity).HasPrecision(24, 6);
             e.Property(l => l.UnitPrice).HasPrecision(24, 4);
@@ -76,13 +78,25 @@ public class SalesDbContext : DbContext, ISalesDbContext
         });
         b.Entity<SalesReturnLine>(e =>
         {
-            e.ToTable("SalesReturnLines", "sls", t => t.HasTrigger("trg_SalesReturnLines_Quantity"));
+            e.ToTable("SalesReturnLines", "sls", t =>
+            {
+                t.HasTrigger("trg_SalesReturnLines_Quantity");
+                t.HasTrigger("trg_SalesReturnLines_Stock");
+            });
             e.HasKey(l => l.Id);
             e.Property(l => l.Quantity).HasPrecision(24, 6);
             e.Property(l => l.GrossAmount).HasPrecision(24, 4);
             e.Property(l => l.Discount).HasPrecision(24, 4);
             e.Property(l => l.Amount).HasPrecision(24, 4);
             e.Property(l => l.VatAmount).HasPrecision(24, 4);
+        });
+        b.Entity<StockLineRef>(e =>
+        {
+            e.HasKey(l => l.Id);
+            e.Ignore(l => l.Title);
+            e.Property(l => l.Quantity).HasPrecision(24, 6);
+            e.Property(l => l.EnteredPrice).HasPrecision(24, 4);
+            e.ToSqlQuery(StockLineRef.Sql);
         });
         b.Entity<CustomerRef>(e =>
         {
@@ -91,9 +105,14 @@ public class SalesDbContext : DbContext, ISalesDbContext
         });
         b.Entity<SalesItemRef>(e =>
         {
+            e.Property(i => i.SalesPrice).HasPrecision(24, 4);
+        });
+        b.Entity<SalesItemRef>(e =>
+        {
             e.HasKey(i => i.Id);
             e.ToSqlQuery("""
-                SELECT i.Id, i.Code, i.Title, i.Kind, i.IsActive, i.VatExempt, u.Title AS UnitTitle, g.SalesAccountId, g.SalesReturnAccountId
+                SELECT i.Id, i.Code, i.Title, i.Kind, i.IsActive, i.VatExempt, u.Title AS UnitTitle, g.SalesAccountId, g.SalesReturnAccountId,
+                       i.SalesPrice
                 FROM inv.Items i JOIN inv.ItemGroups g ON g.Id = i.GroupId JOIN base.Units u ON u.Id = i.UnitId
                 """);
         });
