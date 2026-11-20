@@ -25,6 +25,8 @@
     /// <summary>مبلغ ردیف (پایه محاسبه).</summary>
     [Parameter] public decimal Amount { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    /// <summary>ردیف تازه: مشمول شروع شود (مثلاً کالای غیرمعاف در فاکتور خرید و فروش).</summary>
+    [Parameter] public bool DefaultSubject { get; set; }
 
     private bool _subject, _manual, _initialized;
     private VatCalculation? _rate;
@@ -38,8 +40,10 @@
         if (!_initialized)
         {
             _initialized = true;
-            _subject = Value > 0;
+            _subject = Value > 0 || DefaultSubject;
             _manual = Value > 0 && (_rate is null || VatRateCache.Calc(_rate, Amount) != Value);
+            if (_subject && Value == 0 && _rate is not null && VatRateCache.Calc(_rate, Amount) is var initial && initial != 0)
+                await ValueChanged.InvokeAsync(initial);
             return;
         }
         if (changed && _subject && !_manual && _rate is not null)

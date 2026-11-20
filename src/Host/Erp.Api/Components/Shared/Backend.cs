@@ -33,6 +33,11 @@ public sealed class Backend(IServiceScopeFactory scopes, AppSession session, Nav
             await LogDeniedAsync(ex.Message);
             return Result<T>.Fail(ex.Message);
         }
+        catch (OperationCanceledException)
+        {
+            // لغو عمدی (مثلاً جستجوی قبلی انتخاب‌گر با تایپ حرف بعدی)؛ خطا نیست و لاگ نمی‌شود
+            return Result<T>.Fail("عملیات لغو شد.");
+        }
         catch (Exception ex)
         {
             var message = ErrorMessages.ForUser(ex);

@@ -105,7 +105,7 @@
             </MudItem>
             <MudItem xs="12" sm="6">
                 <MudTextField @bind-Value="_taxItemId" Label="شناسه کالا/خدمت مودیان" MaxLength="13" Class="code"
-                              HelperText="۱۳ رقم؛ از سامانه مودیان" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                              HelperText="شناسه سیزده‌رقمی از سامانه مودیان" Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
             <MudItem xs="12" sm="6">
                 <MudTextField @bind-Value="_barcode" Label="بارکد" MaxLength="50" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
@@ -169,8 +169,8 @@
     private Task NewAsync()
     {
         (_editId, _code, _title, _taxItemId, _barcode, _notes, _price, _exempt, _active) = (null, null, null, null, null, null, null, false, true);
-        _groupEdit = _group ?? _groups.FirstOrDefault(g => g.IsActive)?.Id;
-        _unit = _units.FirstOrDefault()?.Id;
+        _groupEdit = _group ?? (_groups.FirstOrDefault(g => g.IsActive && g.Kind == ItemKind.Goods) ?? _groups.FirstOrDefault(g => g.IsActive))?.Id;
+        _unit = (_units.FirstOrDefault(u => u.Title == "عدد") ?? _units.FirstOrDefault())?.Id;
         _editOpen = true;
         return Task.CompletedTask;
     }

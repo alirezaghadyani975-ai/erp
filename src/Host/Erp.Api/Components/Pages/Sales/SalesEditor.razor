@@ -93,7 +93,7 @@
         <MudSpacer />
         <VatRateHint Date="@_date" />
     </MudStack>
-    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" UseSalesPrice="true" WarnTaxId="true" />
+    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" UseSalesPrice="true" WarnTaxId="true" Changed="() => { }" />
     @if (_returned.Count > 0)
     {
         <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-1">

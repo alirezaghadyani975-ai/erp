@@ -1,10 +1,11 @@
 @* ردیف‌های فاکتور خرید و فروش: کالا، مقدار، فی، تخفیف، مبلغ پس از تخفیف و ارزش افزوده ردیفی (به ریال گرد). *@
 
-<table class="voucher-grid">
+<div style="overflow-x:auto">
+<table class="voucher-grid" style="min-width:860px">
     <thead>
         <tr>
             <th style="width:3%">#</th>
-            <th style="width:26%">کالا / خدمت</th>
+            <th style="width:26%;min-width:220px">کالا / خدمت</th>
             <th style="width:9%">مقدار</th>
             <th style="width:12%">فی</th>
             <th style="width:11%">تخفیف</th>
@@ -35,16 +36,16 @@
                     }
                 </td>
                 <td>
-                    <MudNumericField T="decimal" @bind-Value="line.Quantity" Format="#,0.######" HideSpinButtons="true" Min="0" Class="num"
+                    <MudNumericField T="decimal" @bind-Value="line.Quantity" @bind-Value:after="Notify" Format="#,0.######" HideSpinButtons="true" Min="0" Class="num"
                                      Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense"
                                      HelperText="@line.Item?.UnitTitle" />
                 </td>
                 <td>
-                    <MudNumericField T="decimal" @bind-Value="line.UnitPrice" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
+                    <MudNumericField T="decimal" @bind-Value="line.UnitPrice" @bind-Value:after="Notify" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
                                      Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
                 </td>
                 <td>
-                    <MudNumericField T="decimal" @bind-Value="line.Discount" Format="#,0" HideSpinButtons="true" Min="0" Class="num"
+                    <MudNumericField T="decimal" @bind-Value="line.Discount" @bind-Value:after="Notify" Format="#,0" HideSpinButtons="true" Min="0" Class="num"
                                      Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
                 </td>
                 <td class="num">@Format.Amount(line.Net)</td>
@@ -55,7 +56,8 @@
                     }
                     else
                     {
-                        <LineVat @bind-Value="line.Vat" Date="@Date" Amount="line.Net" Disabled="ReadOnly" />
+                        <LineVat @key="line.Item?.Id" @bind-Value="line.Vat" @bind-Value:after="Notify" Date="@Date" Amount="line.Net" Disabled="ReadOnly"
+                                 DefaultSubject="line.Id is null" />
                     }
                 </td>
                 <td>
@@ -65,16 +67,17 @@
                     @if (!ReadOnly)
                     {
                         <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error"
-                                       Disabled="Lines.Count == 1" OnClick="() => Lines.Remove(line)" aria-label="حذف ردیف" />
+                                       Disabled="Lines.Count == 1" OnClick="() => RemoveAsync(line)" aria-label="حذف ردیف" />
                     }
                 </td>
             </tr>
         }
     </tbody>
 </table>
+</div>
 @if (!ReadOnly)
 {
-    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="() => Lines.Add(new())" Class="mt-1">ردیف جدید</MudButton>
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAsync" Class="mt-1">ردیف جدید</MudButton>
 }
 
 @code {
@@ -104,6 +107,12 @@
     /// <summary>هشدار نداشتن شناسه کالای مودیان (فروش).</summary>
     [Parameter] public bool WarnTaxId { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
+
+    private Task Notify() => Changed.InvokeAsync();
+
+    private Task AddAsync() { Lines.Add(new()); return Notify(); }
+
+    private Task RemoveAsync(LineModel line) { Lines.Remove(line); return Notify(); }
 
     private Task<IEnumerable<ItemDto>> Search(string? term, CancellationToken ct)
     {

@@ -69,7 +69,7 @@
         </MudItem>
         <MudItem xs="12" sm="4" md="3">
             <MudTextField @bind-Value="_sellerTaxId" Label="شماره مالیاتی صورتحساب" MaxLength="22" Disabled="ReadOnly"
-                          HelperText="۲۲ نویسه؛ از کارپوشه مودیان (اختیاری)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
+                          HelperText="اختیاری؛ شماره ۲۲ نویسه‌ای از کارپوشه مودیان" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
         </MudItem>
         <MudItem xs="12" md="4">
             <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
@@ -83,7 +83,7 @@
         <MudSpacer />
         <VatRateHint Date="@_date" />
     </MudStack>
-    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" GoodsOnly="true" />
+    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" GoodsOnly="true" Changed="() => { }" />
     @if (_returned.Count > 0)
     {
         <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-1">
