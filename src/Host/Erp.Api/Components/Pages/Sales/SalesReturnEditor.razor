@@ -1,0 +1,240 @@
+@page "/sales/returns/new"
+@page "/sales/returns/{Id:long}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="@Heading" />
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<FormWithList Title="برگشت از فروش" Load="LoadSideAsync" NewUrl="/sales/returns/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
+<FormToolbar Title="@Heading" Permission="sls.return" AuditEntity="SalesReturn" AuditId="Id" IsNew="IsNew" Editing="_editing"
+             CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
+             SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId"
+             LockReason="@(Locked ? "سند حسابداری این برگشت دائم شده است؛ فرم فقط قابل مشاهده است." : null)"
+             OnNew="@(() => Tabs.Go("/sales/returns/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
+    <Chips>
+        @if (_voucher is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                     Color="@Format.StatusColor((VoucherStatus)_voucher.Status)">سند @_voucher.TempNo — @Format.Status((VoucherStatus)_voucher.Status)</MudChip>
+        }
+        @if (_invoice is not null)
+        {
+            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.OpenInNew"
+                       OnClick="@(() => Tabs.Go($"/sales/{_invoice.Id}"))">فاکتور فروش @Format.No(_invoice.DocNo)</MudButton>
+        }
+    </Chips>
+</FormToolbar>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
+<div class="@(ReadOnly ? "view-mode" : null)">
+<MudPaper Class="pa-4 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="6" md="3">
+            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="5">
+            <MudAutocomplete T="SalesInvoiceListItemDto" Value="_invoice" ValueChanged="InvoiceChanged" SearchFunc="SearchInvoices"
+                             ToStringFunc="@(i => i is null ? null : $"{Format.No(i.DocNo)} — {i.CustomerName} ({i.Date})")"
+                             Label="فاکتور فروش مرجع" Required="true" Disabled="@(ReadOnly || !IsNew)" ResetValueOnEmptyText="true"
+                             Dense="true" MaxItems="40" Variant="Variant.Outlined" Margin="Margin.Dense"
+                             HelperText="شماره فاکتور یا مشتری" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_lines.Count > 0)
+{
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <MudText Typo="Typo.subtitle1" Class="mb-2"><b>مقدار برگشتی هر ردیف</b></MudText>
+        <table class="voucher-grid">
+            <thead>
+                <tr>
+                    <th style="width:4%">ردیف</th>
+                    <th>کالا</th>
+                    <th style="width:10%">مقدار فاکتور</th>
+                    <th style="width:10%">برگشت قبلی</th>
+                    <th style="width:10%">مانده</th>
+                    <th style="width:12%">مقدار برگشتی</th>
+                    <th style="width:13%">مبلغ (تقریبی)</th>
+                    <th style="width:12%">ارزش افزوده</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var l in _lines)
+                {
+                    <tr>
+                        <td class="code">@l.Line.RowNo</td>
+                        <td><span class="code ml-2">@l.Line.ItemCode</span> @l.Line.ItemTitle <span class="select-hint">(@l.Line.UnitTitle)</span></td>
+                        <td class="num">@l.Line.Quantity.ToString("0.######")</td>
+                        <td class="num">@l.Line.ReturnedQuantity.ToString("0.######")</td>
+                        <td class="num">@l.Line.Remaining.ToString("0.######")</td>
+                        <td>
+                            <MudNumericField T="decimal" @bind-Value="l.Quantity" Format="#,0.######" HideSpinButtons="true" Min="0" Max="l.Line.Remaining"
+                                             Class="num" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </td>
+                        <td class="num">@Format.Amount(Share(l.Line.Amount, l))</td>
+                        <td class="num">@Format.Amount(Share(l.Line.VatAmount, l))</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (!ReadOnly)
+        {
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.DoneAll" Class="mt-1"
+                       OnClick="@(() => _lines.ForEach(l => l.Quantity = l.Line.Remaining))">برگشت همه مانده</MudButton>
+        }
+        <MudDivider Class="my-3" />
+        <TotalsBar Items="Totals" Total="Amount + Vat" TotalLabel="کاهش طلب از مشتری" />
+        <MudText Typo="Typo.caption" Color="Color.Secondary">مبلغ نهایی هر ردیف به نسبت مقدار از ردیف فاکتور حساب می‌شود؛ برگشت آخرین مانده، باقی مبلغ را می‌گیرد.</MudText>
+    </MudPaper>
+}
+</div>
+</FormWithList>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "invoice")] public long? InvoiceParam { get; set; }
+
+    private sealed class LineModel(SalesReturnableLineDto line)
+    {
+        public SalesReturnableLineDto Line { get; } = line;
+        public decimal Quantity { get; set; }
+    }
+
+    private bool IsNew => Id is null;
+    private string? SelfUrl => Id is long id ? $"/sales/returns/{id}" : null;
+    private string Heading => IsNew ? "برگشت از فروش جدید" : $"برگشت از فروش {Format.No(_docNo)}";
+    private bool Locked => _voucher?.Status == 3;
+    private bool ReadOnly => !_editing || Locked;
+    private bool Dirty => _editing && !IsNew;
+    private decimal Amount => _lines.Sum(l => Share(l.Line.Amount, l));
+    private decimal Vat => _lines.Sum(l => Share(l.Line.VatAmount, l));
+    private (string, decimal)[] Totals => [("مبلغ پس از تخفیف", Amount), ("ارزش افزوده", Vat)];
+
+    private static decimal Share(decimal total, LineModel l) =>
+        l.Line.Quantity == 0 ? 0 : Math.Round(total * l.Quantity / l.Line.Quantity, 0, MidpointRounding.AwayFromZero);
+
+    private List<SalesInvoiceListItemDto> _invoices = [];
+    private SalesInvoiceListItemDto? _invoice;
+    private List<LineModel> _lines = [];
+    private string? _date = Format.Today();
+    private string? _description;
+    private int _docNo;
+    private SalesVoucherDto? _voucher;
+    private bool _loading = true, _saving, _editing;
+    private int _listVersion;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        _invoices = (await Backend.Run<SalesInvoiceService, List<SalesInvoiceListItemDto>>(s => s.ListAsync(null, null, null, default))).Value ?? [];
+        if (Id is long id) await LoadAsync(id);
+        else if (InvoiceParam is long inv && _invoices.FirstOrDefault(i => i.Id == inv) is { } pre) await InvoiceChanged(pre);
+        _editing = IsNew;
+        _loading = false;
+    }
+
+    private async Task LoadAsync(long id)
+    {
+        var r = await Backend.Run<SalesReturnService, SalesReturnDto>(s => s.GetAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        var x = r.Value!;
+        (_docNo, _date, _description, _voucher) = (x.DocNo, x.Date, x.Description, x.Voucher);
+        _invoice = _invoices.FirstOrDefault(i => i.Id == x.InvoiceId);
+        await LoadLinesAsync(x.InvoiceId, id);
+        foreach (var l in _lines) l.Quantity = x.Lines.FirstOrDefault(rl => rl.InvoiceLineId == l.Line.InvoiceLineId)?.Quantity ?? 0;
+    }
+
+    private async Task LoadLinesAsync(long invoiceId, long? exceptReturnId)
+    {
+        var r = await Backend.Run<SalesReturnService, List<SalesReturnableLineDto>>(s => s.ReturnableAsync(invoiceId, exceptReturnId, default));
+        if (!r.Success) { _error = r.Error; _lines = []; return; }
+        _lines = r.Value!.Select(l => new LineModel(l)).ToList();
+    }
+
+    private async Task InvoiceChanged(SalesInvoiceListItemDto? invoice)
+    {
+        _invoice = invoice;
+        _lines = [];
+        if (invoice is not null) await LoadLinesAsync(invoice.Id, null);
+    }
+
+    private Task<IEnumerable<SalesInvoiceListItemDto>> SearchInvoices(string? term, CancellationToken ct)
+    {
+        IEnumerable<SalesInvoiceListItemDto> list = _invoices;
+        term = PersianText.NormalizeOrNull(term);
+        if (term is not null)
+            list = list.Where(i => i.CustomerName.Contains(term) || i.DocNo.ToString().TrimStart('0') == term.TrimStart('0'));
+        return Task.FromResult(list);
+    }
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var r = await Backend.Run<SalesReturnService, List<SalesReturnListItemDto>>(s => s.ListAsync(null, null, null, default));
+        return (r.Value ?? []).Select(x => new SideItem($"/sales/returns/{x.Id}", $"{Format.No(x.DocNo)} — {x.CustomerName}",
+            $"{x.Date} · فاکتور {Format.No(x.InvoiceDocNo)}", Format.Amount(x.Total))).ToList();
+    }
+
+    private async Task CancelAsync()
+    {
+        _error = null;
+        if (Id is long id) { await LoadAsync(id); _editing = false; }
+        else { _description = null; _lines.ForEach(l => l.Quantity = 0); }
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_date is null) { _error = "تاریخ الزامی است."; return; }
+        if (_invoice is null) { _error = "فاکتور فروش مرجع را انتخاب کنید."; return; }
+        var request = new SaveSalesReturnRequest(_date, _invoice.Id, _description,
+            _lines.Where(l => l.Quantity > 0).Select(l => new SalesReturnLineRequest(l.Line.InvoiceLineId, l.Quantity)).ToList());
+
+        _saving = true;
+        if (Id is long id)
+        {
+            var r = await Backend.Run<SalesReturnService>(s => s.UpdateAsync(id, request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("برگشت ذخیره شد و سند حسابداری‌اش اصلاح شد.", Severity.Success);
+            _listVersion++;
+            await LoadAsync(id);
+            _editing = false;
+        }
+        else
+        {
+            var r = await Backend.Run<SalesReturnService, long>(s => s.CreateAsync(request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("برگشت ثبت شد و سند حسابداری موقت صادر شد.", Severity.Success);
+            Tabs.Go($"/sales/returns/{r.Value}");
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Id is not long id) return;
+        if (!await Dialogs.DeleteAsync($"برگشت از فروش شماره {Format.No(_docNo)}", "سند حسابداری آن هم حذف می‌شود.")) return;
+        var r = await Backend.Run<SalesReturnService>(s => s.DeleteAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add("برگشت و سند حسابداری‌اش حذف شد.", Severity.Success);
+        Tabs.CloseCurrentAndGo("/sales/returns");
+    }
+}

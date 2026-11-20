@@ -26,6 +26,12 @@ public static class Titles
         [CostFunction.Production] = "تولیدی", [CostFunction.Service] = "خدماتی (پشتیبانی تولید)",
         [CostFunction.Admin] = "اداری", [CostFunction.Selling] = "فروش و توزیع",
         [CostBehavior.Fixed] = "ثابت", [CostBehavior.Variable] = "متغیر", [CostBehavior.Mixed] = "نیمه‌متغیر",
+        [Erp.Inventory.Contracts.ItemKind.Goods] = "کالا", [Erp.Inventory.Contracts.ItemKind.Service] = "خدمت",
+        [Erp.Sales.Domain.SettlementMethod.Cash] = "نقد", [Erp.Sales.Domain.SettlementMethod.Credit] = "نسیه",
+        [Erp.Sales.Domain.SettlementMethod.Mixed] = "نقد و نسیه",
+        [Erp.Sales.Domain.TaxInvoiceType.WithBuyer] = "نوع اول (با مشخصات خریدار)",
+        [Erp.Sales.Domain.TaxInvoiceType.WithoutBuyer] = "نوع دوم (بدون مشخصات خریدار)",
+        [Erp.Sales.Domain.TaxStatus.NotSent] = "ارسال‌نشده به مودیان",
     };
 
     public static string Of<TEnum>(TEnum? value) where TEnum : struct, Enum =>

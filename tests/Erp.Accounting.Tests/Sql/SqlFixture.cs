@@ -2,6 +2,9 @@ using Erp.Accounting.Infrastructure;
 using Erp.BaseData.Infrastructure;
 using Erp.Costing.Infrastructure;
 using Erp.Expenses.Infrastructure;
+using Erp.Inventory.Infrastructure.Persistence;
+using Erp.Purchases.Infrastructure;
+using Erp.Sales.Infrastructure;
 using Erp.Treasury.Infrastructure;
 using Erp.Database;
 using Erp.SharedKernel.Abstractions;
@@ -49,6 +52,9 @@ public sealed class SqlFixture : IAsyncLifetime
         services.AddCostingModule();
         services.AddAccountingModule();
         services.AddExpensesModule();
+        services.AddInventoryModule();
+        services.AddPurchasesModule();
+        services.AddSalesModule();
         services.AddTreasuryModule();
         _services = services.BuildServiceProvider();
     }

@@ -1,0 +1,124 @@
+@* ردیف‌های فاکتور خرید و فروش: کالا، مقدار، فی، تخفیف، مبلغ پس از تخفیف و ارزش افزوده ردیفی (به ریال گرد). *@
+
+<table class="voucher-grid">
+    <thead>
+        <tr>
+            <th style="width:3%">#</th>
+            <th style="width:26%">کالا / خدمت</th>
+            <th style="width:9%">مقدار</th>
+            <th style="width:12%">فی</th>
+            <th style="width:11%">تخفیف</th>
+            <th style="width:12%">مبلغ پس از تخفیف</th>
+            <th style="width:13%">ارزش افزوده</th>
+            <th>شرح</th>
+            <th style="width:4%"></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var (line, i) in Lines.Select((l, i) => (l, i)))
+        {
+            <tr>
+                <td class="code">@(i + 1)</td>
+                <td>
+                    <MudAutocomplete T="ItemDto" Value="line.Item" ValueChanged="it => ItemChanged(line, it)" SearchFunc="Search"
+                                     ToStringFunc="@(it => it is null ? null : $"{it.Code} - {it.Title}")" Placeholder="کد، نام یا بارکد"
+                                     ResetValueOnEmptyText="true" Dense="true" MaxItems="40" Disabled="ReadOnly"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <ItemTemplate Context="it">
+                            <span class="code ml-2">@it.Code</span> @it.Title
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true" Class="mr-1">(@it.UnitTitle)</MudText>
+                        </ItemTemplate>
+                    </MudAutocomplete>
+                    @if (line.Item?.TaxItemId is null && line.Item is not null && WarnTaxId)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Warning">شناسه مودیان ندارد</MudText>
+                    }
+                </td>
+                <td>
+                    <MudNumericField T="decimal" @bind-Value="line.Quantity" Format="#,0.######" HideSpinButtons="true" Min="0" Class="num"
+                                     Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     HelperText="@line.Item?.UnitTitle" />
+                </td>
+                <td>
+                    <MudNumericField T="decimal" @bind-Value="line.UnitPrice" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
+                                     Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </td>
+                <td>
+                    <MudNumericField T="decimal" @bind-Value="line.Discount" Format="#,0" HideSpinButtons="true" Min="0" Class="num"
+                                     Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </td>
+                <td class="num">@Format.Amount(line.Net)</td>
+                <td>
+                    @if (line.Item?.VatExempt == true)
+                    {
+                        <span class="select-hint">معاف</span>
+                    }
+                    else
+                    {
+                        <LineVat @bind-Value="line.Vat" Date="@Date" Amount="line.Net" Disabled="ReadOnly" />
+                    }
+                </td>
+                <td>
+                    <MudTextField @bind-Value="line.Description" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </td>
+                <td>
+                    @if (!ReadOnly)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error"
+                                       Disabled="Lines.Count == 1" OnClick="() => Lines.Remove(line)" aria-label="حذف ردیف" />
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+@if (!ReadOnly)
+{
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="() => Lines.Add(new())" Class="mt-1">ردیف جدید</MudButton>
+}
+
+@code {
+    public sealed class LineModel
+    {
+        public long? Id { get; set; }
+        public ItemDto? Item { get; set; }
+        public decimal Quantity { get; set; } = 1;
+        public decimal UnitPrice { get; set; }
+        public decimal Discount { get; set; }
+        public decimal Vat { get; set; }
+        public string? Description { get; set; }
+
+        public decimal Gross => Math.Round(Quantity * UnitPrice, 0, MidpointRounding.AwayFromZero);
+        public decimal Net => Gross - Math.Round(Discount, 0, MidpointRounding.AwayFromZero);
+    }
+
+    [Parameter, EditorRequired] public List<LineModel> Lines { get; set; } = [];
+    /// <summary>کالاهای قابل انتخاب (از پیش بارگذاری‌شده).</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<ItemDto> Items { get; set; } = [];
+    [Parameter] public string? Date { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    /// <summary>فقط کالا (خرید) یا کالا و خدمت (فروش).</summary>
+    [Parameter] public bool GoodsOnly { get; set; }
+    /// <summary>قیمت پیش‌فرض فروش کالا هنگام انتخاب.</summary>
+    [Parameter] public bool UseSalesPrice { get; set; }
+    /// <summary>هشدار نداشتن شناسه کالای مودیان (فروش).</summary>
+    [Parameter] public bool WarnTaxId { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private Task<IEnumerable<ItemDto>> Search(string? term, CancellationToken ct)
+    {
+        IEnumerable<ItemDto> list = Items.Where(i => i.IsActive && (!GoodsOnly || i.Kind == ItemKind.Goods));
+        term = PersianText.NormalizeOrNull(term);
+        if (term is not null)
+            list = list.Where(i => i.Title.Contains(term) || i.Code.StartsWith(term) || i.Barcode == term);
+        return Task.FromResult(list);
+    }
+
+    private async Task ItemChanged(LineModel line, ItemDto? item)
+    {
+        line.Item = item;
+        if (item is not null && UseSalesPrice && line.UnitPrice == 0 && item.SalesPrice is { } p) line.UnitPrice = p;
+        if (item?.VatExempt == true) line.Vat = 0;
+        await Changed.InvokeAsync();
+    }
+}

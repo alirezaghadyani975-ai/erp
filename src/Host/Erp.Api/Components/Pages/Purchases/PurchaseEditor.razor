@@ -1,0 +1,213 @@
+@page "/purchases/new"
+@page "/purchases/{Id:long}"
+@using P = Erp.Purchases.Domain
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="@Heading" />
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<FormWithList Title="فاکتور خرید" Load="LoadSideAsync" NewUrl="/purchases/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
+<FormToolbar Title="@Heading" Permission="pur.invoice" AuditEntity="PurchaseInvoice" AuditId="Id" IsNew="IsNew" Editing="_editing"
+             CanEdit="LockReason is null" CanDelete="LockReason is null" Busy="_saving"
+             SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId" LockReason="@LockReason"
+             OnNew="@(() => Tabs.Go("/purchases/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
+    <Chips>
+        @if (_voucher is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                     Color="@Format.StatusColor((VoucherStatus)_voucher.Status)">سند @_voucher.TempNo — @Format.Status((VoucherStatus)_voucher.Status)</MudChip>
+        }
+        @if (_returnCount > 0)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@_returnCount برگشت</MudChip>
+        }
+        @if (!IsNew && !_editing)
+        {
+            <IfAllowed Url="/purchases/returns/new">
+                <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.Undo"
+                           OnClick="@(() => Tabs.Go($"/purchases/returns/new?invoice={Id}"))">برگشت از این فاکتور</MudButton>
+            </IfAllowed>
+        }
+    </Chips>
+</FormToolbar>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
+<div class="@(ReadOnly ? "view-mode" : null)">
+<MudPaper Class="pa-4 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="6" md="3">
+            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="5">
+            <PersonPicker @bind-PersonId="_supplierId" PersonName="@_supplierName" Label="تأمین‌کننده" Required="true" Disabled="ReadOnly" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">طرف بستانکار</MudText>
+            <MudRadioGroup T="P.PayableKind" @bind-Value="_payable" Disabled="ReadOnly">
+                <MudRadio T="P.PayableKind" Value="P.PayableKind.Trade" Color="Color.Primary" Dense="true">پرداختنی تجاری</MudRadio>
+                <MudRadio T="P.PayableKind" Value="P.PayableKind.Other" Color="Color.Primary" Dense="true">سایر پرداختنی‌ها</MudRadio>
+            </MudRadioGroup>
+        </MudItem>
+        <MudItem xs="12" sm="4" md="2">
+            <MudTextField @bind-Value="_invoiceNo" Label="ش. فاکتور فروشنده" MaxLength="50" Disabled="ReadOnly"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3">
+            <PersianDateField @bind-Value="_invoiceDate" Label="تاریخ فاکتور" Disabled="ReadOnly" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="3">
+            <MudTextField @bind-Value="_sellerTaxId" Label="شماره مالیاتی صورتحساب" MaxLength="22" Disabled="ReadOnly"
+                          HelperText="۲۲ نویسه؛ از کارپوشه مودیان (اختیاری)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudText Typo="Typo.subtitle1"><b>ردیف‌های کالا</b></MudText>
+        <MudSpacer />
+        <VatRateHint Date="@_date" />
+    </MudStack>
+    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" GoodsOnly="true" />
+    @if (_returned.Count > 0)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-1">
+            برگشت‌شده: @string.Join("، ", _returned.Select(r => $"ردیف {r.RowNo}: {r.ReturnedQuantity:0.######}"))
+        </MudText>
+    }
+    <MudDivider Class="my-3" />
+    <TotalsBar Items="Totals" Total="Net + Vat" TotalLabel="مبلغ کل (بدهی به تأمین‌کننده)" />
+</MudPaper>
+</div>
+</FormWithList>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private bool IsNew => Id is null;
+    private string? SelfUrl => Id is long id ? $"/purchases/{id}" : null;
+    private string Heading => IsNew ? "فاکتور خرید جدید" : $"فاکتور خرید {Format.No(_docNo)}";
+    private string? LockReason => _voucher?.Status == 3
+        ? "سند حسابداری این فاکتور دائم شده است؛ فاکتور فقط قابل مشاهده است."
+        : _returnCount > 0 ? "این فاکتور برگشت دارد؛ برای اصلاح یا حذف، اول برگشت‌ها را حذف کنید." : null;
+    private bool ReadOnly => !_editing || LockReason is not null;
+    private bool Dirty => _editing && !IsNew;
+    private decimal Gross => _lines.Sum(l => l.Gross);
+    private decimal Net => _lines.Sum(l => l.Net);
+    private decimal Vat => _lines.Sum(l => l.Vat);
+    private (string, decimal)[] Totals => [("جمع ناخالص", Gross), ("تخفیف", Gross - Net), ("ارزش افزوده", Vat)];
+
+    private List<ItemDto> _items = [];
+    private List<TradeLines.LineModel> _lines = [new()];
+    private List<PurchaseLineDto> _returned = [];
+    private int? _supplierId;
+    private string? _supplierName;
+    private string? _date = Format.Today();
+    private string? _invoiceNo, _invoiceDate, _sellerTaxId, _description;
+    private P.PayableKind _payable = P.PayableKind.Trade;
+    private int _docNo, _returnCount;
+    private PurchaseVoucherDto? _voucher;
+    private bool _loading = true, _saving, _editing;
+    private int _listVersion;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        _items = (await Backend.Run<ItemService, List<ItemDto>>(s => s.SearchAsync(null, null, null, true, default))).Value ?? [];
+        if (Id is long id) await LoadAsync(id);
+        _editing = IsNew;
+        _loading = false;
+    }
+
+    private async Task LoadAsync(long id)
+    {
+        var r = await Backend.Run<PurchaseInvoiceService, PurchaseInvoiceDto>(s => s.GetAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        var x = r.Value!;
+        (_docNo, _date, _invoiceNo, _invoiceDate, _sellerTaxId, _description, _payable, _voucher, _supplierId, _supplierName, _returnCount) =
+            (x.DocNo, x.Date, x.InvoiceNo, x.InvoiceDate, x.SellerTaxId, x.Description, x.PayableKind, x.Voucher, x.SupplierId, x.SupplierName, x.ReturnCount);
+        _lines = x.Lines.Select(l => new TradeLines.LineModel
+        {
+            Id = l.Id, Item = _items.FirstOrDefault(i => i.Id == l.ItemId), Quantity = l.Quantity, UnitPrice = l.UnitPrice,
+            Discount = l.Discount, Vat = l.VatAmount, Description = l.Description
+        }).ToList();
+        _returned = x.Lines.Where(l => l.ReturnedQuantity > 0).ToList();
+    }
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var r = await Backend.Run<PurchaseInvoiceService, List<PurchaseInvoiceListItemDto>>(s => s.ListAsync(null, null, null, default));
+        return (r.Value ?? []).Select(x => new SideItem($"/purchases/{x.Id}", $"{Format.No(x.DocNo)} — {x.SupplierName}",
+            $"{x.Date}{(x.InvoiceNo is null ? "" : $" · فاکتور {x.InvoiceNo}")}", Format.Amount(x.Total))).ToList();
+    }
+
+    private async Task CancelAsync()
+    {
+        _error = null;
+        if (Id is long id) { await LoadAsync(id); _editing = false; }
+        else
+        {
+            (_supplierId, _supplierName, _invoiceNo, _invoiceDate, _sellerTaxId, _description, _payable) = (null, null, null, null, null, null, P.PayableKind.Trade);
+            _lines = [new()];
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_date is null) { _error = "تاریخ الزامی است."; return; }
+        if (_supplierId is null) { _error = "تأمین‌کننده را انتخاب کنید."; return; }
+        var empty = _lines.FindIndex(l => l.Item is null);
+        if (empty >= 0) { _error = $"ردیف {empty + 1}: کالا را انتخاب کنید."; return; }
+
+        var request = new SavePurchaseInvoiceRequest(_date, _supplierId.Value, _payable, _invoiceNo, _invoiceDate, _sellerTaxId, _description,
+            _lines.Select(l => new PurchaseLineRequest(l.Item!.Id, l.Quantity, l.UnitPrice, l.Discount, l.Vat, l.Description)).ToList());
+
+        _saving = true;
+        if (Id is long id)
+        {
+            var r = await Backend.Run<PurchaseInvoiceService>(s => s.UpdateAsync(id, request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("فاکتور ذخیره شد و سند حسابداری‌اش اصلاح شد.", Severity.Success);
+            _listVersion++;
+            await LoadAsync(id);
+            _editing = false;
+        }
+        else
+        {
+            var r = await Backend.Run<PurchaseInvoiceService, long>(s => s.CreateAsync(request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("فاکتور ثبت شد و سند حسابداری موقت صادر شد.", Severity.Success);
+            Tabs.Go($"/purchases/{r.Value}");
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Id is not long id) return;
+        if (!await Dialogs.DeleteAsync($"فاکتور خرید شماره {Format.No(_docNo)}", "سند حسابداری آن هم حذف می‌شود.")) return;
+        var r = await Backend.Run<PurchaseInvoiceService>(s => s.DeleteAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add("فاکتور و سند حسابداری‌اش حذف شد.", Severity.Success);
+        Tabs.CloseCurrentAndGo("/purchases");
+    }
+}

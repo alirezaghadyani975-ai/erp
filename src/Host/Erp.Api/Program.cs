@@ -5,6 +5,9 @@ using Erp.Accounting.Infrastructure;
 using Erp.BaseData.Infrastructure;
 using Erp.Costing.Infrastructure;
 using Erp.Expenses.Infrastructure;
+using Erp.Inventory.Infrastructure.Persistence;
+using Erp.Purchases.Infrastructure;
+using Erp.Sales.Infrastructure;
 using Erp.Treasury.Infrastructure;
 using Erp.Security.Application;
 using Erp.Security.Infrastructure;
@@ -42,6 +45,9 @@ builder.Services.AddBaseDataModule();
 builder.Services.AddCostingModule();
 builder.Services.AddAccountingModule();
 builder.Services.AddExpensesModule();
+builder.Services.AddInventoryModule();
+builder.Services.AddPurchasesModule();
+builder.Services.AddSalesModule();
 builder.Services.AddTreasuryModule();
 
 builder.Services.AddControllers().AddJsonOptions(o =>

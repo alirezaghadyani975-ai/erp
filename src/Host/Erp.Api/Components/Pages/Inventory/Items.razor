@@ -1,0 +1,216 @@
+@page "/inventory/items"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="کالا و خدمات" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">کالا و خدمات</MudText>
+    <MudSpacer />
+    <ExcelButton Build="BuildExcel" />
+    <IfAllowed Permission="@InventoryPermissions.ItemCreate">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="NewAsync">کالا/خدمت جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    معین‌های فروش، برگشت و خرید هر کالا از گروهش می‌آید. شناسه کالا/خدمت سامانه مودیان (۱۳ رقم) برای ارسال صورتحساب فروش لازم است.
+    کالایی که در فاکتور آمده حذف نمی‌شود و فقط غیرفعال می‌شود.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudTextField T="string" @bind-Value="_term" Immediate="true" Placeholder="کد، عنوان، بارکد یا شناسه مودیان" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:260px" />
+        <MudSelect T="int?" @bind-Value="_group" Label="گروه" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="min-width:200px">
+            @foreach (var g in _groups)
+            {
+                <MudSelectItem T="int?" Value="g.Id">@g.Title</MudSelectItem>
+            }
+        </MudSelect>
+        <MudCheckBox T="bool" @bind-Value="_showInactive" Label="غیرفعال‌ها هم" Dense="true" />
+    </MudStack>
+
+    <MudTable T="ItemDto" Items="Visible" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>کد</MudTh>
+            <MudTh>عنوان</MudTh>
+            <MudTh>نوع</MudTh>
+            <MudTh>گروه</MudTh>
+            <MudTh>واحد</MudTh>
+            <MudTh>شناسه مودیان</MudTh>
+            <MudTh>ارزش افزوده</MudTh>
+            <MudTh Style="text-align:left">قیمت فروش</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Code</span></MudTd>
+            <MudTd>
+                @context.Title
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd>@Titles.Of(context.Kind)</MudTd>
+            <MudTd>@context.GroupTitle</MudTd>
+            <MudTd>@context.UnitTitle</MudTd>
+            <MudTd>
+                @if (context.TaxItemId is { } t) { <span class="code">@t</span> }
+                else { <MudText Typo="Typo.caption" Color="Color.Warning">ندارد</MudText> }
+            </MudTd>
+            <MudTd>@(context.VatExempt ? "معاف" : "مشمول")</MudTd>
+            <MudTd Class="num">@(context.SalesPrice is { } p ? Format.Amount(p) : "")</MudTd>
+            <MudTd Style="text-align:left">
+                <IfAllowed Permission="@InventoryPermissions.ItemDelete">
+                    <span @onclick:stopPropagation="true">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" aria-label="حذف"
+                                       OnClick="() => DeleteAsync(context)" />
+                    </span>
+                </IfAllowed>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">کالایی پیدا نشد.</MudText></NoRecordsContent>
+        <PagerContent><MudTablePager RowsPerPageString="ردیف در صفحه" PageSizeOptions="[25, 50, 100]" /></PagerContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editId is null ? "کالا/خدمت جدید" : "ویرایش کالا/خدمت")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_code" Label="کد" MaxLength="30" Class="code" HelperText="@(_editId is null ? "خالی = خودکار" : null)"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_title" Immediate="true" Label="عنوان" MaxLength="200" AutoFocus="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="int?" @bind-Value="_groupEdit" Label="گروه" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var g in _groups.Where(g => g.IsActive || g.Id == _groupEdit))
+                    {
+                        <MudSelectItem T="int?" Value="g.Id">@g.Title <span class="select-hint">(@Titles.Of(g.Kind))</span></MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="short?" @bind-Value="_unit" Label="واحد سنجش" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var u in _units)
+                    {
+                        <MudSelectItem T="short?" Value="u.Id">@u.Title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_taxItemId" Label="شناسه کالا/خدمت مودیان" MaxLength="13" Class="code"
+                              HelperText="۱۳ رقم؛ از سامانه مودیان" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_barcode" Label="بارکد" MaxLength="50" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal?" @bind-Value="_price" Label="قیمت پیش‌فرض فروش (ریال)" Format="#,0.####" HideSpinButtons="true" Min="0"
+                                 Class="num" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex align-center">
+                <MudSwitch T="bool" @bind-Value="_exempt" Color="Color.Warning" Label="معاف از ارزش افزوده" />
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="توضیحات" Lines="2" MaxLength="500" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(string.IsNullOrWhiteSpace(_title) || _groupEdit is null || _unit is null)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<ItemDto> _items = [];
+    private List<ItemGroupDto> _groups = [];
+    private List<ItemUnitDto> _units = [];
+    private bool _loading = true;
+    private string? _term;
+    private int? _group;
+    private bool _showInactive;
+
+    private bool _editOpen;
+    private int? _editId;
+    private string? _code, _title, _taxItemId, _barcode, _notes;
+    private int? _groupEdit;
+    private short? _unit;
+    private decimal? _price;
+    private bool _exempt, _active = true;
+
+    private IEnumerable<ItemDto> Visible => _items
+        .Where(i => _showInactive || i.IsActive)
+        .Where(i => _group is null || i.GroupId == _group)
+        .Where(i => string.IsNullOrWhiteSpace(_term) || i.Title.Contains(PersianText.Normalize(_term)) || i.Code.StartsWith(_term.Trim())
+                    || i.Barcode == _term.Trim() || i.TaxItemId == _term.Trim());
+
+    protected override async Task OnInitializedAsync()
+    {
+        _groups = (await Backend.Run<ItemGroupService, List<ItemGroupDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        _units = (await Backend.Run<ItemService, List<ItemUnitDto>>(s => s.GetUnitsAsync(default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<ItemService, List<ItemDto>>(s => s.SearchAsync(null, null, null, true, default));
+        if (r.Success) _items = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private Task NewAsync()
+    {
+        (_editId, _code, _title, _taxItemId, _barcode, _notes, _price, _exempt, _active) = (null, null, null, null, null, null, null, false, true);
+        _groupEdit = _group ?? _groups.FirstOrDefault(g => g.IsActive)?.Id;
+        _unit = _units.FirstOrDefault()?.Id;
+        _editOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private void Edit(ItemDto i)
+    {
+        (_editId, _code, _title, _taxItemId, _barcode, _notes, _price, _exempt, _active, _groupEdit, _unit) =
+            (i.Id, i.Code, i.Title, i.TaxItemId, i.Barcode, i.Notes, i.SalesPrice, i.VatExempt, i.IsActive, i.GroupId, i.UnitId);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveItemRequest(_code, _title!, _groupEdit!.Value, _unit!.Value, _taxItemId, _exempt, _barcode, _price, _active, _notes);
+        var error = _editId is int id
+            ? (await Backend.Run<ItemService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<ItemService, int>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add(_editId is null ? "کالا ثبت شد." : "تغییرات ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(ItemDto i)
+    {
+        if (!await Dialogs.DeleteAsync($"«{i.Title}»", "اگر در فاکتوری آمده باشد فقط غیرفعال‌کردن ممکن است.")) return;
+        var r = await Backend.Run<ItemService>(s => s.DeleteAsync(i.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+
+    private ExcelFile BuildExcel() => ExcelExport.Build("کالا و خدمات", [],
+    [
+        new ExcelColumn<ItemDto>("کد", i => i.Code, ExcelKind.Code),
+        new("عنوان", i => i.Title),
+        new("نوع", i => Titles.Of(i.Kind)),
+        new("گروه", i => i.GroupTitle),
+        new("واحد", i => i.UnitTitle),
+        new("شناسه مودیان", i => i.TaxItemId, ExcelKind.Code),
+        new("ارزش افزوده", i => i.VatExempt ? "معاف" : "مشمول"),
+        new("قیمت فروش", i => i.SalesPrice, ExcelKind.Amount),
+    ], Visible.ToList());
+}

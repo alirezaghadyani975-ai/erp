@@ -1,0 +1,99 @@
+@page "/sales"
+@inject Backend Backend
+@inject TabService Tabs
+@inject ISnackbar Snackbar
+
+<TabTitle Text="فاکتورهای فروش" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">فاکتورهای فروش</MudText>
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <ExcelButton Build="BuildExcel" Disabled="_rows.Count == 0" />
+    <IfAllowed Url="/sales/new">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/sales/new"))">فاکتور فروش جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    فروش کالا و خدمات: بدهکار مشتری (دریافتنی تجاری) و تخفیف، بستانکار معین فروش گروه هر کالا و ارزش افزوده پرداختنی؛
+    دریافت وجه از خزانه‌داری. فاکتور تا وقتی برگشت ندارد و به سامانه مودیان ارسال نشده قابل اصلاح است.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudTextField T="string" @bind-Value="_term" Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="_ => LoadAsync()"
+                      Placeholder="مشتری، شماره یا شرح" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:260px" />
+        <div style="width:170px"><PersianDateField Value="_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+    </MudStack>
+
+    <MudTable T="SalesInvoiceListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/sales/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره</MudTh>
+            <MudTh>تاریخ</MudTh>
+            <MudTh>مشتری</MudTh>
+            <MudTh>تسویه</MudTh>
+            <MudTh>شرح</MudTh>
+            <MudTh Style="text-align:left">فروش ناخالص</MudTh>
+            <MudTh Style="text-align:left">ارزش افزوده</MudTh>
+            <MudTh Style="text-align:left">جمع</MudTh>
+            <MudTh>سند</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd>@context.CustomerName</MudTd>
+            <MudTd>@Titles.Of(context.Settlement)</MudTd>
+            <MudTd>@context.Description</MudTd>
+            <MudTd Class="num">@Format.Amount(context.GrossAmount)</MudTd>
+            <MudTd Class="num">@Format.Amount(context.VatAmount)</MudTd>
+            <MudTd Class="num"><b>@Format.Amount(context.Total)</b></MudTd>
+            <MudTd>
+                @if (context.Voucher is { } v)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@Format.StatusColor((VoucherStatus)v.Status)">@v.TempNo — @Format.Status((VoucherStatus)v.Status)</MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTd colspan="5"><b>جمع (@_rows.Count فاکتور)</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.GrossAmount))</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.VatAmount))</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(r => r.Total))</b></MudTd>
+            <MudTd />
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4">فاکتوری ثبت نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<SalesInvoiceListItemDto> _rows = [];
+    private bool _loading = true;
+    private string? _term, _from, _to;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<SalesInvoiceService, List<SalesInvoiceListItemDto>>(s => s.ListAsync(_term, _from, _to, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private ExcelFile BuildExcel() => ExcelExport.Build("فاکتورهای فروش", [_from is null && _to is null ? null : $"از {_from} تا {_to}"],
+    [
+        new ExcelColumn<SalesInvoiceListItemDto>("شماره", r => Format.No(r.DocNo), ExcelKind.Code),
+        new("تاریخ", r => r.Date, ExcelKind.Code),
+        new("مشتری", r => r.CustomerName),
+        new("تسویه", r => Titles.Of(r.Settlement)),
+        new("شرح", r => r.Description),
+        new("فروش ناخالص", r => r.GrossAmount, ExcelKind.Amount),
+        new("تخفیف", r => r.DiscountAmount, ExcelKind.Amount),
+        new("ارزش افزوده", r => r.VatAmount, ExcelKind.Amount),
+        new("جمع", r => r.Total, ExcelKind.Amount),
+    ], _rows);
+}

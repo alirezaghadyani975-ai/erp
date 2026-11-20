@@ -160,6 +160,37 @@ BEGIN TRY
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد ویرایش لاگ تغییرات', N'50130', CAST(@err AS NVARCHAR(50)));
 
+-- 11) نوع کالا همان نوع گروهش (اسکریپت ۱۶)
+DECLARE @Unit SMALLINT = (SELECT TOP (1) Id FROM base.Units ORDER BY Id);
+DECLARE @GoodsGroup INT = (SELECT TOP (1) Id FROM inv.ItemGroups WHERE Kind = 1 ORDER BY Id);
+DECLARE @ServiceGroup INT = (SELECT TOP (1) Id FROM inv.ItemGroups WHERE Kind = 2 ORDER BY Id);
+DECLARE @Item INT, @PInv BIGINT, @PLine BIGINT, @PRet BIGINT;
+BEGIN TRY
+    INSERT inv.Items (Code, Title, Kind, GroupId, UnitId) VALUES (N'SMOKE-X', N'تست نوع', 1, @ServiceGroup, @Unit);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد کالا با نوع متفاوت از گروه', N'50201', CAST(@err AS NVARCHAR(50)));
+
+-- 12) برگشت از خرید بیش از مقدار فاکتور (اسکریپت ۱۷)
+INSERT inv.Items (Code, Title, Kind, GroupId, UnitId) VALUES (N'SMOKE-1', N'کالای تست', 1, @GoodsGroup, @Unit);
+SET @Item = SCOPE_IDENTITY();
+INSERT pur.PurchaseInvoices (DocNo, DocDate, SupplierId, GrossAmount, DiscountAmount, VatAmount, CreatedBy)
+VALUES (-1, @D1, @PersonId, 200, 0, 0, 1);
+SET @PInv = SCOPE_IDENTITY();
+INSERT pur.PurchaseInvoiceLines (InvoiceId, RowNo, ItemId, Quantity, UnitPrice, Discount, Amount, VatAmount)
+VALUES (@PInv, 1, @Item, 2, 100, 0, 200, 0);
+SET @PLine = SCOPE_IDENTITY();
+INSERT pur.PurchaseReturns (DocNo, DocDate, InvoiceId, Amount, VatAmount, CreatedBy) VALUES (-1, @D1, @PInv, 300, 0, 1);
+SET @PRet = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT pur.PurchaseReturnLines (ReturnId, RowNo, InvoiceLineId, Quantity, Amount, VatAmount) VALUES (@PRet, 1, @PLine, 3, 300, 0);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد برگشت از خرید بیش از مقدار فاکتور', N'50210', CAST(@err AS NVARCHAR(50)));
+DELETE pur.PurchaseReturns WHERE Id = @PRet;
+DELETE pur.PurchaseInvoices WHERE Id = @PInv;
+DELETE inv.Items WHERE Code IN (N'SMOKE-1', N'SMOKE-X');
+
 -- نتیجه
 SELECT Seq, Test, Expected, Got, CASE WHEN Expected = Got THEN N'قبول' ELSE N'رد' END AS Result
 FROM @R ORDER BY Seq;

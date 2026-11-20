@@ -1,0 +1,233 @@
+@page "/sales/new"
+@page "/sales/{Id:long}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="@Heading" />
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+    return;
+}
+
+<FormWithList Title="فاکتور فروش" Load="LoadSideAsync" NewUrl="/sales/new" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
+<FormToolbar Title="@Heading" Permission="sls.invoice" AuditEntity="SalesInvoice" AuditId="Id" IsNew="IsNew" Editing="_editing"
+             CanEdit="LockReason is null" CanDelete="LockReason is null" Busy="_saving"
+             SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId" LockReason="@LockReason"
+             OnNew="@(() => Tabs.Go("/sales/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
+    <Chips>
+        @if (_voucher is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                     Color="@Format.StatusColor((VoucherStatus)_voucher.Status)">سند @_voucher.TempNo — @Format.Status((VoucherStatus)_voucher.Status)</MudChip>
+        }
+        @if (!IsNew)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.CloudOff">@Titles.Of(_taxStatus)</MudChip>
+        }
+        @if (_returnCount > 0)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@_returnCount برگشت</MudChip>
+        }
+        @if (!IsNew && !_editing)
+        {
+            <IfAllowed Url="/sales/returns/new">
+                <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.Undo"
+                           OnClick="@(() => Tabs.Go($"/sales/returns/new?invoice={Id}"))">برگشت از این فاکتور</MudButton>
+            </IfAllowed>
+        }
+    </Chips>
+</FormToolbar>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
+<div class="@(ReadOnly ? "view-mode" : null)">
+<MudPaper Class="pa-4 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="6" md="3">
+            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="5">
+            <PersonPicker @bind-PersonId="_customerId" PersonName="@_customerName" Label="مشتری" Required="true" Disabled="ReadOnly" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudSelect T="TaxInvoiceType" @bind-Value="_type" Label="نوع صورتحساب (مودیان)" Disabled="ReadOnly"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                <MudSelectItem T="TaxInvoiceType" Value="TaxInvoiceType.WithBuyer">@Titles.Of(TaxInvoiceType.WithBuyer)</MudSelectItem>
+                <MudSelectItem T="TaxInvoiceType" Value="TaxInvoiceType.WithoutBuyer">@Titles.Of(TaxInvoiceType.WithoutBuyer)</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="SettlementMethod" @bind-Value="_settlement" Label="روش تسویه" Disabled="ReadOnly"
+                       HelperText="دریافت وجه از خزانه‌داری ثبت می‌شود" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                <MudSelectItem T="SettlementMethod" Value="SettlementMethod.Credit">نسیه</MudSelectItem>
+                <MudSelectItem T="SettlementMethod" Value="SettlementMethod.Cash">نقد</MudSelectItem>
+                <MudSelectItem T="SettlementMethod" Value="SettlementMethod.Mixed">نقد و نسیه</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        @if (_settlement == SettlementMethod.Mixed)
+        {
+            <MudItem xs="12" sm="6" md="2">
+                <MudNumericField T="decimal?" @bind-Value="_cash" Label="مبلغ نقد" Format="#,0" HideSpinButtons="true" Min="0" Class="num"
+                                 Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+        }
+        <MudItem xs="12" sm="6" md="3">
+            <DetailPicker @bind-Value="_project" AllowedTypeIds="null" Label="پروژه (برای درآمد خدمات)" Disabled="ReadOnly" />
+        </MudItem>
+        <MudItem xs="12" md="@(_settlement == SettlementMethod.Mixed ? 4 : 6)">
+            <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudText Typo="Typo.subtitle1"><b>ردیف‌های فاکتور</b></MudText>
+        <MudSpacer />
+        <VatRateHint Date="@_date" />
+    </MudStack>
+    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" UseSalesPrice="true" WarnTaxId="true" />
+    @if (_returned.Count > 0)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-1">
+            برگشت‌شده: @string.Join("، ", _returned.Select(r => $"ردیف {r.RowNo}: {r.ReturnedQuantity:0.######}"))
+        </MudText>
+    }
+    <MudDivider Class="my-3" />
+    <TotalsBar Items="Totals" Total="Net + Vat" TotalLabel="مبلغ کل (طلب از مشتری)" />
+</MudPaper>
+</div>
+</FormWithList>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private bool IsNew => Id is null;
+    private string? SelfUrl => Id is long id ? $"/sales/{id}" : null;
+    private string Heading => IsNew ? "فاکتور فروش جدید" : $"فاکتور فروش {Format.No(_docNo)}";
+    private string? LockReason => _voucher?.Status == 3
+        ? "سند حسابداری این فاکتور دائم شده است؛ فاکتور فقط قابل مشاهده است."
+        : _taxStatus != TaxStatus.NotSent ? "این فاکتور به سامانه مودیان ارسال شده است؛ تغییر فقط با صورتحساب اصلاحی یا ابطال."
+        : _returnCount > 0 ? "این فاکتور برگشت دارد؛ برای اصلاح یا حذف، اول برگشت‌ها را حذف کنید." : null;
+    private bool ReadOnly => !_editing || LockReason is not null;
+    private bool Dirty => _editing && !IsNew;
+    private decimal Gross => _lines.Sum(l => l.Gross);
+    private decimal Net => _lines.Sum(l => l.Net);
+    private decimal Vat => _lines.Sum(l => l.Vat);
+    private (string, decimal)[] Totals => [("جمع ناخالص", Gross), ("تخفیف", Gross - Net), ("ارزش افزوده", Vat)];
+
+    private List<ItemDto> _items = [];
+    private List<TradeLines.LineModel> _lines = [new()];
+    private List<SalesLineDto> _returned = [];
+    private int? _customerId;
+    private string? _customerName;
+    private string? _date = Format.Today();
+    private string? _description;
+    private TaxInvoiceType _type = TaxInvoiceType.WithBuyer;
+    private SettlementMethod _settlement = SettlementMethod.Credit;
+    private decimal? _cash;
+    private DetailAccountDto? _project;
+    private TaxStatus _taxStatus;
+    private int _docNo, _returnCount;
+    private SalesVoucherDto? _voucher;
+    private bool _loading = true, _saving, _editing;
+    private int _listVersion;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        _items = (await Backend.Run<ItemService, List<ItemDto>>(s => s.SearchAsync(null, null, null, true, default))).Value ?? [];
+        if (Id is long id) await LoadAsync(id);
+        _editing = IsNew;
+        _loading = false;
+    }
+
+    private async Task LoadAsync(long id)
+    {
+        var r = await Backend.Run<SalesInvoiceService, SalesInvoiceDto>(s => s.GetAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        var x = r.Value!;
+        (_docNo, _date, _description, _type, _settlement, _cash, _voucher, _customerId, _customerName, _returnCount, _taxStatus) =
+            (x.DocNo, x.Date, x.Description, x.InvoiceType, x.Settlement, x.CashAmount, x.Voucher, x.CustomerId, x.CustomerName, x.ReturnCount, x.TaxStatus);
+        _project = x.ProjectDetailId is int pid && x.ProjectTitle is { } pt
+            ? new DetailAccountDto(pid, pt.Split(" - ", 2)[0], pt.Split(" - ", 2).ElementAtOrDefault(1) ?? "", 0, null, true)
+            : null;
+        _lines = x.Lines.Select(l => new TradeLines.LineModel
+        {
+            Id = l.Id, Item = _items.FirstOrDefault(i => i.Id == l.ItemId), Quantity = l.Quantity, UnitPrice = l.UnitPrice,
+            Discount = l.Discount, Vat = l.VatAmount, Description = l.Description
+        }).ToList();
+        _returned = x.Lines.Where(l => l.ReturnedQuantity > 0).ToList();
+    }
+
+    private async Task<List<SideItem>> LoadSideAsync()
+    {
+        var r = await Backend.Run<SalesInvoiceService, List<SalesInvoiceListItemDto>>(s => s.ListAsync(null, null, null, default));
+        return (r.Value ?? []).Select(x => new SideItem($"/sales/{x.Id}", $"{Format.No(x.DocNo)} — {x.CustomerName}", x.Date,
+            Format.Amount(x.Total))).ToList();
+    }
+
+    private async Task CancelAsync()
+    {
+        _error = null;
+        if (Id is long id) { await LoadAsync(id); _editing = false; }
+        else
+        {
+            (_customerId, _customerName, _description, _cash, _project) = (null, null, null, null, null);
+            (_type, _settlement) = (TaxInvoiceType.WithBuyer, SettlementMethod.Credit);
+            _lines = [new()];
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (_date is null) { _error = "تاریخ الزامی است."; return; }
+        if (_customerId is null) { _error = "مشتری را انتخاب کنید."; return; }
+        var empty = _lines.FindIndex(l => l.Item is null);
+        if (empty >= 0) { _error = $"ردیف {empty + 1}: کالا یا خدمت را انتخاب کنید."; return; }
+
+        var request = new SaveSalesInvoiceRequest(_date, _customerId.Value, _type, _settlement,
+            _settlement == SettlementMethod.Mixed ? _cash : null, _project?.Id, _description,
+            _lines.Select(l => new SalesLineRequest(l.Item!.Id, l.Quantity, l.UnitPrice, l.Discount, l.Vat, l.Description)).ToList());
+
+        _saving = true;
+        if (Id is long id)
+        {
+            var r = await Backend.Run<SalesInvoiceService>(s => s.UpdateAsync(id, request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("فاکتور ذخیره شد و سند حسابداری‌اش اصلاح شد.", Severity.Success);
+            _listVersion++;
+            await LoadAsync(id);
+            _editing = false;
+        }
+        else
+        {
+            var r = await Backend.Run<SalesInvoiceService, long>(s => s.CreateAsync(request, default));
+            _saving = false;
+            if (!r.Success) { _error = r.Error; return; }
+            Snackbar.Add("فاکتور ثبت شد و سند حسابداری موقت صادر شد.", Severity.Success);
+            Tabs.Go($"/sales/{r.Value}");
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Id is not long id) return;
+        if (!await Dialogs.DeleteAsync($"فاکتور فروش شماره {Format.No(_docNo)}", "سند حسابداری آن هم حذف می‌شود.")) return;
+        var r = await Backend.Run<SalesInvoiceService>(s => s.DeleteAsync(id, default));
+        if (!r.Success) { _error = r.Error; return; }
+        Snackbar.Add("فاکتور و سند حسابداری‌اش حذف شد.", Severity.Success);
+        Tabs.CloseCurrentAndGo("/sales");
+    }
+}

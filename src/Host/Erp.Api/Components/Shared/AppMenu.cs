@@ -12,6 +12,9 @@ using B = Erp.BaseData.Application.BaseDataPermissions;
 using C = Erp.Costing.Application.CostingPermissions;
 using S = Erp.Security.Application.SecurityPermissions;
 using T = Erp.Treasury.Application.TreasuryPermissions;
+using I = Erp.Inventory.Application.InventoryPermissions;
+using PU = Erp.Purchases.Application.PurchasePermissions;
+using SL = Erp.Sales.Application.SalesPermissions;
 
 namespace Erp.Api.Components.Shared;
 
@@ -36,6 +39,15 @@ public static class AppMenu
     public static readonly Node[] Tree =
     [
         new("صفحه نخست", Icons.Material.Outlined.Home, "/", Match: NavLinkMatch.All),
+        new("فروش و خرید", Icons.Material.Outlined.Storefront, Children:
+        [
+            new("فاکتور فروش", Icons.Material.Outlined.PointOfSale, "/sales", P(SL.InvoiceView), NavLinkMatch.All),
+            new("برگشت از فروش", Icons.Material.Outlined.AssignmentReturn, "/sales/returns", P(SL.ReturnView)),
+            new("فاکتور خرید", Icons.Material.Outlined.ShoppingCart, "/purchases", P(PU.InvoiceView), NavLinkMatch.All),
+            new("برگشت از خرید", Icons.Material.Outlined.RemoveShoppingCart, "/purchases/returns", P(PU.ReturnView)),
+            new("کالا و خدمات", Icons.Material.Outlined.Inventory2, "/inventory/items", P(I.ItemView)),
+            new("گروه‌های کالا", Icons.Material.Outlined.Category, "/inventory/groups", P(I.Groups)),
+        ]),
         new("مالی", Icons.Material.Outlined.AccountBalanceWallet, Children:
         [
             new("حسابداری", Icons.Material.Outlined.Calculate, Children:
@@ -127,6 +139,16 @@ public static class AppMenu
         ("/detail-types", P(A.DetailView)),
         ("/fiscal-years", P(A.FiscalView)),
         ("/posting-templates", P(A.TemplateView)),
+        ("/sales/returns/new", P(SL.ReturnCreate)),
+        ("/sales/returns", P(SL.ReturnView)),
+        ("/sales/new", P(SL.InvoiceCreate)),
+        ("/sales", P(SL.InvoiceView)),
+        ("/purchases/returns/new", P(PU.ReturnCreate)),
+        ("/purchases/returns", P(PU.ReturnView)),
+        ("/purchases/new", P(PU.InvoiceCreate)),
+        ("/purchases", P(PU.InvoiceView)),
+        ("/inventory/items", P(I.ItemView)),
+        ("/inventory/groups", P(I.Groups)),
         ("/expenses/new", P(ExpensePermissions.Create)),
         ("/expenses", P(ExpensePermissions.View)),
         ("/treasury/receipts/new", P(T.ReceiptCreate)),

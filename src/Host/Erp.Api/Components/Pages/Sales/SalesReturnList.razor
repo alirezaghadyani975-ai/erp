@@ -1,0 +1,75 @@
+@page "/sales/returns"
+@inject Backend Backend
+@inject TabService Tabs
+@inject ISnackbar Snackbar
+
+<TabTitle Text="برگشت از فروش" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">برگشت از فروش</MudText>
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <IfAllowed Url="/sales/returns/new">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/sales/returns/new"))">برگشت جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    برگشت همیشه از یک فاکتور فروش است و مقدار هر ردیف از مانده آن ردیف بیشتر نمی‌شود. سند: بستانکار مشتری و تخفیف؛ بدهکار برگشت از فروش و ارزش افزوده.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudTextField T="string" @bind-Value="_term" Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="_ => LoadAsync()"
+                      Placeholder="مشتری، شماره یا شرح" Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:240px" />
+        <div style="width:170px"><PersianDateField Value="_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+    </MudStack>
+    <MudTable T="SalesReturnListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/sales/returns/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره</MudTh>
+            <MudTh>تاریخ</MudTh>
+            <MudTh>فاکتور فروش</MudTh>
+            <MudTh>مشتری</MudTh>
+            <MudTh>شرح</MudTh>
+            <MudTh Style="text-align:left">مبلغ</MudTh>
+            <MudTh Style="text-align:left">ارزش افزوده</MudTh>
+            <MudTh Style="text-align:left">جمع</MudTh>
+            <MudTh>سند</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd><span class="code">@Format.No(context.InvoiceDocNo)</span></MudTd>
+            <MudTd>@context.CustomerName</MudTd>
+            <MudTd>@context.Description</MudTd>
+            <MudTd Class="num">@Format.Amount(context.NetAmount)</MudTd>
+            <MudTd Class="num">@Format.Amount(context.VatAmount)</MudTd>
+            <MudTd Class="num"><b>@Format.Amount(context.Total)</b></MudTd>
+            <MudTd>
+                @if (context.Voucher is { } v)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@Format.StatusColor((VoucherStatus)v.Status)">@v.TempNo — @Format.Status((VoucherStatus)v.Status)</MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">برگشتی ثبت نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<SalesReturnListItemDto> _rows = [];
+    private bool _loading = true;
+    private string? _term, _from, _to;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<SalesReturnService, List<SalesReturnListItemDto>>(s => s.ListAsync(_term, _from, _to, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

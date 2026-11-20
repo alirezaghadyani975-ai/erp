@@ -6,6 +6,10 @@ public static class SourceLinks
     public static string Title(string? docType) => docType switch
     {
         Erp.Expenses.Domain.ExpenseInvoice.DocType => "شناسایی هزینه",
+        Erp.Sales.Domain.SalesInvoice.DocType => "فاکتور فروش",
+        Erp.Sales.Domain.SalesReturn.DocType => "برگشت از فروش",
+        Erp.Purchases.Domain.PurchaseInvoice.DocType => "فاکتور خرید",
+        Erp.Purchases.Domain.PurchaseReturn.DocType => "برگشت از خرید",
         Erp.Treasury.Domain.Receipt.DocType => "دریافت",
         Erp.Treasury.Domain.Payment.DocType => "پرداخت",
         Erp.Treasury.Domain.Transfer.DocType => "انتقال وجه",
@@ -23,6 +27,10 @@ public static class SourceLinks
     public static string? Url(string? docType, long? id) => (docType, id) switch
     {
         (Erp.Expenses.Domain.ExpenseInvoice.DocType, long i) => $"/expenses/{i}",
+        (Erp.Sales.Domain.SalesInvoice.DocType, long i) => $"/sales/{i}",
+        (Erp.Sales.Domain.SalesReturn.DocType, long i) => $"/sales/returns/{i}",
+        (Erp.Purchases.Domain.PurchaseInvoice.DocType, long i) => $"/purchases/{i}",
+        (Erp.Purchases.Domain.PurchaseReturn.DocType, long i) => $"/purchases/returns/{i}",
         (Erp.Treasury.Domain.Receipt.DocType, long i) => $"/treasury/receipts/{i}",
         (Erp.Treasury.Domain.Payment.DocType, long i) => $"/treasury/payments/{i}",
         (Erp.Treasury.Domain.Transfer.DocType, long i) => $"/treasury/transfers/{i}",

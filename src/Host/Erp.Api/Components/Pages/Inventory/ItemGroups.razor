@@ -1,0 +1,151 @@
+@page "/inventory/groups"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="گروه‌های کالا" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">گروه‌های کالا</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">گروه جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر گروه معین فروش، برگشت از فروش و خرید (موجودی) کالاهایش را تعیین می‌کند؛ فاکتورهای خرید و فروش سندشان را با همین معین‌ها می‌زنند.
+    گروه خدمات معین خرید ندارد (خرید خدمت با «شناسایی هزینه»). تغییر معین روی فاکتورهای بعدی و اصلاح فاکتورهای قبلی اثر دارد.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="ItemGroupDto" Items="_groups" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>گروه</MudTh>
+            <MudTh>نوع</MudTh>
+            <MudTh>معین فروش</MudTh>
+            <MudTh>معین برگشت از فروش</MudTh>
+            <MudTh>معین خرید (موجودی)</MudTh>
+            <MudTh Style="text-align:left">تعداد کالا</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                @context.Title
+                @if (context.ParentId is int p) { <span class="select-hint mr-1">(زیر @(_groups.FirstOrDefault(g => g.Id == p)?.Title))</span> }
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd>@Titles.Of(context.Kind)</MudTd>
+            <MudTd><span class="code">@context.SalesAccount</span></MudTd>
+            <MudTd><span class="code">@context.SalesReturnAccount</span></MudTd>
+            <MudTd><span class="code">@context.PurchaseAccount</span></MudTd>
+            <MudTd Class="num">@context.ItemCount</MudTd>
+            <MudTd Style="text-align:left">
+                <span @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" aria-label="حذف"
+                                   Disabled="context.ItemCount > 0" OnClick="() => DeleteAsync(context)" />
+                </span>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">گروهی تعریف نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "گروه کالای جدید" : "ویرایش گروه کالا")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_title" Immediate="true" Label="عنوان" MaxLength="100" AutoFocus="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="ItemKind" @bind-Value="_kind" Label="نوع" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    <MudSelectItem T="ItemKind" Value="ItemKind.Goods">کالا</MudSelectItem>
+                    <MudSelectItem T="ItemKind" Value="ItemKind.Service">خدمت</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudSelect T="int?" @bind-Value="_parent" Label="گروه بالادست (اختیاری)" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var g in _groups.Where(g => g.Id != _editId))
+                    {
+                        <MudSelectItem T="int?" Value="g.Id">@g.Title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12"><AccountPicker @bind-Value="_sales" Label="معین فروش" /></MudItem>
+            <MudItem xs="12"><AccountPicker @bind-Value="_return" Label="معین برگشت از فروش" /></MudItem>
+            @if (_kind == ItemKind.Goods)
+            {
+                <MudItem xs="12"><AccountPicker @bind-Value="_purchase" Label="معین خرید (موجودی کالا)" /></MudItem>
+            }
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(string.IsNullOrWhiteSpace(_title) || _sales is null || _return is null || (_kind == ItemKind.Goods && _purchase is null))">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<ItemGroupDto> _groups = [];
+    private bool _loading = true;
+
+    private bool _editOpen, _active = true;
+    private int? _editId, _parent;
+    private string? _title;
+    private ItemKind _kind = ItemKind.Goods;
+    private AccountDto? _sales, _return, _purchase;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<ItemGroupService, List<ItemGroupDto>>(s => s.GetAllAsync(true, default));
+        if (r.Success) _groups = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    /// <summary>معین از روی «کد - عنوان» برای مقدار اولیه انتخاب‌گر.</summary>
+    private static AccountDto? Account(int? id, string? text)
+    {
+        if (id is not int i || text is null) return null;
+        var parts = text.Split(" - ", 2);
+        return new AccountDto(i, parts[0], parts.ElementAtOrDefault(1) ?? "", AccountLevel.Subsidiary, null, null, null, false, true, []);
+    }
+
+    private void New()
+    {
+        (_editId, _parent, _title, _kind, _sales, _return, _purchase, _active) = (null, null, null, ItemKind.Goods, null, null, null, true);
+        _editOpen = true;
+    }
+
+    private void Edit(ItemGroupDto g)
+    {
+        (_editId, _parent, _title, _kind, _active) = (g.Id, g.ParentId, g.Title, g.Kind, g.IsActive);
+        _sales = Account(g.SalesAccountId, g.SalesAccount);
+        _return = Account(g.SalesReturnAccountId, g.SalesReturnAccount);
+        _purchase = Account(g.PurchaseAccountId, g.PurchaseAccount);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveItemGroupRequest(_title!, _kind, _sales!.Id, _return!.Id, _kind == ItemKind.Goods ? _purchase?.Id : null, _parent, _active);
+        var error = _editId is int id
+            ? (await Backend.Run<ItemGroupService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<ItemGroupService, int>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add("گروه ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(ItemGroupDto g)
+    {
+        if (!await Dialogs.DeleteAsync($"گروه «{g.Title}»", "فقط گروه بدون کالا و زیرگروه حذف می‌شود.")) return;
+        var r = await Backend.Run<ItemGroupService>(s => s.DeleteAsync(g.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

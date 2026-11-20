@@ -16,6 +16,22 @@
     <Project Path="src/Modules/Expenses/Erp.Expenses.Domain/Erp.Expenses.Domain.csproj" />
     <Project Path="src/Modules/Expenses/Erp.Expenses.Infrastructure/Erp.Expenses.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Inventory/">
+    <Project Path="src/Modules/Inventory/Erp.Inventory.Application/Erp.Inventory.Application.csproj" />
+    <Project Path="src/Modules/Inventory/Erp.Inventory.Contracts/Erp.Inventory.Contracts.csproj" />
+    <Project Path="src/Modules/Inventory/Erp.Inventory.Domain/Erp.Inventory.Domain.csproj" />
+    <Project Path="src/Modules/Inventory/Erp.Inventory.Infrastructure/Erp.Inventory.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Purchases/">
+    <Project Path="src/Modules/Purchases/Erp.Purchases.Application/Erp.Purchases.Application.csproj" />
+    <Project Path="src/Modules/Purchases/Erp.Purchases.Domain/Erp.Purchases.Domain.csproj" />
+    <Project Path="src/Modules/Purchases/Erp.Purchases.Infrastructure/Erp.Purchases.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Sales/">
+    <Project Path="src/Modules/Sales/Erp.Sales.Application/Erp.Sales.Application.csproj" />
+    <Project Path="src/Modules/Sales/Erp.Sales.Domain/Erp.Sales.Domain.csproj" />
+    <Project Path="src/Modules/Sales/Erp.Sales.Infrastructure/Erp.Sales.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Security/">
     <Project Path="src/Modules/Security/Erp.Security.Application/Erp.Security.Application.csproj" />
     <Project Path="src/Modules/Security/Erp.Security.Domain/Erp.Security.Domain.csproj" />

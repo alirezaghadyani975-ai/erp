@@ -61,6 +61,10 @@ public sealed class AuditLogService(CompanyConnection connection, IAccessControl
                 case "ChequeOperation": await S<Erp.Treasury.Application.ChequeOperationService>().GetAsync(id, ct); break;
                 case "Guarantee": await S<Erp.Treasury.Application.GuaranteeService>().GetAsync(id, ct); break;
                 case "ExpenseInvoice": await S<Erp.Expenses.Application.ExpenseInvoiceService>().GetAsync(id, ct); break;
+                case "SalesInvoice": await S<Erp.Sales.Application.SalesInvoiceService>().GetAsync(id, ct); break;
+                case "SalesReturn": await S<Erp.Sales.Application.SalesReturnService>().GetAsync(id, ct); break;
+                case "PurchaseInvoice": await S<Erp.Purchases.Application.PurchaseInvoiceService>().GetAsync(id, ct); break;
+                case "PurchaseReturn": await S<Erp.Purchases.Application.PurchaseReturnService>().GetAsync(id, ct); break;
                 case "Person": await S<Erp.BaseData.Application.Persons.PersonService>().GetAsync((int)id, ct); break;
                 case "CostCenter": await S<Erp.Costing.Application.Centers.CostCenterService>().GetAsync((int)id, ct); break;
                 default:
