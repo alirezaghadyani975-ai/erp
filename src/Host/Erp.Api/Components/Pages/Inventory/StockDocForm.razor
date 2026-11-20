@@ -104,7 +104,7 @@
                     <th style="width:110px">مقدار</th>
                     @if (HasPrice)
                     {
-                        <th style="width:140px">@(_type == StockDocType.Opening ? "فی" : "فی تقریبی")</th>
+                        <th style="width:140px">فی</th>
                     }
                     @if (_type == StockDocType.Consumption)
                     {
@@ -274,7 +274,7 @@
     private string Heading => IsNew ? $"{_type.Title()} جدید" : $"{_type.Title()} {Format.No(_docNo)}";
     private bool ReadOnly => !_editing || LockReason is not null;
     private bool Dirty => _editing && !IsNew;
-    private bool HasPrice => _type is StockDocType.Opening or StockDocType.PurchaseReceipt;
+    private bool HasPrice => _type == StockDocType.Opening;
     private bool HasInvoicing => _type is not (StockDocType.Opening or StockDocType.Consumption);
     private string? LockReason => _dto?.LockReason;
 
@@ -285,7 +285,7 @@
     private string Hint => _type switch
     {
         StockDocType.Opening => "موجودی اول دوره: یک بار برای هر انبار، روز اول سال مالی و پیش از همه سندهای آن انبار. فی هر کالا بهای اول دوره است.",
-        StockDocType.PurchaseReceipt => "اول رسید، بعد فاکتور خرید: فاکتور خرید ردیف‌هایش را از همین رسید برمی‌دارد. فی تقریبی تا رسیدن فاکتور برای بهای تمام‌شده به کار می‌رود.",
+        StockDocType.PurchaseReceipt => "اول رسید، بعد فاکتور خرید: فاکتور خرید ردیف‌هایش را از همین رسید برمی‌دارد. بهای رسید فقط از فاکتور خرید می‌آید؛ تا فاکتور نیامده در محاسبه بهای تمام‌شده صفر حساب و گزارش می‌شود.",
         StockDocType.SalesReturnReceipt => "از ردیف‌های حواله فروشِ فاکتورشده؛ بعد از ثبت، «برگشت از فروش» را از روی این رسید صادر کنید.",
         StockDocType.SalesIssue => "اول حواله (تحویل کالا و انتقال ریسک)، بعد فاکتور فروش از روی همین حواله. موجودی هیچ کالایی در هیچ تاریخی منفی نمی‌شود.",
         StockDocType.PurchaseReturnIssue => "از ردیف‌های رسید خریدِ فاکتورشده؛ بعد از ثبت، «برگشت از خرید» را از روی این حواله صادر کنید.",

@@ -38,24 +38,6 @@ public class InventoryDbContext : DbContext, IInventoryDbContext
         return rows.ToDictionary(r => r.Id, r => r.Amount);
     }
 
-    public async Task<Dictionary<int, decimal>> LastPurchasePricesAsync(IReadOnlyCollection<int> itemIds, DateOnly until, CancellationToken ct)
-    {
-        if (itemIds.Count == 0) return [];
-        var json = System.Text.Json.JsonSerializer.Serialize(itemIds.Distinct());
-        var rows = await Database.SqlQuery<IdAmount>($"""
-            SELECT CAST(x.ItemId AS BIGINT) AS Id, CAST(x.Price AS DECIMAL(24,4)) AS Amount
-            FROM (SELECT l.ItemId, l.Amount / l.Quantity AS Price,
-                         ROW_NUMBER() OVER (PARTITION BY l.ItemId ORDER BY d.DocDate DESC, l.Id DESC) AS rn
-                  FROM pur.PurchaseInvoiceLines l
-                  JOIN inv.StockDocLines s ON s.Id = l.ReceiptLineId
-                  JOIN inv.StockDocs d ON d.Id = s.DocId
-                  JOIN OPENJSON({json}) j ON CAST(j.[value] AS INT) = l.ItemId
-                  WHERE d.DocDate <= {until}) x
-            WHERE x.rn = 1
-            """).ToListAsync(ct);
-        return rows.ToDictionary(r => (int)r.Id, r => Math.Round(r.Amount, 4));
-    }
-
     public async Task WriteCostsAsync(IReadOnlyCollection<(long LineId, decimal UnitCost, decimal Amount)> rows, CancellationToken ct)
     {
         if (rows.Count == 0) return;

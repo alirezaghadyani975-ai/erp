@@ -112,7 +112,7 @@ public class StockDoc : AggregateRoot<long>
                 throw new DomainException($"ردیف {row}: فی موجودی اول دوره الزامی است.");
             if (l.EnteredPrice < 0) throw new DomainException($"ردیف {row}: فی نمی‌تواند منفی باشد.");
 
-            var price = DocType is StockDocType.Opening or StockDocType.PurchaseReceipt && l.EnteredPrice is { } p ? Math.Round(p, 4) : (decimal?)null;
+            var price = DocType == StockDocType.Opening && l.EnteredPrice is { } p ? Math.Round(p, 4) : (decimal?)null;
             _lines.Add(new StockDocLine(row, l.ItemId, Math.Round(l.Quantity, 6),
                 DocType.IsReturn() ? l.SourceLineId : null,
                 DocType == StockDocType.Consumption ? l.CostFactorId : null,

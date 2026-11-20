@@ -21,12 +21,45 @@
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
     بهای هر حواله با میانگین موزون متحرک همان کالا در همان انبار حساب می‌شود و سند ماه (بهای تمام‌شده فروش، هزینه مصرف و برگشت‌ها)
     صادر یا بازنویسی می‌شود. «محاسبه تا این ماه» ماه‌های قبلیِ محاسبه‌نشده یا تغییرکرده را هم به ترتیب حساب می‌کند.
-    رسید خریدی که هنوز فاکتور نشده با فی تقریبی (یا آخرین فی خرید) حساب می‌شود و با آمدن فاکتور، ماه دوباره «نیازمند محاسبه» می‌شود.
+    هیچ بهایی از فی قبلی یا تقریبی حساب نمی‌شود: اطلاعات ناقص (مثل رسید خرید بدون فاکتور) صفر لحاظ و بعد از محاسبه گزارش می‌شود؛
+    با کامل شدن اطلاعات، ماه «نیازمند محاسبه دوباره» می‌شود.
 </MudText>
 
 @if (_error is not null)
 {
     <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+}
+
+@if (_warnings is { Count: > 0 })
+{
+    <MudPaper Class="pa-3 mb-3" Elevation="1" Style="border-inline-start:4px solid var(--mud-palette-warning)">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudIcon Icon="@Icons.Material.Outlined.ReportProblem" Color="Color.Warning" />
+            <MudText Typo="Typo.subtitle1"><b>گزارش اطلاعات ناقص (@_warnings.Count ردیف) — بهای این ردیف‌ها صفر لحاظ شد</b></MudText>
+            <MudSpacer />
+            <ExcelButton Build="BuildWarnings" />
+            <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small" OnClick="() => _warnings = null" aria-label="بستن گزارش" />
+        </MudStack>
+        <MudTable T="(string Period, CostWarningDto W)" Items="_warnings" Dense="true" Hover="true" Elevation="0"
+                  OnRowClick="@(a => Open(a.Item.W))" RowStyle="cursor:pointer">
+            <HeaderContent>
+                <MudTh>ماه</MudTh>
+                <MudTh>تاریخ</MudTh>
+                <MudTh>سند</MudTh>
+                <MudTh>کالا</MudTh>
+                <MudTh Style="text-align:left">مقدار</MudTh>
+                <MudTh>اطلاعات ناقص</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Period</MudTd>
+                <MudTd><span class="code">@context.W.Date</span></MudTd>
+                <MudTd>@context.W.Type.Title() <span class="code">@Format.No(context.W.DocNo)</span> ردیف @context.W.RowNo</MudTd>
+                <MudTd>@context.W.Item</MudTd>
+                <MudTd Class="num">@context.W.Quantity.ToString("#,0.######")</MudTd>
+                <MudTd>@context.W.Problem</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
 }
 
 <MudPaper Class="pa-3" Elevation="1">
@@ -126,9 +159,24 @@
         var r = await Backend.Run<StockCostingService, List<CostRunResultDto>>(s => s.RunUpToAsync(period.PeriodId, default));
         _running = false;
         if (!r.Success) { _error = r.Error; await LoadAsync(); return; }
-        var estimated = r.Value!.Sum(x => x.Estimated);
-        Snackbar.Add($"{r.Value!.Count} ماه محاسبه شد" + (estimated > 0 ? $"؛ {estimated} ردیف رسید خرید هنوز فاکتور نشده و با فی تقریبی حساب شد." : "."),
-            estimated > 0 ? Severity.Warning : Severity.Success);
+        _warnings = r.Value!.SelectMany(x => x.Warnings.Select(w => (x.PeriodTitle, w))).ToList();
+        Snackbar.Add($"{r.Value!.Count} ماه محاسبه شد" + (_warnings.Count > 0 ? $"؛ {_warnings.Count} ردیف اطلاعات ناقص دارد و صفر لحاظ شد (گزارش بالای جدول)." : "."),
+            _warnings.Count > 0 ? Severity.Warning : Severity.Success);
         await LoadAsync();
     }
+
+    private List<(string Period, CostWarningDto W)>? _warnings;
+
+    private void Open(CostWarningDto w) =>
+        Tabs.Go(w.Type.IsReceipt() ? $"/inventory/receipts/{w.DocId}" : $"/inventory/issues/{w.DocId}");
+
+    private ExcelFile BuildWarnings() => ExcelExport.Build("اطلاعات ناقص بهای تمام‌شده", [],
+    [
+        new ExcelColumn<(string Period, CostWarningDto W)>("ماه", r => r.Period),
+        new("تاریخ", r => r.W.Date, ExcelKind.Code),
+        new("سند", r => $"{r.W.Type.Title()} {Format.No(r.W.DocNo)} ردیف {r.W.RowNo}"),
+        new("کالا", r => r.W.Item),
+        new("مقدار", r => r.W.Quantity, ExcelKind.Amount),
+        new("اطلاعات ناقص", r => r.W.Problem),
+    ], _warnings!);
 }

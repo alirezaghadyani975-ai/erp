@@ -12,7 +12,7 @@ namespace Erp.Inventory.Application;
 /// <summary>
 /// محاسبه بهای تمام‌شده ماهانه با میانگین موزون متحرک به تفکیک کالا × انبار و صدور سند ماه.
 /// <para>ترتیب در هر روز: رسید خرید و اول دوره، بعد حواله‌ها، بعد رسید برگشت از فروش (که بهایش از حواله مبدأ می‌آید).</para>
-/// <para>بها: اول دوره = فی واردشده؛ رسید خرید = مبلغ ردیف فاکتور خرید، تا نیامدن فاکتور فی تقریبی یا آخرین فی خرید؛
+/// <para>بها: اول دوره = فی واردشده؛ رسید خرید = مبلغ ردیف فاکتور خرید (بدون فاکتور: صفر و در گزارش اطلاعات ناقص)؛
 /// حواله فروش و مصرف = میانگین لحظه؛ برگشت‌ها = بهای ردیف مبدأ. حواله‌ای که آخرین مقدار را می‌برد باقی مبلغ را می‌گیرد.</para>
 /// <para>سند ماه: فروش (بدهکار بهای تمام‌شده گروه، بستانکار موجودی)، مصرف (بدهکار هزینه عامل/مرکز)، برگشت از فروش (برعکس فروش).
 /// رسید خرید و حواله برگشت از خرید را فاکتورها ثبت کرده‌اند و اول دوره سند افتتاحیه دارد.</para>
@@ -74,7 +74,7 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
         return results;
     }
 
-    private sealed record Line(long Id, StockDocType Type, DateOnly Date, long DocId, short RowNo, int ItemId, int WarehouseId, decimal Quantity,
+    private sealed record Line(long Id, StockDocType Type, DateOnly Date, long DocId, int DocNo, short RowNo, int ItemId, int WarehouseId, decimal Quantity,
         long? SourceLineId, int? FactorId, int? CenterId, decimal? EnteredPrice);
 
     private async Task<CostRunResultDto> RunAsync(FiscalPeriodRef period, CancellationToken ct)
@@ -99,30 +99,33 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
         var lines = (await db.StockDocs.AsNoTracking().Where(d => d.DocDate >= period.StartDate && d.DocDate <= period.EndDate)
                 .SelectMany(d => d.Lines.Select(l => new
                 {
-                    l.Id, d.DocType, d.DocDate, DocId = d.Id, l.RowNo, l.ItemId, d.WarehouseId, l.Quantity, l.SourceLineId,
+                    l.Id, d.DocType, d.DocDate, DocId = d.Id, d.DocNo, l.RowNo, l.ItemId, d.WarehouseId, l.Quantity, l.SourceLineId,
                     l.CostFactorId, l.CostCenterId, l.EnteredPrice
                 }))
                 .ToListAsync(ct))
-            .Select(l => new Line(l.Id, l.DocType, l.DocDate, l.DocId, l.RowNo, l.ItemId, l.WarehouseId, l.Quantity, l.SourceLineId,
+            .Select(l => new Line(l.Id, l.DocType, l.DocDate, l.DocId, l.DocNo, l.RowNo, l.ItemId, l.WarehouseId, l.Quantity, l.SourceLineId,
                 l.CostFactorId, l.CostCenterId, l.EnteredPrice))
             .OrderBy(l => l.Date).ThenBy(l => Phase(l.Type)).ThenBy(l => l.DocId).ThenBy(l => l.RowNo)
             .ToList();
 
-        // بهای رسیدهای خرید و ردیف‌های مبدأ برگشت‌ها (اگر ماه قبل محاسبه شده‌اند)
+        // بهای رسیدهای خرید (فقط از فاکتور خرید) و ردیف‌های مبدأ برگشت‌ها (اگر ماه قبل محاسبه شده‌اند).
+        // هیچ بهایی از فی قبلی یا تقریبی حساب نمی‌شود: اطلاعات ناقص = صفر، و در گزارش بعد از محاسبه می‌آید.
         var receiptIds = lines.Where(l => l.Type == StockDocType.PurchaseReceipt).Select(l => l.Id).ToList();
         var invoiced = await db.ReceiptInvoiceAmountsAsync(receiptIds, ct);
-        var estimateItems = lines.Where(l => l.Type == StockDocType.PurchaseReceipt && !invoiced.ContainsKey(l.Id) && l.EnteredPrice is null)
-            .Select(l => l.ItemId).Distinct().ToList();
-        var lastPrices = await db.LastPurchasePricesAsync(estimateItems, period.EndDate, ct);
         var lineIds = lines.Select(l => l.Id).ToHashSet();
         var outsideSources = lines.Where(l => l.SourceLineId is long s && !lineIds.Contains(s)).Select(l => l.SourceLineId!.Value).Distinct().ToList();
         var sourceCosts = await db.StockDocs.AsNoTracking().SelectMany(d => d.Lines)
             .Where(l => outsideSources.Contains(l.Id))
             .Select(l => new { l.Id, l.UnitCost }).ToDictionaryAsync(l => l.Id, l => l.UnitCost, ct);
+        var itemIds = lines.Select(l => l.ItemId).Distinct().ToList();
+        var itemTitles = await db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => $"{i.Code} - {i.Title}", ct);
 
         var state = new Dictionary<(int, int), (decimal Qty, decimal Amount)>(opening);
         var costs = new Dictionary<long, (decimal Unit, decimal Amount)>();
-        var estimated = 0;
+        var warnings = new List<CostWarningDto>();
+        void Warn(Line l, string problem) => warnings.Add(new CostWarningDto(PersianDate.ToPersian(l.Date), l.Type, l.DocId, l.DocNo, l.RowNo,
+            itemTitles.GetValueOrDefault(l.ItemId, "?"), l.Quantity, problem));
+
         foreach (var l in lines)
         {
             var key = (l.ItemId, l.WarehouseId);
@@ -134,9 +137,10 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
                 {
                     StockDocType.Opening => TradeMath.Rial((l.EnteredPrice ?? 0) * l.Quantity),
                     StockDocType.PurchaseReceipt when invoiced.TryGetValue(l.Id, out var inv) => inv,
-                    StockDocType.PurchaseReceipt => Estimate(l),
+                    StockDocType.PurchaseReceipt => Missing(l, "فاکتور خرید ندارد؛ بها صفر حساب شد."),
                     _ => TradeMath.Rial(SourceUnit(l) * l.Quantity) // برگشت از فروش
                 };
+                if (l.Type == StockDocType.Opening && value == 0) Warn(l, "فی موجودی اول دوره صفر است.");
                 state[key] = (qty + l.Quantity, amount + value);
             }
             else
@@ -172,21 +176,22 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
         await tx.CommitAsync(ct);
 
         return new CostRunResultDto(run.Id, lines.Count, lines.Where(l => !l.Type.IsReceipt()).Sum(l => costs[l.Id].Amount),
-            lines.Where(l => l.Type.IsReceipt()).Sum(l => costs[l.Id].Amount), voucher?.VoucherId, voucher?.TempNo, estimated);
+            lines.Where(l => l.Type.IsReceipt()).Sum(l => costs[l.Id].Amount), voucher?.VoucherId, voucher?.TempNo, warnings, period.Title);
 
-        decimal Estimate(Line l)
+        decimal Missing(Line l, string problem)
         {
-            estimated++;
-            var price = l.EnteredPrice ?? lastPrices.GetValueOrDefault(l.ItemId);
-            return TradeMath.Rial(price * l.Quantity);
+            Warn(l, problem);
+            return 0;
         }
 
-        decimal SourceUnit(Line l) =>
-            l.SourceLineId is long s
-                ? costs.TryGetValue(s, out var c) ? c.Unit
-                : sourceCosts.GetValueOrDefault(s) ?? throw new DomainException(
-                    $"بهای ردیف مبدأ برگشت ({l.Type.Title()} ردیف {l.RowNo}) هنوز محاسبه نشده است؛ ماه سند مبدأ را اول محاسبه کنید.")
-                : 0;
+        decimal SourceUnit(Line l)
+        {
+            if (l.SourceLineId is not long s) return 0;
+            if (costs.TryGetValue(s, out var c)) return c.Unit;
+            if (sourceCosts.GetValueOrDefault(s) is { } unit) return unit;
+            Missing(l, "بهای ردیف مبدأ برگشت محاسبه نشده است؛ بها صفر حساب شد.");
+            return 0;
+        }
     }
 
     /// <summary>ترتیب داخل یک روز: رسیدهای مستقل، حواله‌ها، برگشت از فروش.</summary>

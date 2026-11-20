@@ -33,9 +33,10 @@ public sealed class Backend(IServiceScopeFactory scopes, AppSession session, Nav
             await LogDeniedAsync(ex.Message);
             return Result<T>.Fail(ex.Message);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (IsCancellation(ex))
         {
-            // لغو عمدی (مثلاً جستجوی قبلی انتخاب‌گر با تایپ حرف بعدی)؛ خطا نیست و لاگ نمی‌شود
+            // لغو عمدی (مثلاً جستجوی قبلی انتخاب‌گر با تایپ حرف بعدی)؛ خطا نیست و لاگ نمی‌شود.
+            // SqlClient لغو را گاهی با SqlException «Operation cancelled by user» می‌دهد، نه OperationCanceledException.
             return Result<T>.Fail("عملیات لغو شد.");
         }
         catch (Exception ex)
@@ -50,6 +51,15 @@ public sealed class Backend(IServiceScopeFactory scopes, AppSession session, Nav
             }
             return Result<T>.Fail(message);
         }
+    }
+
+    private static bool IsCancellation(Exception ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException)
+            if (e is OperationCanceledException
+                || (e.GetType().Name == "SqlException" && e.Message.Contains("Operation cancelled by user", StringComparison.Ordinal)))
+                return true;
+        return false;
     }
 
     public Task<Result<bool>> Run<TService>(Func<TService, Task> operation) where TService : notnull =>

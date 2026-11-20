@@ -338,13 +338,13 @@ public class TradeTests(SqlFixture db)
         var s = await SeedAsync();
         var item = await NewItemAsync("کالای تست بهای تمام‌شده");
 
-        // آبان ۱۴۱۷: رسید ۱۰ به فی تقریبی ۱۰۰ (فاکتورنشده)، رسید ۱۰ فاکتورشده به ۱۲۰
+        // آبان ۱۴۱۷: رسید ۱۰ فاکتورنشده (فی واردشده نادیده؛ بها صفر و گزارش)، رسید ۱۰ فاکتورشده به ۱۲۰
         await StockAsync(StockDocType.PurchaseReceipt, "1417/08/01", s.Supplier, new StockLineRequest(item, 10, EnteredPrice: 100));
         var r2 = await StockAsync(StockDocType.PurchaseReceipt, "1417/08/05", s.Supplier, new StockLineRequest(item, 10));
         await db.Run<PurchaseInvoiceService, long>(x => x.CreateAsync(new SavePurchaseInvoiceRequest("1417/08/05", s.Supplier,
             PayableKind.Trade, null, null, null, null, [new PurchaseLineRequest(item, 10, 120, ReceiptLineId: r2[0])]), default));
 
-        // فروش ۵ (میانگین ۱۱۰)، مصرف ۵، برگشت ۱ از فروش
+        // فروش ۵ (میانگین ۶۰)، مصرف ۵، برگشت ۱ از فروش
         var issue = await StockAsync(StockDocType.SalesIssue, "1417/08/10", s.Customer, new StockLineRequest(item, 5));
         await db.Run<SalesInvoiceService, long>(x => x.CreateAsync(new SaveSalesInvoiceRequest("1417/08/10", s.Customer,
             TaxInvoiceType.WithBuyer, SettlementMethod.Credit, null, null, null, [new SalesLineRequest(item, 5, 300, IssueLineId: issue[0])]), default));
@@ -362,20 +362,20 @@ public class TradeTests(SqlFixture db)
         var aban = periods.Single(p => p.PeriodNo == 8);
         var results = await db.Run<StockCostingService, List<CostRunResultDto>>(x => x.RunUpToAsync(aban.PeriodId, default));
         Assert.InRange(results.Count, 1, 8); // از اولین ماه دارای سند تا آبان، هر کدام یک بار
-        Assert.True(results[^1].Estimated >= 1);
+        Assert.Contains(results[^1].Warnings, w => w.Problem.Contains("فاکتور خرید ندارد") && w.Quantity == 10);
 
         var kardex = await db.Run<StockReportService, KardexDto>(x => x.KardexAsync(item, null, null, null, default));
-        Assert.Equal([1000m, 1200m, 550m, 550m, 110m], kardex.Rows.Select(r => r.Amount!.Value));
-        Assert.Equal((11m, 1210m), (kardex.Closing, kardex.ClosingAmount));
+        Assert.Equal([0m, 1200m, 300m, 300m, 60m], kardex.Rows.Select(r => r.Amount!.Value));
+        Assert.Equal((11m, 660m), (kardex.Closing, kardex.ClosingAmount));
 
         // سند ماه: بهای تمام‌شده 7001، هزینه مصرف، موجودی 2206 و برگشت؛ تراز
         var after = (await db.Run<StockCostingService, List<CostPeriodDto>>(x => x.PeriodsAsync(year, default))).Single(p => p.PeriodNo == 8);
         Assert.Equal(CostRunStatus.Computed, after.Status);
         var v = await Voucher(after.VoucherId!.Value);
         Assert.True(v.IsBalanced);
-        Assert.Contains(v.Lines, l => l.AccountCode == "7001" && l.Debit >= 550);
-        Assert.Contains(v.Lines, l => l.AccountCode == "2206" && l.Credit >= 1100);
-        Assert.Contains(v.Lines, l => l.AccountCode.StartsWith('8') && l.Debit == 550);
+        Assert.Contains(v.Lines, l => l.AccountCode == "7001" && l.Debit >= 300);
+        Assert.Contains(v.Lines, l => l.AccountCode == "2206" && l.Credit >= 600);
+        Assert.Contains(v.Lines, l => l.AccountCode.StartsWith('8') && l.Debit == 300);
 
         // سند انبار تازه در همان ماه، اجرا را «نیازمند محاسبه دوباره» می‌کند؛ اجرای دوباره همان سند را بازنویسی می‌کند
         await StockAsync(StockDocType.PurchaseReceipt, "1417/08/20", s.Supplier, new StockLineRequest(item, 1, EnteredPrice: 100));

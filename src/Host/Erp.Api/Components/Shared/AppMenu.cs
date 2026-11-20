@@ -39,23 +39,42 @@ public static class AppMenu
     public static readonly Node[] Tree =
     [
         new("صفحه نخست", Icons.Material.Outlined.Home, "/", Match: NavLinkMatch.All),
-        new("فروش و خرید", Icons.Material.Outlined.Storefront, Children:
+        // ترتیب بلندمدت: فروش و خرید (عملیات تجاری)، انبار، (تولید)، بهای تمام‌شده، مالی
+        new("فروش", Icons.Material.Outlined.PointOfSale, Children:
         [
-            new("فاکتور فروش", Icons.Material.Outlined.PointOfSale, "/sales", P(SL.InvoiceView), NavLinkMatch.All),
+            new("فاکتور فروش", Icons.Material.Outlined.Receipt, "/sales", P(SL.InvoiceView), NavLinkMatch.All),
             new("برگشت از فروش", Icons.Material.Outlined.AssignmentReturn, "/sales/returns", P(SL.ReturnView)),
-            new("فاکتور خرید", Icons.Material.Outlined.ShoppingCart, "/purchases", P(PU.InvoiceView), NavLinkMatch.All),
+        ]),
+        new("خرید", Icons.Material.Outlined.ShoppingCart, Children:
+        [
+            new("فاکتور خرید", Icons.Material.Outlined.ReceiptLong, "/purchases", P(PU.InvoiceView), NavLinkMatch.All),
             new("برگشت از خرید", Icons.Material.Outlined.RemoveShoppingCart, "/purchases/returns", P(PU.ReturnView)),
-            new("کالا و خدمات", Icons.Material.Outlined.Inventory2, "/inventory/items", P(I.ItemView)),
-            new("گروه‌های کالا", Icons.Material.Outlined.Category, "/inventory/groups", P(I.Groups)),
         ]),
         new("انبار", Icons.Material.Outlined.Warehouse, Children:
         [
             new("رسیدهای انبار", Icons.Material.Outlined.MoveToInbox, "/inventory/receipts", P(I.ReceiptView)),
             new("حواله‌های انبار", Icons.Material.Outlined.Outbox, "/inventory/issues", P(I.IssueView)),
-            new("کاردکس کالا", Icons.Material.Outlined.ViewList, "/inventory/kardex", P(I.Kardex)),
-            new("موجودی انبارها", Icons.Material.Outlined.Inventory, "/inventory/balances", P(I.Kardex)),
+            new("گزارش‌های انبار", Icons.Material.Outlined.Assessment, Children:
+            [
+                new("کاردکس کالا", Icons.Material.Outlined.ViewList, "/inventory/kardex", P(I.Kardex)),
+                new("موجودی انبارها", Icons.Material.Outlined.Inventory, "/inventory/balances", P(I.Kardex)),
+            ]),
+            new("تعاریف انبار", Icons.Material.Outlined.Tune, Expanded: false, Children:
+            [
+                new("کالا و خدمات", Icons.Material.Outlined.Inventory2, "/inventory/items", P(I.ItemView)),
+                new("گروه‌های کالا", Icons.Material.Outlined.Category, "/inventory/groups", P(I.Groups)),
+                new("انبارها", Icons.Material.Outlined.Warehouse, "/inventory/warehouses", P(I.Warehouses)),
+            ]),
+        ]),
+        new("بهای تمام‌شده", Icons.Material.Outlined.Factory, Children:
+        [
             new("محاسبه بهای تمام‌شده", Icons.Material.Outlined.Calculate, "/inventory/costing", P(I.Costing)),
-            new("انبارها", Icons.Material.Outlined.Warehouse, "/inventory/warehouses", P(I.Warehouses)),
+            new("تعاریف بهای تمام‌شده", Icons.Material.Outlined.Tune, Expanded: false, Children:
+            [
+                new("مراکز هزینه", Icons.Material.Outlined.Hub, "/costing/centers", P(C.CenterView)),
+                new("عوامل هزینه", Icons.Material.Outlined.Category, "/costing/factors", P(C.FactorView)),
+                new("انواع مرکز هزینه", Icons.Material.Outlined.Lan, "/costing/center-types", P(C.CenterTypes)),
+            ]),
         ]),
         new("مالی", Icons.Material.Outlined.AccountBalanceWallet, Children:
         [
@@ -103,12 +122,6 @@ public static class AppMenu
                 ]),
                 new("دسته‌چک، سفته و ضمانت‌نامه", Icons.Material.Outlined.MenuBook, "/treasury/instruments", P(T.InstrumentView)),
                 new("تعاریف خزانه‌داری", Icons.Material.Outlined.Tune, "/treasury/setup", P(T.Setup)),
-            ]),
-            new("بهای تمام‌شده", Icons.Material.Outlined.Factory, Expanded: false, Children:
-            [
-                new("مراکز هزینه", Icons.Material.Outlined.Hub, "/costing/centers", P(C.CenterView)),
-                new("عوامل هزینه", Icons.Material.Outlined.Category, "/costing/factors", P(C.FactorView)),
-                new("انواع مرکز هزینه", Icons.Material.Outlined.Lan, "/costing/center-types", P(C.CenterTypes)),
             ]),
         ]),
         new("اطلاعات پایه", Icons.Material.Outlined.Storage, Children:

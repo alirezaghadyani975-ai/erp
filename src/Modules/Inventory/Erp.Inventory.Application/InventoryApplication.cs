@@ -37,9 +37,6 @@ public interface IInventoryDbContext
     /// <summary>مبلغ (پس از تخفیف) ردیف فاکتور خریدی که هر ردیف رسید را فاکتور کرده.</summary>
     Task<Dictionary<long, decimal>> ReceiptInvoiceAmountsAsync(IReadOnlyCollection<long> receiptLineIds, CancellationToken ct);
 
-    /// <summary>آخرین فی خرید فاکتورشده هر کالا تا تاریخ (برای رسید فاکتورنشده بدون فی تقریبی).</summary>
-    Task<Dictionary<int, decimal>> LastPurchasePricesAsync(IReadOnlyCollection<int> itemIds, DateOnly until, CancellationToken ct);
-
     /// <summary>نوشتن بهای محاسبه‌شده ردیف‌ها (UnitCost، Amount و عنصر مواد در inv.StockLineCosts).</summary>
     Task WriteCostsAsync(IReadOnlyCollection<(long LineId, decimal UnitCost, decimal Amount)> rows, CancellationToken ct);
 
@@ -117,8 +114,12 @@ public sealed record CostPeriodDto(int PeriodId, byte PeriodNo, string Title, st
     CostRunStatus? Status, string? RunAt, long? VoucherId, int? VoucherTempNo, byte? VoucherStatus, decimal IssuedAmount, decimal ReceivedAmount);
 
 /// <summary>نتیجه اجرای محاسبه یک ماه.</summary>
+/// <param name="Warnings">اطلاعات ناقص که بهایش صفر حساب شد (مثلاً رسید خرید بدون فاکتور).</param>
 public sealed record CostRunResultDto(int RunId, int LineCount, decimal IssuedAmount, decimal ReceivedAmount, long? VoucherId, int? VoucherTempNo,
-    int Estimated);
+    List<CostWarningDto> Warnings, string PeriodTitle);
+
+/// <summary>ردیفی که اطلاعاتش برای محاسبه بها ناقص بود و بهایش صفر لحاظ شد.</summary>
+public sealed record CostWarningDto(string Date, StockDocType Type, long DocId, int DocNo, short RowNo, string Item, decimal Quantity, string Problem);
 
 /// <summary>نوع فرمی که ردیف سند انبار را فاکتور کرده است.</summary>
 public enum InvoiceLinkKind : byte
