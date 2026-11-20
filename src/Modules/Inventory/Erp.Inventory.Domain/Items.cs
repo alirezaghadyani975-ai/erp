@@ -12,8 +12,9 @@ public class ItemGroup : AggregateRoot<int>
 {
     private ItemGroup() { } // EF
 
-    public ItemGroup(string title, ItemKind kind, int salesAccountId, int salesReturnAccountId, int? purchaseAccountId, int? parentId) =>
-        Update(title, kind, salesAccountId, salesReturnAccountId, purchaseAccountId, parentId);
+    public ItemGroup(string title, ItemKind kind, int salesAccountId, int salesReturnAccountId, int? purchaseAccountId, int? parentId,
+        int? costAccountId = null) =>
+        Update(title, kind, salesAccountId, salesReturnAccountId, purchaseAccountId, parentId, costAccountId);
 
     public int? ParentId { get; private set; }
     public string Title { get; private set; } = null!;
@@ -21,9 +22,12 @@ public class ItemGroup : AggregateRoot<int>
     public int SalesAccountId { get; private set; }
     public int SalesReturnAccountId { get; private set; }
     public int? PurchaseAccountId { get; private set; }
+    /// <summary>معین بهای تمام‌شده کالای فروش‌رفته (فقط گروه کالا).</summary>
+    public int? CostAccountId { get; private set; }
     public bool IsActive { get; private set; } = true;
 
-    public void Update(string title, ItemKind kind, int salesAccountId, int salesReturnAccountId, int? purchaseAccountId, int? parentId)
+    public void Update(string title, ItemKind kind, int salesAccountId, int salesReturnAccountId, int? purchaseAccountId, int? parentId,
+        int? costAccountId = null)
     {
         Title = Texts.Required(title, "عنوان گروه کالا", 100);
         if (!Enum.IsDefined(kind)) throw new DomainException("نوع گروه (کالا یا خدمت) معتبر نیست.");
@@ -31,12 +35,15 @@ public class ItemGroup : AggregateRoot<int>
         if (salesReturnAccountId <= 0) throw new DomainException("معین برگشت از فروش گروه الزامی است.");
         if (kind == ItemKind.Goods && purchaseAccountId is not > 0)
             throw new DomainException("معین خرید (موجودی) برای گروه کالا الزامی است.");
+        if (kind == ItemKind.Goods && costAccountId is not > 0)
+            throw new DomainException("معین بهای تمام‌شده برای گروه کالا الزامی است.");
         if (parentId is { } p && p == Id && Id != 0) throw new DomainException("گروه نمی‌تواند زیرگروه خودش باشد.");
 
         Kind = kind;
         SalesAccountId = salesAccountId;
         SalesReturnAccountId = salesReturnAccountId;
         PurchaseAccountId = kind == ItemKind.Goods ? purchaseAccountId : null;
+        CostAccountId = kind == ItemKind.Goods ? costAccountId : null;
         ParentId = parentId;
     }
 

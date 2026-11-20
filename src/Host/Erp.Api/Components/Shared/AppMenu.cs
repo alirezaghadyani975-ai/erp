@@ -54,6 +54,7 @@ public static class AppMenu
             new("حواله‌های انبار", Icons.Material.Outlined.Outbox, "/inventory/issues", P(I.IssueView)),
             new("کاردکس کالا", Icons.Material.Outlined.ViewList, "/inventory/kardex", P(I.Kardex)),
             new("موجودی انبارها", Icons.Material.Outlined.Inventory, "/inventory/balances", P(I.Kardex)),
+            new("محاسبه بهای تمام‌شده", Icons.Material.Outlined.Calculate, "/inventory/costing", P(I.Costing)),
             new("انبارها", Icons.Material.Outlined.Warehouse, "/inventory/warehouses", P(I.Warehouses)),
         ]),
         new("مالی", Icons.Material.Outlined.AccountBalanceWallet, Children:
@@ -164,6 +165,7 @@ public static class AppMenu
         ("/inventory/issues", P(I.IssueView)),
         ("/inventory/kardex", P(I.Kardex)),
         ("/inventory/balances", P(I.Kardex)),
+        ("/inventory/costing", P(I.Costing)),
         ("/expenses/new", P(ExpensePermissions.Create)),
         ("/expenses", P(ExpensePermissions.View)),
         ("/treasury/receipts/new", P(T.ReceiptCreate)),

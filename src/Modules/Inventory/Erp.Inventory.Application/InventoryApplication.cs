@@ -29,6 +29,22 @@ public interface IInventoryDbContext
 
     /// <summary>فقط‌خواندنی از حسابداری: سال‌های مالی (تاریخ موجودی اول دوره).</summary>
     IQueryable<FiscalYearRef> FiscalYears { get; }
+    IQueryable<FiscalPeriodRef> FiscalPeriods { get; }
+
+    IQueryable<CostRun> CostRuns { get; }
+    IQueryable<CostBalance> CostBalances { get; }
+
+    /// <summary>مبلغ (پس از تخفیف) ردیف فاکتور خریدی که هر ردیف رسید را فاکتور کرده.</summary>
+    Task<Dictionary<long, decimal>> ReceiptInvoiceAmountsAsync(IReadOnlyCollection<long> receiptLineIds, CancellationToken ct);
+
+    /// <summary>آخرین فی خرید فاکتورشده هر کالا تا تاریخ (برای رسید فاکتورنشده بدون فی تقریبی).</summary>
+    Task<Dictionary<int, decimal>> LastPurchasePricesAsync(IReadOnlyCollection<int> itemIds, DateOnly until, CancellationToken ct);
+
+    /// <summary>نوشتن بهای محاسبه‌شده ردیف‌ها (UnitCost، Amount و عنصر مواد در inv.StockLineCosts).</summary>
+    Task WriteCostsAsync(IReadOnlyCollection<(long LineId, decimal UnitCost, decimal Amount)> rows, CancellationToken ct);
+
+    /// <summary>اجراهای بعد از تاریخ «نیازمند محاسبه دوباره» می‌شوند.</summary>
+    Task MarkStaleAfterAsync(DateOnly date, CancellationToken ct);
 
     /// <summary>کالا در فاکتور خرید یا فروش یا سند انبار آمده است؟</summary>
     Task<bool> IsItemUsedAsync(int itemId, CancellationToken ct);
@@ -85,6 +101,25 @@ public sealed class FiscalYearRef
     public DateOnly EndDate { get; init; }
 }
 
+public sealed class FiscalPeriodRef
+{
+    public int Id { get; init; }
+    public short FiscalYearId { get; init; }
+    public byte PeriodNo { get; init; }
+    public string Title { get; init; } = "";
+    public DateOnly StartDate { get; init; }
+    public DateOnly EndDate { get; init; }
+}
+
+/// <param name="Status">null = محاسبه نشده.</param>
+/// <param name="HasDocs">در این ماه سند انبار هست.</param>
+public sealed record CostPeriodDto(int PeriodId, byte PeriodNo, string Title, string StartDate, string EndDate, bool HasDocs,
+    CostRunStatus? Status, string? RunAt, long? VoucherId, int? VoucherTempNo, byte? VoucherStatus, decimal IssuedAmount, decimal ReceivedAmount);
+
+/// <summary>نتیجه اجرای محاسبه یک ماه.</summary>
+public sealed record CostRunResultDto(int RunId, int LineCount, decimal IssuedAmount, decimal ReceivedAmount, long? VoucherId, int? VoucherTempNo,
+    int Estimated);
+
 /// <summary>نوع فرمی که ردیف سند انبار را فاکتور کرده است.</summary>
 public enum InvoiceLinkKind : byte
 {
@@ -130,6 +165,7 @@ public static class InventoryPermissions
     public const string IssueEdit = "inv.issue.edit";
     public const string IssueDelete = "inv.issue.delete";
     public const string Kardex = "inv.kardex.view";
+    public const string Costing = "inv.costing.run";
 
     public static IPermissionSource List { get; } = new PermissionList("کالا و انبار")
         .Crud("inv.item", "کالا و خدمات")
@@ -137,7 +173,8 @@ public static class InventoryPermissions
         .Add("inv.warehouse", "انبارها", ("edit", "تعریف و اصلاح"))
         .Crud("inv.receipt", "رسید انبار")
         .Crud("inv.issue", "حواله انبار")
-        .Add("inv.kardex", "کاردکس و موجودی", ("view", "مشاهده"));
+        .Add("inv.kardex", "کاردکس و موجودی", ("view", "مشاهده"))
+        .Add("inv.costing", "محاسبه بهای تمام‌شده", ("run", "اجرا و مشاهده"));
 
     /// <summary>پیشوند مجوز فرم رسید یا حواله (برای FormToolbar).</summary>
     public static string Prefix(StockDocType type) => type.IsReceipt() ? "inv.receipt" : "inv.issue";
@@ -179,11 +216,13 @@ public sealed record StockDocDto(long Id, StockDocType Type, int DocNo, string D
 public sealed record ReturnSourceDto(long LineId, long DocId, int DocNo, string Date, int WarehouseId, string Warehouse, short RowNo,
     int ItemId, string ItemCode, string ItemTitle, string UnitTitle, decimal Quantity, decimal Returned, decimal Remaining, InvoiceLink Invoice);
 
+/// <param name="UnitCost">بها پس از محاسبه ماهانه؛ null = محاسبه‌نشده.</param>
+/// <param name="BalanceAmount">مانده ریالی؛ null اگر ردیفی تا اینجا محاسبه‌نشده باشد.</param>
 public sealed record KardexRowDto(string Date, StockDocType Type, long DocId, int DocNo, string Warehouse, string? PartyName,
-    string? Description, decimal In, decimal Out, decimal Balance);
+    string? Description, decimal In, decimal Out, decimal Balance, decimal? UnitCost = null, decimal? Amount = null, decimal? BalanceAmount = null);
 
 public sealed record KardexDto(int ItemId, string ItemCode, string ItemTitle, string UnitTitle, decimal Opening, List<KardexRowDto> Rows,
-    decimal TotalIn, decimal TotalOut, decimal Closing);
+    decimal TotalIn, decimal TotalOut, decimal Closing, decimal? OpeningAmount = null, decimal? ClosingAmount = null);
 
 public sealed record StockBalanceDto(int ItemId, string ItemCode, string ItemTitle, string GroupTitle, string UnitTitle,
     int WarehouseId, string Warehouse, decimal Quantity);
@@ -191,10 +230,10 @@ public sealed record StockBalanceDto(int ItemId, string ItemCode, string ItemTit
 /// <param name="SalesAccount">«کد - عنوان» معین فروش.</param>
 public sealed record ItemGroupDto(int Id, int? ParentId, string Title, ItemKind Kind,
     int SalesAccountId, string SalesAccount, int SalesReturnAccountId, string SalesReturnAccount,
-    int? PurchaseAccountId, string? PurchaseAccount, bool IsActive, int ItemCount);
+    int? PurchaseAccountId, string? PurchaseAccount, bool IsActive, int ItemCount, int? CostAccountId = null, string? CostAccount = null);
 
 public sealed record SaveItemGroupRequest(string Title, ItemKind Kind, int SalesAccountId, int SalesReturnAccountId,
-    int? PurchaseAccountId, int? ParentId, bool IsActive = true);
+    int? PurchaseAccountId, int? ParentId, bool IsActive = true, int? CostAccountId = null);
 
 public sealed record ItemDto(int Id, string Code, string Title, ItemKind Kind, int GroupId, string GroupTitle,
     short UnitId, string UnitTitle, string? TaxItemId, bool VatExempt, string? Barcode, decimal? SalesPrice, bool IsActive, string? Notes);
@@ -215,6 +254,7 @@ public static class DependencyInjection
         services.AddScoped<WarehouseService>();
         services.AddScoped<StockDocService>();
         services.AddScoped<StockReportService>();
+        services.AddScoped<StockCostingService>();
         return services;
     }
 }

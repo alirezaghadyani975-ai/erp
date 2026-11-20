@@ -31,6 +31,7 @@ public static class AppForms
         new("کاردکس کالا", "انبار", "/inventory/kardex", Icons.Material.Outlined.ViewList, "گردش کالا"),
         new("موجودی انبارها", "انبار", "/inventory/balances", Icons.Material.Outlined.Inventory, "موجودی کالا انبار"),
         new("انبارها", "انبار", "/inventory/warehouses", Icons.Material.Outlined.Warehouse, "تعریف انبار انباردار"),
+        new("محاسبه بهای تمام‌شده", "انبار", "/inventory/costing", Icons.Material.Outlined.Calculate, "بهای تمام شده کالای فروش رفته میانگین موزون سند ماه"),
         new("شناسایی هزینه جدید", "هزینه‌ها", "/expenses/new", Icons.Material.Outlined.RequestQuote, "فاکتور خدماتی هزینه"),
         new("شناسایی هزینه", "هزینه‌ها", "/expenses", Icons.Material.Outlined.Receipt, "فاکتور خدماتی هزینه"),
         new("دریافت جدید", "خزانه‌داری", "/treasury/receipts/new", Icons.Material.Outlined.CallReceived, "دریافت وجه چک نقد"),

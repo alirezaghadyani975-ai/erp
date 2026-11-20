@@ -23,6 +23,60 @@ public class InventoryDbContext : DbContext, IInventoryDbContext
     public IQueryable<FactorRef> Factors => Set<FactorRef>().AsNoTracking();
     public IQueryable<CenterRef> Centers => Set<CenterRef>().AsNoTracking();
     public IQueryable<FiscalYearRef> FiscalYears => Set<FiscalYearRef>().AsNoTracking();
+    public IQueryable<FiscalPeriodRef> FiscalPeriods => Set<FiscalPeriodRef>().AsNoTracking();
+    public IQueryable<CostRun> CostRuns => Set<CostRun>();
+    public IQueryable<CostBalance> CostBalances => Set<CostBalance>();
+
+    public async Task<Dictionary<long, decimal>> ReceiptInvoiceAmountsAsync(IReadOnlyCollection<long> receiptLineIds, CancellationToken ct)
+    {
+        if (receiptLineIds.Count == 0) return [];
+        var json = System.Text.Json.JsonSerializer.Serialize(receiptLineIds.Distinct());
+        var rows = await Database.SqlQuery<IdAmount>($"""
+            SELECT l.ReceiptLineId AS Id, l.Amount
+            FROM pur.PurchaseInvoiceLines l JOIN OPENJSON({json}) j ON CAST(j.[value] AS BIGINT) = l.ReceiptLineId
+            """).ToListAsync(ct);
+        return rows.ToDictionary(r => r.Id, r => r.Amount);
+    }
+
+    public async Task<Dictionary<int, decimal>> LastPurchasePricesAsync(IReadOnlyCollection<int> itemIds, DateOnly until, CancellationToken ct)
+    {
+        if (itemIds.Count == 0) return [];
+        var json = System.Text.Json.JsonSerializer.Serialize(itemIds.Distinct());
+        var rows = await Database.SqlQuery<IdAmount>($"""
+            SELECT CAST(x.ItemId AS BIGINT) AS Id, CAST(x.Price AS DECIMAL(24,4)) AS Amount
+            FROM (SELECT l.ItemId, l.Amount / l.Quantity AS Price,
+                         ROW_NUMBER() OVER (PARTITION BY l.ItemId ORDER BY d.DocDate DESC, l.Id DESC) AS rn
+                  FROM pur.PurchaseInvoiceLines l
+                  JOIN inv.StockDocLines s ON s.Id = l.ReceiptLineId
+                  JOIN inv.StockDocs d ON d.Id = s.DocId
+                  JOIN OPENJSON({json}) j ON CAST(j.[value] AS INT) = l.ItemId
+                  WHERE d.DocDate <= {until}) x
+            WHERE x.rn = 1
+            """).ToListAsync(ct);
+        return rows.ToDictionary(r => (int)r.Id, r => Math.Round(r.Amount, 4));
+    }
+
+    public async Task WriteCostsAsync(IReadOnlyCollection<(long LineId, decimal UnitCost, decimal Amount)> rows, CancellationToken ct)
+    {
+        if (rows.Count == 0) return;
+        var json = System.Text.Json.JsonSerializer.Serialize(rows.Select(r => new { r.LineId, r.UnitCost, r.Amount }));
+        await Database.ExecuteSqlInterpolatedAsync($"""
+            WITH c AS (SELECT * FROM OPENJSON({json}) WITH (LineId BIGINT, UnitCost DECIMAL(24,4), Amount DECIMAL(24,4)))
+            UPDATE l SET UnitCost = c.UnitCost, Amount = c.Amount FROM inv.StockDocLines l JOIN c ON c.LineId = l.Id;
+            DELETE s FROM inv.StockLineCosts s JOIN OPENJSON({json}) WITH (LineId BIGINT) c ON c.LineId = s.LineId;
+            INSERT inv.StockLineCosts (LineId, Element, Amount)
+            SELECT LineId, 1, Amount FROM OPENJSON({json}) WITH (LineId BIGINT, Amount DECIMAL(24,4));
+            """, ct);
+    }
+
+    public Task MarkStaleAfterAsync(DateOnly date, CancellationToken ct) =>
+        Database.ExecuteSqlInterpolatedAsync($"UPDATE inv.CostRuns SET [Status] = 2 WHERE StartDate > {date} AND [Status] = 1", ct);
+
+    private sealed class IdAmount
+    {
+        public long Id { get; init; }
+        public decimal Amount { get; init; }
+    }
 
     public async Task<bool> IsItemUsedAsync(int itemId, CancellationToken ct) =>
         await Database.SqlQuery<int>($"""
@@ -135,7 +189,7 @@ internal class StockDocConfiguration : IEntityTypeConfiguration<StockDoc>
 {
     public void Configure(EntityTypeBuilder<StockDoc> b)
     {
-        b.ToTable("StockDocs", "inv");
+        b.ToTable("StockDocs", "inv", t => t.HasTrigger("trg_StockDocs_CostRuns"));
         b.HasKey(d => d.Id);
         b.Property(d => d.Description).HasMaxLength(500);
         b.Property(d => d.CreatedAt).HasColumnType("datetime2(0)");
@@ -152,7 +206,11 @@ internal class StockDocLineConfiguration : IEntityTypeConfiguration<StockDocLine
 {
     public void Configure(EntityTypeBuilder<StockDocLine> b)
     {
-        b.ToTable("StockDocLines", "inv", t => t.HasTrigger("trg_StockDocLines_Check"));
+        b.ToTable("StockDocLines", "inv", t =>
+        {
+            t.HasTrigger("trg_StockDocLines_Check");
+            t.HasTrigger("trg_StockDocLines_CostRuns");
+        });
         b.HasKey(l => l.Id);
         b.Property(l => l.Quantity).HasPrecision(24, 6);
         b.Property(l => l.EnteredPrice).HasPrecision(24, 4);
@@ -186,6 +244,36 @@ internal class CenterRefConfiguration : IEntityTypeConfiguration<CenterRef>
     {
         b.ToTable("CostCenters", "cost", t => t.ExcludeFromMigrations());
         b.HasKey(c => c.Id);
+    }
+}
+
+internal class FiscalPeriodRefConfiguration : IEntityTypeConfiguration<FiscalPeriodRef>
+{
+    public void Configure(EntityTypeBuilder<FiscalPeriodRef> b)
+    {
+        b.HasKey(p => p.Id);
+        b.ToSqlQuery("SELECT Id, FiscalYearId, PeriodNo, Title, StartDate, EndDate FROM fin.FiscalPeriods");
+    }
+}
+
+internal class CostRunConfiguration : IEntityTypeConfiguration<CostRun>
+{
+    public void Configure(EntityTypeBuilder<CostRun> b)
+    {
+        b.ToTable("CostRuns", "inv");
+        b.HasKey(r => r.Id);
+        b.Property(r => r.RunAt).HasColumnType("datetime2(0)");
+    }
+}
+
+internal class CostBalanceConfiguration : IEntityTypeConfiguration<CostBalance>
+{
+    public void Configure(EntityTypeBuilder<CostBalance> b)
+    {
+        b.ToTable("CostBalances", "inv");
+        b.HasKey(x => new { x.RunId, x.ItemId, x.WarehouseId });
+        b.Property(x => x.Quantity).HasPrecision(24, 6);
+        b.Property(x => x.Amount).HasPrecision(24, 4);
     }
 }
 

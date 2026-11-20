@@ -15,13 +15,14 @@ public class ItemGroupService(IInventoryDbContext db, IAccessControl access)
     {
         var groups = await db.ItemGroups.AsNoTracking().Where(g => includeInactive || g.IsActive).OrderBy(g => g.Title).ToListAsync(ct);
         var counts = await db.Items.GroupBy(i => i.GroupId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
-        var ids = groups.SelectMany(g => new[] { g.SalesAccountId, g.SalesReturnAccountId, g.PurchaseAccountId ?? 0 }).Distinct().ToList();
+        var ids = groups.SelectMany(g => new[] { g.SalesAccountId, g.SalesReturnAccountId, g.PurchaseAccountId ?? 0, g.CostAccountId ?? 0 }).Distinct().ToList();
         var accounts = await db.Accounts.Where(a => ids.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => $"{a.Code} - {a.Title}", ct);
         return groups.Select(g => new ItemGroupDto(g.Id, g.ParentId, g.Title, g.Kind,
             g.SalesAccountId, accounts.GetValueOrDefault(g.SalesAccountId, "?"),
             g.SalesReturnAccountId, accounts.GetValueOrDefault(g.SalesReturnAccountId, "?"),
             g.PurchaseAccountId, g.PurchaseAccountId is int p ? accounts.GetValueOrDefault(p, "?") : null,
-            g.IsActive, counts.GetValueOrDefault(g.Id))).ToList();
+            g.IsActive, counts.GetValueOrDefault(g.Id),
+            g.CostAccountId, g.CostAccountId is int c ? accounts.GetValueOrDefault(c, "?") : null)).ToList();
     }
 
     public async Task<int> CreateAsync(SaveItemGroupRequest request, CancellationToken ct)
@@ -29,7 +30,7 @@ public class ItemGroupService(IInventoryDbContext db, IAccessControl access)
         access.Demand(InventoryPermissions.Groups);
         await ValidateAccountsAsync(request, ct);
         var group = new ItemGroup(request.Title, request.Kind, request.SalesAccountId, request.SalesReturnAccountId,
-            request.PurchaseAccountId, request.ParentId);
+            request.PurchaseAccountId, request.ParentId, await CostAccountAsync(request, null, ct));
         if (!request.IsActive) group.Deactivate();
         await EnsureUniqueAsync(group, ct);
         db.Add(group);
@@ -48,7 +49,8 @@ public class ItemGroupService(IInventoryDbContext db, IAccessControl access)
             throw new DomainException("گروه نمی‌تواند زیرمجموعه زیرگروه خودش باشد.");
         await ValidateAccountsAsync(request, ct);
 
-        group.Update(request.Title, request.Kind, request.SalesAccountId, request.SalesReturnAccountId, request.PurchaseAccountId, request.ParentId);
+        group.Update(request.Title, request.Kind, request.SalesAccountId, request.SalesReturnAccountId, request.PurchaseAccountId, request.ParentId,
+            await CostAccountAsync(request, group, ct));
         if (request.IsActive) group.Activate(); else group.Deactivate();
         await EnsureUniqueAsync(group, ct);
         await db.SaveChangesAsync(ct);
@@ -68,13 +70,19 @@ public class ItemGroupService(IInventoryDbContext db, IAccessControl access)
 
     private async Task ValidateAccountsAsync(SaveItemGroupRequest r, CancellationToken ct)
     {
-        var ids = new[] { r.SalesAccountId, r.SalesReturnAccountId, r.PurchaseAccountId ?? 0 }.Where(i => i > 0).Distinct().ToList();
+        var ids = new[] { r.SalesAccountId, r.SalesReturnAccountId, r.PurchaseAccountId ?? 0, r.CostAccountId ?? 0 }.Where(i => i > 0).Distinct().ToList();
         var found = await db.Accounts.Where(a => ids.Contains(a.Id)).ToListAsync(ct);
         foreach (var missing in ids.Where(i => found.All(a => a.Id != i)))
             throw new DomainException("معین انتخاب‌شده پیدا نشد یا معین (سطح ۳) نیست.");
         if (found.FirstOrDefault(a => !a.IsActive) is { } inactive)
             throw new DomainException($"معین «{inactive.Code} - {inactive.Title}» غیرفعال است.");
     }
+
+    /// <summary>معین بهای تمام‌شده گروه کالا: از درخواست، یا همان قبلی، یا پیش‌فرض 7001.</summary>
+    private async Task<int?> CostAccountAsync(SaveItemGroupRequest r, ItemGroup? current, CancellationToken ct) =>
+        r.Kind != ItemKind.Goods ? null
+        : r.CostAccountId ?? current?.CostAccountId
+          ?? await db.Accounts.Where(a => a.Code == "7001").Select(a => (int?)a.Id).FirstOrDefaultAsync(ct);
 
     private async Task<bool> IsDescendantAsync(int candidate, int ancestor, CancellationToken ct)
     {

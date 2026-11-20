@@ -11,7 +11,7 @@
     <ExcelButton Build="BuildExcel" Disabled="_kardex is null" />
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
-    ورود و خروج تعدادی یک کالا به ترتیب تاریخ (در هر روز رسیدها پیش از حواله‌ها). کاردکس ریالی با محاسبه ماهانه بهای تمام‌شده می‌آید.
+    ورود و خروج یک کالا به ترتیب تاریخ (در هر روز رسیدها، بعد حواله‌ها، بعد برگشت از فروش). ستون‌های ریالی بعد از «محاسبه بهای تمام‌شده» ماه پر می‌شوند.
 </MudText>
 
 <MudPaper Class="pa-3 mb-3" Elevation="1">
@@ -54,6 +54,9 @@ else
                 <MudTh Style="text-align:left">وارده</MudTh>
                 <MudTh Style="text-align:left">صادره</MudTh>
                 <MudTh Style="text-align:left">مانده</MudTh>
+                <MudTh Style="text-align:left">فی</MudTh>
+                <MudTh Style="text-align:left">مبلغ</MudTh>
+                <MudTh Style="text-align:left">مانده ریالی</MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd><span class="code">@context.Date</span></MudTd>
@@ -64,6 +67,16 @@ else
                 <MudTd Class="num">@Qty(context.In)</MudTd>
                 <MudTd Class="num">@Qty(context.Out)</MudTd>
                 <MudTd Class="num"><b>@Qty(context.Balance)</b></MudTd>
+                @if (context.Amount is { } amount)
+                {
+                    <MudTd Class="num">@Format.Amount(context.UnitCost ?? 0)</MudTd>
+                    <MudTd Class="num">@Format.Amount(amount)</MudTd>
+                    <MudTd Class="num">@(context.BalanceAmount is { } b ? Format.Amount(b) : "")</MudTd>
+                }
+                else
+                {
+                    <MudTd colspan="3"><span class="select-hint">محاسبه‌نشده</span></MudTd>
+                }
             </RowTemplate>
             <NoRecordsContent><MudText Class="pa-4">در این بازه گردشی نیست.</MudText></NoRecordsContent>
             <FooterContent>
@@ -71,6 +84,9 @@ else
                 <MudTd Class="num"><b>@Qty(_kardex.TotalIn)</b></MudTd>
                 <MudTd Class="num"><b>@Qty(_kardex.TotalOut)</b></MudTd>
                 <MudTd Class="num"><b>@Qty(_kardex.Closing)</b></MudTd>
+                <MudTd />
+                <MudTd />
+                <MudTd Class="num"><b>@(_kardex.ClosingAmount is { } c ? Format.Amount(c) : "")</b></MudTd>
             </FooterContent>
         </MudTable>
     </MudPaper>
@@ -130,5 +146,8 @@ else
         new("وارده", r => r.In, ExcelKind.Amount),
         new("صادره", r => r.Out, ExcelKind.Amount),
         new("مانده", r => r.Balance, ExcelKind.Amount),
+        new("فی", r => r.UnitCost, ExcelKind.Amount),
+        new("مبلغ", r => r.Amount, ExcelKind.Amount),
+        new("مانده ریالی", r => r.BalanceAmount, ExcelKind.Amount),
     ], _kardex.Rows);
 }

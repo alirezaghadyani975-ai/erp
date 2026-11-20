@@ -11,7 +11,7 @@
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">گروه جدید</MudButton>
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
-    هر گروه معین فروش، برگشت از فروش و خرید (موجودی) کالاهایش را تعیین می‌کند؛ فاکتورهای خرید و فروش سندشان را با همین معین‌ها می‌زنند.
+    هر گروه معین فروش، برگشت از فروش، خرید (موجودی) و بهای تمام‌شده کالاهایش را تعیین می‌کند؛ فاکتورها و سند ماه انبار با همین معین‌ها ثبت می‌شوند.
     گروه خدمات معین خرید ندارد (خرید خدمت با «شناسایی هزینه»). تغییر معین روی فاکتورهای بعدی و اصلاح فاکتورهای قبلی اثر دارد.
 </MudText>
 
@@ -24,6 +24,7 @@
             <MudTh>معین فروش</MudTh>
             <MudTh>معین برگشت از فروش</MudTh>
             <MudTh>معین خرید (موجودی)</MudTh>
+            <MudTh>معین بهای تمام‌شده</MudTh>
             <MudTh Style="text-align:left">تعداد کالا</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
@@ -37,6 +38,7 @@
             <MudTd>@Acc(context.SalesAccount)</MudTd>
             <MudTd>@Acc(context.SalesReturnAccount)</MudTd>
             <MudTd>@Acc(context.PurchaseAccount)</MudTd>
+            <MudTd>@Acc(context.CostAccount)</MudTd>
             <MudTd Class="num">@context.ItemCount</MudTd>
             <MudTd Style="text-align:left">
                 <span @onclick:stopPropagation="true">
@@ -75,6 +77,7 @@
             @if (_kind == ItemKind.Goods)
             {
                 <MudItem xs="12"><AccountPicker @bind-Value="_purchase" Label="معین خرید (موجودی کالا)" /></MudItem>
+                <MudItem xs="12"><AccountPicker @bind-Value="_cost" Label="معین بهای تمام‌شده کالای فروش‌رفته" /></MudItem>
             }
             <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
         </MudGrid>
@@ -94,7 +97,7 @@
     private int? _editId, _parent;
     private string? _title;
     private ItemKind _kind = ItemKind.Goods;
-    private AccountDto? _sales, _return, _purchase;
+    private AccountDto? _sales, _return, _purchase, _cost;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -125,7 +128,7 @@
 
     private void New()
     {
-        (_editId, _parent, _title, _kind, _sales, _return, _purchase, _active) = (null, null, null, ItemKind.Goods, null, null, null, true);
+        (_editId, _parent, _title, _kind, _sales, _return, _purchase, _cost, _active) = (null, null, null, ItemKind.Goods, null, null, null, null, true);
         _editOpen = true;
     }
 
@@ -135,12 +138,14 @@
         _sales = Account(g.SalesAccountId, g.SalesAccount);
         _return = Account(g.SalesReturnAccountId, g.SalesReturnAccount);
         _purchase = Account(g.PurchaseAccountId, g.PurchaseAccount);
+        _cost = Account(g.CostAccountId, g.CostAccount);
         _editOpen = true;
     }
 
     private async Task SaveAsync()
     {
-        var request = new SaveItemGroupRequest(_title!, _kind, _sales!.Id, _return!.Id, _kind == ItemKind.Goods ? _purchase?.Id : null, _parent, _active);
+        var request = new SaveItemGroupRequest(_title!, _kind, _sales!.Id, _return!.Id, _kind == ItemKind.Goods ? _purchase?.Id : null, _parent, _active,
+            _kind == ItemKind.Goods ? _cost?.Id : null);
         var error = _editId is int id
             ? (await Backend.Run<ItemGroupService>(s => s.UpdateAsync(id, request, default))).Error
             : (await Backend.Run<ItemGroupService, int>(s => s.CreateAsync(request, default))).Error;

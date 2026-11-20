@@ -19,7 +19,7 @@ public class DatabaseScriptTests
              "Erp.Database.Migrations.11_treasury.sql", "Erp.Database.Migrations.12_vat_lines_instruments.sql",
              "Erp.Database.Migrations.13_audit_log.sql", "Erp.Database.Migrations.14_opening.sql", "Erp.Database.Migrations.15_renumber.sql",
              "Erp.Database.Migrations.16_items.sql", "Erp.Database.Migrations.17_purchases_sales.sql",
-             "Erp.Database.Migrations.18_stock.sql"],
+             "Erp.Database.Migrations.18_stock.sql", "Erp.Database.Migrations.19_stock_costing.sql"],
             names);
     }
 

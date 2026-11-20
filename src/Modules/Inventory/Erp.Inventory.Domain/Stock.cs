@@ -126,6 +126,74 @@ public class StockDoc : AggregateRoot<long>
     public void Touch(DateTime nowUtc) => UpdatedAt = nowUtc;
 }
 
+/// <summary>وضعیت اجرای محاسبه بهای تمام‌شده یک ماه.</summary>
+public enum CostRunStatus : byte
+{
+    Computed = 1,
+    /// <summary>بعد از محاسبه، سند انبار یا فاکتور خرید آن ماه یا ماه‌های قبل تغییر کرده است.</summary>
+    Stale = 2
+}
+
+/// <summary>اجرای محاسبه بهای تمام‌شده یک دوره مالی (inv.CostRuns)؛ سند حسابداری ماه با کلید همین شناسه صادر می‌شود.</summary>
+public class CostRun
+{
+    public const string Module = "inventory";
+    public const string DocType = "inv_cost";
+
+    private CostRun() { } // EF
+
+    public CostRun(int fiscalPeriodId, DateOnly start, DateOnly end)
+    {
+        FiscalPeriodId = fiscalPeriodId;
+        StartDate = start;
+        EndDate = end;
+    }
+
+    public int Id { get; private set; }
+    public int FiscalPeriodId { get; private set; }
+    public DateOnly StartDate { get; private set; }
+    public DateOnly EndDate { get; private set; }
+    public CostRunStatus Status { get; private set; }
+    public DateTime RunAt { get; private set; }
+    public int RunBy { get; private set; }
+
+    public void Done(int userId, DateTime nowUtc)
+    {
+        Status = CostRunStatus.Computed;
+        RunBy = userId;
+        RunAt = nowUtc;
+    }
+}
+
+/// <summary>مانده پایان ماه هر کالا × انبار (inv.CostBalances)؛ مانده اول ماه بعد.</summary>
+public class CostBalance
+{
+    private CostBalance() { } // EF
+
+    public CostBalance(int runId, int itemId, int warehouseId, decimal quantity, decimal amount)
+    {
+        RunId = runId;
+        ItemId = itemId;
+        WarehouseId = warehouseId;
+        Quantity = quantity;
+        Amount = amount;
+    }
+
+    public int RunId { get; private set; }
+    public int ItemId { get; private set; }
+    public int WarehouseId { get; private set; }
+    public decimal Quantity { get; private set; }
+    public decimal Amount { get; private set; }
+}
+
+/// <summary>عنصر بها (inv.StockLineCosts.Element).</summary>
+public enum CostElement : byte
+{
+    Material = 1,
+    DirectLabor = 2,
+    Overhead = 3
+}
+
 /// <summary>ردیف رسید یا حواله (inv.StockDocLines).</summary>
 public class StockDocLine
 {

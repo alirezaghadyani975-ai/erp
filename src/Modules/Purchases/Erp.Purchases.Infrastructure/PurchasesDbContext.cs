@@ -50,7 +50,11 @@ public class PurchasesDbContext : DbContext, IPurchasesDbContext
         });
         b.Entity<PurchaseInvoiceLine>(e =>
         {
-            e.ToTable("PurchaseInvoiceLines", "pur", t => t.HasTrigger("trg_PurchaseInvoiceLines_Stock"));
+            e.ToTable("PurchaseInvoiceLines", "pur", t =>
+            {
+                t.HasTrigger("trg_PurchaseInvoiceLines_Stock");
+                t.HasTrigger("trg_PurchaseInvoiceLines_CostRuns");
+            });
             e.HasKey(l => l.Id);
             e.Property(l => l.Quantity).HasPrecision(24, 6);
             e.Property(l => l.UnitPrice).HasPrecision(24, 4);

@@ -5,6 +5,7 @@ using Erp.BaseData.Application.Persons;
 using Erp.BaseData.Contracts;
 using Erp.Inventory.Application;
 using Erp.Inventory.Contracts;
+using Erp.Inventory.Domain;
 using Erp.Purchases.Application;
 using Erp.Purchases.Domain;
 using Erp.Sales.Application;
@@ -328,6 +329,60 @@ public class TradeTests(SqlFixture db)
             new StockLineRequest(item, 1, CostFactorId: factor.Id, CostCenterId: center.Id));
         var doc = await db.Run<StockDocService, StockDocDto>(async x => await x.GetAsync(await StockDocIdAsync(lines[0]), default));
         Assert.Equal((factor.Title, center.Title), (doc.Lines[0].CostFactor, doc.Lines[0].CostCenter));
+    }
+
+    [Fact]
+    public async Task Monthly_costing_uses_moving_average_and_posts_cogs_and_consumption()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var item = await NewItemAsync("کالای تست بهای تمام‌شده");
+
+        // آبان ۱۴۱۷: رسید ۱۰ به فی تقریبی ۱۰۰ (فاکتورنشده)، رسید ۱۰ فاکتورشده به ۱۲۰
+        await StockAsync(StockDocType.PurchaseReceipt, "1417/08/01", s.Supplier, new StockLineRequest(item, 10, EnteredPrice: 100));
+        var r2 = await StockAsync(StockDocType.PurchaseReceipt, "1417/08/05", s.Supplier, new StockLineRequest(item, 10));
+        await db.Run<PurchaseInvoiceService, long>(x => x.CreateAsync(new SavePurchaseInvoiceRequest("1417/08/05", s.Supplier,
+            PayableKind.Trade, null, null, null, null, [new PurchaseLineRequest(item, 10, 120, ReceiptLineId: r2[0])]), default));
+
+        // فروش ۵ (میانگین ۱۱۰)، مصرف ۵، برگشت ۱ از فروش
+        var issue = await StockAsync(StockDocType.SalesIssue, "1417/08/10", s.Customer, new StockLineRequest(item, 5));
+        await db.Run<SalesInvoiceService, long>(x => x.CreateAsync(new SaveSalesInvoiceRequest("1417/08/10", s.Customer,
+            TaxInvoiceType.WithBuyer, SettlementMethod.Credit, null, null, null, [new SalesLineRequest(item, 5, 300, IssueLineId: issue[0])]), default));
+        var factor = (await db.Run<Erp.Costing.Application.Factors.CostFactorService, List<Erp.Costing.Application.CostFactorDto>>(
+            x => x.SearchAsync(null, null, false, default))).First(f => f.Nature != Erp.Costing.Contracts.CostNature.Finance);
+        var type = (await db.Run<Erp.Costing.Application.Setup.CostSetupService, List<Erp.Costing.Application.CostCenterTypeDto>>(
+            x => x.GetCenterTypesAsync(true, default))).First(t => t.Function == Erp.Costing.Contracts.CostFunction.Selling && t.IsSystem);
+        var center = await db.Run<Erp.Costing.Application.Centers.CostCenterService, int>(x => x.CreateAsync(
+            new Erp.Costing.Application.SaveCostCenterRequest { Title = "فروش تست بها", CenterTypeId = type.Id }, default));
+        await StockAsync(StockDocType.Consumption, "1417/08/12", null, new StockLineRequest(item, 5, CostFactorId: factor.Id, CostCenterId: center));
+        await StockAsync(StockDocType.SalesReturnReceipt, "1417/08/15", s.Customer, new StockLineRequest(item, 1, SourceLineId: issue[0]));
+
+        var year = (await db.Run<FiscalYearService, List<FiscalYearDto>>(x => x.GetAllAsync(default))).Single(y => y.Title.Contains("1417")).Id;
+        var periods = await db.Run<StockCostingService, List<CostPeriodDto>>(x => x.PeriodsAsync(year, default));
+        var aban = periods.Single(p => p.PeriodNo == 8);
+        var results = await db.Run<StockCostingService, List<CostRunResultDto>>(x => x.RunUpToAsync(aban.PeriodId, default));
+        Assert.InRange(results.Count, 1, 8); // از اولین ماه دارای سند تا آبان، هر کدام یک بار
+        Assert.True(results[^1].Estimated >= 1);
+
+        var kardex = await db.Run<StockReportService, KardexDto>(x => x.KardexAsync(item, null, null, null, default));
+        Assert.Equal([1000m, 1200m, 550m, 550m, 110m], kardex.Rows.Select(r => r.Amount!.Value));
+        Assert.Equal((11m, 1210m), (kardex.Closing, kardex.ClosingAmount));
+
+        // سند ماه: بهای تمام‌شده 7001، هزینه مصرف، موجودی 2206 و برگشت؛ تراز
+        var after = (await db.Run<StockCostingService, List<CostPeriodDto>>(x => x.PeriodsAsync(year, default))).Single(p => p.PeriodNo == 8);
+        Assert.Equal(CostRunStatus.Computed, after.Status);
+        var v = await Voucher(after.VoucherId!.Value);
+        Assert.True(v.IsBalanced);
+        Assert.Contains(v.Lines, l => l.AccountCode == "7001" && l.Debit >= 550);
+        Assert.Contains(v.Lines, l => l.AccountCode == "2206" && l.Credit >= 1100);
+        Assert.Contains(v.Lines, l => l.AccountCode.StartsWith('8') && l.Debit == 550);
+
+        // سند انبار تازه در همان ماه، اجرا را «نیازمند محاسبه دوباره» می‌کند؛ اجرای دوباره همان سند را بازنویسی می‌کند
+        await StockAsync(StockDocType.PurchaseReceipt, "1417/08/20", s.Supplier, new StockLineRequest(item, 1, EnteredPrice: 100));
+        Assert.Equal(CostRunStatus.Stale,
+            (await db.Run<StockCostingService, List<CostPeriodDto>>(x => x.PeriodsAsync(year, default))).Single(p => p.PeriodNo == 8).Status);
+        var again = await db.Run<StockCostingService, List<CostRunResultDto>>(x => x.RunUpToAsync(aban.PeriodId, default));
+        Assert.Equal(after.VoucherId, again[^1].VoucherId);
     }
 
     private async Task<int> NewItemAsync(string title)

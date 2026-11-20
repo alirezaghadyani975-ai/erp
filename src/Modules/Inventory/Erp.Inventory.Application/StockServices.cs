@@ -441,27 +441,40 @@ public class StockReportService(IInventoryDbContext db, IAccessControl access)
             {
                 d.Id, d.DocType, d.DocNo, d.DocDate, d.WarehouseId, d.PartyId, Description = l.Description ?? d.Description, l.RowNo,
                 In = (byte)d.DocType < 10 ? l.Quantity : 0m,
-                Out = (byte)d.DocType < 10 ? 0m : l.Quantity
+                Out = (byte)d.DocType < 10 ? 0m : l.Quantity,
+                l.UnitCost, l.Amount
             }))
             .Where(x => to == null || x.DocDate <= to)
             .ToListAsync(ct);
 
-        var opening = lines.Where(l => from is not null && l.DocDate < from).Sum(l => l.In - l.Out);
+        // ترتیب همان محاسبه بهای تمام‌شده: در هر روز رسیدهای مستقل، حواله‌ها، برگشت از فروش
+        static int Phase(StockDocType t) => t switch
+        {
+            StockDocType.Opening or StockDocType.PurchaseReceipt => 0,
+            StockDocType.SalesReturnReceipt => 2,
+            _ => 1
+        };
+        var before = lines.Where(l => from is not null && l.DocDate < from).ToList();
+        var opening = before.Sum(l => l.In - l.Out);
+        decimal? openingAmount = before.Any(l => l.Amount is null) ? null : before.Sum(l => l.In > 0 ? l.Amount!.Value : -l.Amount!.Value);
         var period = lines.Where(l => from is null || l.DocDate >= from)
-            .OrderBy(l => l.DocDate).ThenBy(l => l.In > 0 ? 0 : 1).ThenBy(l => l.Id).ThenBy(l => l.RowNo).ToList();
+            .OrderBy(l => l.DocDate).ThenBy(l => Phase(l.DocType)).ThenBy(l => l.Id).ThenBy(l => l.RowNo).ToList();
 
         var warehouses = await db.Warehouses.ToDictionaryAsync(w => w.Id, w => w.Title, ct);
         var partyIds = period.Where(l => l.PartyId is not null).Select(l => l.PartyId!.Value).Distinct().ToList();
         var parties = await db.Parties.Where(p => partyIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.DisplayName, ct);
 
         var balance = opening;
+        var balanceAmount = openingAmount;
         var rows = period.Select(l =>
         {
             balance += l.In - l.Out;
+            balanceAmount = balanceAmount is { } b && l.Amount is { } a ? b + (l.In > 0 ? a : -a) : null;
             return new KardexRowDto(PersianDate.ToPersian(l.DocDate), l.DocType, l.Id, l.DocNo, warehouses.GetValueOrDefault(l.WarehouseId, "?"),
-                l.PartyId is int p ? parties.GetValueOrDefault(p) : null, l.Description, l.In, l.Out, balance);
+                l.PartyId is int p ? parties.GetValueOrDefault(p) : null, l.Description, l.In, l.Out, balance, l.UnitCost, l.Amount, balanceAmount);
         }).ToList();
-        return new KardexDto(item.Id, item.Code, item.Title, item.Unit ?? "", opening, rows, rows.Sum(r => r.In), rows.Sum(r => r.Out), balance);
+        return new KardexDto(item.Id, item.Code, item.Title, item.Unit ?? "", opening, rows, rows.Sum(r => r.In), rows.Sum(r => r.Out), balance,
+            openingAmount, balanceAmount);
     }
 
     /// <summary>موجودی کالاها در هر انبار تا پایان تاریخ (بدون تاریخ: همه).</summary>

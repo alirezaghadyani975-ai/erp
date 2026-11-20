@@ -210,6 +210,13 @@ BEGIN TRY
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد حواله‌ای که موجودی را منفی می‌کند', N'50305', CAST(@err AS NVARCHAR(50)));
 
+-- 15) سند انبار تازه، محاسبه بهای تمام‌شده همان ماه را «نیازمند محاسبه دوباره» می‌کند (اسکریپت ۱۹)
+INSERT inv.CostRuns (FiscalPeriodId, StartDate, EndDate, [Status], RunAt, RunBy)
+SELECT TOP (1) Id, StartDate, EndDate, 1, SYSUTCDATETIME(), 1 FROM fin.FiscalPeriods WHERE @D1 BETWEEN StartDate AND EndDate AND FiscalYearId = @YearId;
+INSERT inv.StockDocLines (DocId, RowNo, ItemId, Quantity) VALUES (@SRec, 2, @Item, 1);
+INSERT @R VALUES (N'علامت «نیازمند محاسبه دوباره» بعد از تغییر سند انبار', N'2',
+    (SELECT CAST(MAX([Status]) AS NVARCHAR(50)) FROM inv.CostRuns WHERE @D1 BETWEEN StartDate AND EndDate));
+
 DELETE pur.PurchaseReturns WHERE Id = @PRet;
 DELETE pur.PurchaseInvoices WHERE Id = @PInv;
 DELETE inv.StockDocs WHERE Id IN (@SRec, @SIss);
@@ -227,6 +234,7 @@ DELETE fin.VoucherLines WHERE VoucherId IN (SELECT Id FROM fin.Vouchers WHERE Fi
 DELETE fin.Vouchers WHERE FiscalYearId = @YearId;
 DELETE fin.DetailAccounts WHERE PersonId = @PersonId;
 DELETE base.Persons WHERE Id = @PersonId;
+DELETE inv.CostRuns WHERE FiscalPeriodId IN (SELECT Id FROM fin.FiscalPeriods WHERE FiscalYearId = @YearId);
 DELETE fin.FiscalPeriods WHERE FiscalYearId = @YearId;
 DELETE fin.FiscalYears WHERE Id = @YearId;
 PRINT N'داده‌های تست پاک شد.';

@@ -1,10 +1,13 @@
-@* انتخاب شخص با جستجوی نام، کد ملی یا کد تفصیلی *@
+@* انتخاب شخص با جستجوی نام، کد ملی یا کد تفصیلی.
+   SelectOnActivation و OpenOnFocus خاموش است: در Blazor Server باز شدن فهرست هنگام فوکوس با تأخیر می‌رسد و متنی را که
+   کاربر تایپ کرده انتخاب می‌کند و جستجوی اول را از بین می‌برد. *@
 @inject Backend Backend
 
 <MudAutocomplete T="PersonListItemDto" Value="_value" ValueChanged="OnChanged" SearchFunc="Search"
                  ToStringFunc="@(p => p?.DisplayName)" Label="@Label" Required="Required" RequiredError="@($"{Label} را انتخاب کنید")" Disabled="Disabled"
                  Error="@(ShowErrors && Required && PersonId is null)" ErrorText="@($"{Label} را انتخاب کنید")"
                  ResetValueOnEmptyText="true" DebounceInterval="250" Dense="true" MaxItems="30"
+                 SelectOnActivation="false" OpenOnFocus="false"
                  HelperText="@(_value?.DetailCode is { } c ? $"تفصیلی {c}" : HelperText)"
                  Variant="Variant.Outlined" Margin="Margin.Dense">
     <ItemTemplate Context="p">
