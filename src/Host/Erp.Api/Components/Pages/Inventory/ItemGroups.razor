@@ -34,9 +34,9 @@
                 @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
             </MudTd>
             <MudTd>@Titles.Of(context.Kind)</MudTd>
-            <MudTd><span class="code">@context.SalesAccount</span></MudTd>
-            <MudTd><span class="code">@context.SalesReturnAccount</span></MudTd>
-            <MudTd><span class="code">@context.PurchaseAccount</span></MudTd>
+            <MudTd>@Acc(context.SalesAccount)</MudTd>
+            <MudTd>@Acc(context.SalesReturnAccount)</MudTd>
+            <MudTd>@Acc(context.PurchaseAccount)</MudTd>
             <MudTd Class="num">@context.ItemCount</MudTd>
             <MudTd Style="text-align:left">
                 <span @onclick:stopPropagation="true">
@@ -105,6 +105,15 @@
         if (r.Success) _groups = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
         _loading = false;
     }
+
+    /// <summary>نمایش «کد - عنوان»: کد جدا و عنوان کنارش.</summary>
+    private static RenderFragment Acc(string? text) => b =>
+    {
+        if (text is null) return;
+        var parts = text.Split(" - ", 2);
+        b.OpenElement(0, "span"); b.AddAttribute(1, "class", "code ml-1"); b.AddContent(2, parts[0]); b.CloseElement();
+        b.AddContent(3, parts.ElementAtOrDefault(1));
+    };
 
     /// <summary>معین از روی «کد - عنوان» برای مقدار اولیه انتخاب‌گر.</summary>
     private static AccountDto? Account(int? id, string? text)
