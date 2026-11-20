@@ -38,6 +38,16 @@ public class AccountService(IAccountingDbContext db, IAccessControl access)
     }
 
     /// <summary>جستجوی معین‌های فعال (قابل استفاده در سند) با کد یا عنوان، همراه قواعد تفصیلی.</summary>
+    /// <summary>همه معین‌های فعال با قواعد تفصیلی (برای فایل نمونه ورود سند از اکسل).</summary>
+    public async Task<List<AccountDto>> ListPostableAsync(CancellationToken ct)
+    {
+        var list = await db.Accounts.AsNoTracking().Include(a => a.DetailLevels).ThenInclude(l => l.AllowedTypes)
+            .Include(a => a.DetailLevels).ThenInclude(l => l.AllowedRoles)
+            .Where(a => a.Level == AccountLevel.Subsidiary && a.IsActive)
+            .OrderBy(a => a.Code).ToListAsync(ct);
+        return list.Select(ToDto).ToList();
+    }
+
     public async Task<List<AccountDto>> SearchPostableAsync(string? term, CancellationToken ct)
     {
         var query = db.Accounts.AsNoTracking().Include(a => a.DetailLevels).ThenInclude(l => l.AllowedTypes)

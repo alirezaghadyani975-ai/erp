@@ -23,16 +23,18 @@ public sealed record ChequeDto(long Id, string SerialNo, string? SayadId, string
 public sealed record TreasuryLineRequest(Instrument Instrument, int? CashBoxId, int? BankAccountId, decimal Amount,
     string? RefNo = null, string? Description = null, ChequeInput? Cheque = null, long? ReceivedChequeId = null);
 
-public sealed record SaveReceiptPaymentRequest(string Date, int PersonId, short TypeId, string? Description, List<TreasuryLineRequest> Lines);
+/// <param name="IsOpening">فرم اول دوره: فقط چک، بدون سند حسابداری (مانده در سند افتتاحیه است).</param>
+public sealed record SaveReceiptPaymentRequest(string Date, int PersonId, short TypeId, string? Description, List<TreasuryLineRequest> Lines,
+    bool IsOpening = false);
 
 public sealed record TreasuryLineDto(short RowNo, Instrument Instrument, int? CashBoxId, int? BankAccountId, long? ReceivedChequeId,
     decimal Amount, string? RefNo, string? Description, ChequeDto? Cheque);
 
 public sealed record ReceiptPaymentDto(long Id, int DocNo, string Date, int PersonId, string PersonName, short TypeId, string TypeTitle,
-    string? Description, decimal Total, List<TreasuryLineDto> Lines, TreasuryVoucherDto? Voucher, string? LockReason);
+    string? Description, decimal Total, List<TreasuryLineDto> Lines, TreasuryVoucherDto? Voucher, string? LockReason, bool IsOpening = false);
 
 public sealed record ReceiptPaymentListItemDto(long Id, int DocNo, string Date, string PersonName, string TypeTitle, decimal Total,
-    decimal CashTotal, decimal BankTotal, decimal ChequeTotal, string? Description, TreasuryVoucherDto? Voucher);
+    decimal CashTotal, decimal BankTotal, decimal ChequeTotal, string? Description, TreasuryVoucherDto? Voucher, bool IsOpening = false);
 
 internal static class TreasuryText
 {
@@ -71,7 +73,7 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var rows = await query.OrderByDescending(r => r.DocDate).ThenByDescending(r => r.DocNo)
             .Select(r => new
             {
-                r.Id, r.DocNo, r.DocDate, r.Description,
+                r.Id, r.DocNo, r.DocDate, r.Description, r.IsOpening,
                 Person = db.Persons.Where(p => p.Id == r.PersonId).Select(p => p.DisplayName).FirstOrDefault(),
                 Type = db.TransactionTypes.Where(t => t.Id == r.TypeId).Select(t => t.Title).FirstOrDefault(),
                 Cash = r.Lines.Where(l => l.Instrument == Instrument.Cash).Sum(l => (decimal?)l.Amount) ?? 0,
@@ -85,7 +87,7 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var vouchers = await posting.FindAsync(TreasuryModule.Name, Receipt.DocType, rows.Select(r => r.Id).ToList(), ct);
         return rows.Select(r => new ReceiptPaymentListItemDto(r.Id, r.DocNo, PersianDate.ToPersian(r.DocDate), r.Person ?? "?",
             r.Type ?? "?", r.Cash + r.Bank + r.Cheque, r.Cash, r.Bank, r.Cheque, r.Description,
-            TreasuryText.Voucher(vouchers.GetValueOrDefault(r.Id)))).ToList();
+            TreasuryText.Voucher(vouchers.GetValueOrDefault(r.Id)), r.IsOpening)).ToList();
     }
 
     public async Task<ReceiptPaymentDto> GetAsync(long id, CancellationToken ct)
@@ -100,7 +102,7 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
             r.Description, r.Total,
             r.Lines.OrderBy(l => l.RowNo).Select(l => new TreasuryLineDto(l.RowNo, l.Instrument, l.CashBoxId, l.BankAccountId, null,
                 l.Amount, l.RefNo, l.Description, l.Cheque is { } c ? ToDto(c, banks) : null)).ToList(),
-            TreasuryText.Voucher(vouchers.GetValueOrDefault(id)), await LockReasonAsync(r, ct));
+            TreasuryText.Voucher(vouchers.GetValueOrDefault(id)), await LockReasonAsync(r, ct), r.IsOpening);
     }
 
     public async Task<long> CreateAsync(SaveReceiptPaymentRequest request, CancellationToken ct)
@@ -112,7 +114,7 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var (person, type) = await ApplyAsync(receipt, request, ct);
         db.Add(receipt);
         await db.SaveChangesAsync(ct);
-        await posting.PostAsync(PostingRequest(receipt, person, type), ct);
+        if (!receipt.IsOpening) await posting.PostAsync(PostingRequest(receipt, person, type), ct);
         await tx.CommitAsync(ct);
         return receipt.Id;
     }
@@ -129,7 +131,8 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var (person, type) = await ApplyAsync(receipt, request, ct);
         receipt.Touch(clock.GetUtcNow().UtcDateTime);
         await db.SaveChangesAsync(ct);
-        await posting.PostAsync(PostingRequest(receipt, person, type), ct);
+        if (receipt.IsOpening) await posting.UnpostAsync(TreasuryModule.Name, Receipt.DocType, id, ct);
+        else await posting.PostAsync(PostingRequest(receipt, person, type), ct);
         await tx.CommitAsync(ct);
     }
 
@@ -158,9 +161,11 @@ public class ReceiptService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         await FundsActiveAsync(r.Lines, ct);
 
         receipt.SetHeader(PersianDate.Parse(r.Date), person.Id, type.Id, r.Description);
+        receipt.SetOpening(r.IsOpening);
         foreach (var l in r.Lines)
             receipt.AddLine(l.Instrument, l.CashBoxId, l.BankAccountId, l.Amount, l.RefNo, l.Description,
                 l.Cheque is { } c ? TreasuryText.Info(c) : null, type.AccountId);
+        receipt.EnsureOpeningLines();
 
         var sayads = receipt.Lines.Select(l => l.Cheque?.SayadId).OfType<string>().ToList();
         if (sayads.Count != sayads.Distinct().Count()) throw new DomainException("شناسه صیادی تکراری در ردیف‌ها.");
@@ -252,7 +257,7 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var rows = await query.OrderByDescending(r => r.DocDate).ThenByDescending(r => r.DocNo)
             .Select(r => new
             {
-                r.Id, r.DocNo, r.DocDate, r.Description,
+                r.Id, r.DocNo, r.DocDate, r.Description, r.IsOpening,
                 Person = db.Persons.Where(p => p.Id == r.PersonId).Select(p => p.DisplayName).FirstOrDefault(),
                 Type = db.TransactionTypes.Where(t => t.Id == r.TypeId).Select(t => t.Title).FirstOrDefault(),
                 Cash = r.Lines.Where(l => l.Instrument == Instrument.Cash).Sum(l => (decimal?)l.Amount) ?? 0,
@@ -266,7 +271,7 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var vouchers = await posting.FindAsync(TreasuryModule.Name, Payment.DocType, rows.Select(r => r.Id).ToList(), ct);
         return rows.Select(r => new ReceiptPaymentListItemDto(r.Id, r.DocNo, PersianDate.ToPersian(r.DocDate), r.Person ?? "?",
             r.Type ?? "?", r.Cash + r.Bank + r.Cheque, r.Cash, r.Bank, r.Cheque, r.Description,
-            TreasuryText.Voucher(vouchers.GetValueOrDefault(r.Id)))).ToList();
+            TreasuryText.Voucher(vouchers.GetValueOrDefault(r.Id)), r.IsOpening)).ToList();
     }
 
     public async Task<ReceiptPaymentDto> GetAsync(long id, CancellationToken ct)
@@ -287,7 +292,7 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
                     ? new ChequeDto(c.Id, c.SerialNo, c.SayadId, PersianDate.ToPersian(c.DueDate), null, null, null, null, null, c.Amount,
                         (byte)c.Status, ChequeTitles.Of(c.Status), c.LeafId)
                     : l.ReceivedChequeId is long rc && spent.TryGetValue(rc, out var s) ? ReceiptService.ToDto(s, banks) : null)).ToList(),
-            TreasuryText.Voucher(vouchers.GetValueOrDefault(id)), await LockReasonAsync(p, ct));
+            TreasuryText.Voucher(vouchers.GetValueOrDefault(id)), await LockReasonAsync(p, ct), p.IsOpening);
     }
 
     /// <summary>چک‌های در صندوق برای خرج کردن در پرداخت.</summary>
@@ -309,7 +314,7 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var (person, type, spent) = await ApplyAsync(payment, request, ct);
         db.Add(payment);
         await db.SaveChangesAsync(ct);
-        await posting.PostAsync(PostingRequest(payment, person, type, spent), ct);
+        if (!payment.IsOpening) await posting.PostAsync(PostingRequest(payment, person, type, spent), ct);
         await tx.CommitAsync(ct);
         return payment.Id;
     }
@@ -328,7 +333,8 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var (person, type, spent) = await ApplyAsync(payment, request, ct);
         payment.Touch(clock.GetUtcNow().UtcDateTime);
         await db.SaveChangesAsync(ct);
-        await posting.PostAsync(PostingRequest(payment, person, type, spent), ct);
+        if (payment.IsOpening) await posting.UnpostAsync(TreasuryModule.Name, Payment.DocType, id, ct);
+        else await posting.PostAsync(PostingRequest(payment, person, type, spent), ct);
         await tx.CommitAsync(ct);
     }
 
@@ -392,6 +398,9 @@ public class PaymentService(ITreasuryDbContext db, IVoucherPosting posting, IUni
         var books = await db.InstrumentBooks.AsNoTracking().Where(b => bookIds.Contains(b.Id)).ToDictionaryAsync(b => b.Id, ct);
 
         payment.SetHeader(PersianDate.Parse(r.Date), person.Id, type.Id, r.Description);
+        payment.SetOpening(r.IsOpening);
+        if (r.IsOpening && r.Lines.Any(l => l.Instrument != Instrument.Cheque))
+            throw new DomainException("فرم اول دوره فقط ردیف چک دارد؛ مانده نقد و بانک را در سند افتتاحیه بیاورید.");
         var row = 0;
         foreach (var l in r.Lines)
         {

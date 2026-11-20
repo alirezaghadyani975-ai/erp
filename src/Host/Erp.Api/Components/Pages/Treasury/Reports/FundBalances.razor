@@ -1,6 +1,7 @@
 @page "/treasury/reports/balances"
 @inject Backend Backend
 @inject ISnackbar Snackbar
+@inject Erp.Api.Infrastructure.AppSession Session
 
 <TabTitle Text="موجودی صندوق و بانک" />
 
@@ -9,6 +10,7 @@
     <MudSpacer />
     <div style="width:180px"><PersianDateField Value="_asOf" ValueChanged="async v => { _asOf = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <ExcelButton Build="BuildExcel" Disabled="_rows.Count == 0" />
 </MudStack>
 
 @if (_loading)
@@ -73,4 +75,15 @@
         if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
         _loading = false;
     }
+
+    private ExcelFile? BuildExcel() => _rows.Count == 0 ? null : ExcelExport.Build("موجودی صندوق، بانک و تنخواه",
+        ReportHeader.Lines(Session, null, null, null, $"تا تاریخ {_asOf}"),
+        [
+            new("نوع", r => GroupTitle(r.Kind)),
+            new("کد", r => r.Code, ExcelKind.Code),
+            new("عنوان", r => r.Title),
+            new("مانده", r => r.Balance, ExcelKind.Amount),
+            new("چک در صندوق", r => r.ChequesInBox, ExcelKind.Amount),
+            new("تعداد چک", r => r.ChequesInBoxCount, ExcelKind.Number),
+        ], _rows.OrderBy(r => r.Kind).ToList(), null, "موجودی صندوق و بانک");
 }

@@ -317,7 +317,7 @@ public static class AuditLabels
 
     private static readonly Dictionary<string, string> Fields = new()
     {
-        ["Title"] = "عنوان", ["Code"] = "کد", ["Description"] = "شرح", ["Notes"] = "توضیحات", ["IsActive"] = "فعال",
+        ["Title"] = "عنوان", ["Code"] = "کد", ["Description"] = "شرح", ["Notes"] = "توضیحات", ["IsActive"] = "فعال", ["IsOpening"] = "اول دوره",
         ["Amount"] = "مبلغ", ["VatAmount"] = "ارزش افزوده", ["Debit"] = "بدهکار", ["Credit"] = "بستانکار", ["Total"] = "جمع",
         ["Fee"] = "کارمزد", ["DocNo"] = "شماره", ["DocDate"] = "تاریخ", ["VoucherDate"] = "تاریخ سند", ["Date"] = "تاریخ",
         ["DueDate"] = "سررسید", ["TempNo"] = "شماره موقت", ["VoucherNo"] = "شماره دائم", ["Status"] = "وضعیت",

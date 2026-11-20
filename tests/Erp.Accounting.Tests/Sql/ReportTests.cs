@@ -277,4 +277,94 @@ public class ReportTests(SqlFixture db)
         var ex = await Assert.ThrowsAsync<DomainException>(() => db.Run<PersonService>(s => s.DeleteAsync(personId, default)));
         Assert.Contains("غیرفعال", ex.Message);
     }
+
+    // ------------------------------------------------------------------ مرور حساب‌ها
+
+    private Task<ReviewDto> Review(ReviewRequest request) =>
+        db.Run<ReportService, ReviewDto>(s => s.ReviewAsync(request, default));
+
+    [Fact]
+    public async Task Review_drills_from_subsidiary_to_detail_level_and_vouchers()
+    {
+        if (!db.Enabled) return;
+        var seed = await SeedAsync();
+        var filter = new ReportFilter(seed.YearId);
+
+        var subs = await Review(new ReviewRequest(filter, ReviewDimension.Subsidiary));
+        Assert.Equal(["2411", "2801", "3301", "6001"], subs.Rows.Select(r => r.Code));
+
+        var details = await Review(new ReviewRequest(filter, ReviewDimension.Detail1, "2411"));
+        Assert.Equal([seed.Customer1, seed.Customer2], details.Rows.Select(r => r.DetailId!.Value));
+        var c1 = details.Rows[0];
+        Assert.Equal((500m, 1000m, 400m, 1100m), (c1.OpeningDebit, c1.PeriodDebit, c1.PeriodCredit, c1.EndingDebit));
+        Assert.Equal(1400m, details.Totals.EndingDebit);
+        Assert.Single(details.Path);
+
+        // سطح ۲ معین دریافتنی تفصیلی ندارد: یک ردیف «بدون تفصیلی»
+        var level2 = await Review(new ReviewRequest(filter, ReviewDimension.Detail2, "2411", [seed.Customer1]));
+        Assert.Null(Assert.Single(level2.Rows).DetailId);
+
+        var vouchers = await Review(new ReviewRequest(filter, ReviewDimension.Voucher, "2411", [seed.Customer1]));
+        Assert.Equal(500m, vouchers.OpeningBalance); // سند افتتاحیه جزو مانده ابتدا
+        Assert.Equal([1500m, 1100m], vouchers.Rows.Select(r => r.EndingDebit));
+        Assert.Equal((500m, 1000m, 400m, 1100m),
+            (vouchers.Totals.OpeningDebit, vouchers.Totals.PeriodDebit, vouchers.Totals.PeriodCredit, vouchers.Totals.EndingDebit));
+        Assert.All(vouchers.Rows, r => Assert.NotNull(r.VoucherId));
+    }
+
+    [Fact]
+    public async Task Review_shows_accounts_of_a_detail_and_other_details()
+    {
+        if (!db.Enabled) return;
+        var seed = await SeedAsync();
+        var filter = new ReportFilter(seed.YearId);
+
+        var accounts = await Review(new ReviewRequest(filter, ReviewDimension.Subsidiary, null, [seed.Customer1]));
+        var row = Assert.Single(accounts.Rows);
+        Assert.Equal(("2411", 1100m), (row.Code, row.EndingDebit));
+
+        var all = await Review(new ReviewRequest(filter, ReviewDimension.AnyDetail));
+        Assert.Contains(all.Rows, r => r.DetailId == seed.Customer1);
+        Assert.Contains(all.Rows, r => r.Code == "100001");
+        var onlyCustomers = await Review(new ReviewRequest(filter, ReviewDimension.AnyDetail, DetailTypeId: seed.CustomerTypeId));
+        Assert.Equal([seed.Customer1, seed.Customer2], onlyCustomers.Rows.Select(r => r.DetailId!.Value));
+        // تفصیلی که خودش محدودیت مسیر است دوباره ردیف نمی‌شود
+        Assert.Empty((await Review(new ReviewRequest(filter, ReviewDimension.AnyDetail, null, [seed.Customer1]))).Rows);
+
+        var permanent = await Review(new ReviewRequest(filter with { IncludeTemporary = false }, ReviewDimension.Detail1, "2411"));
+        Assert.DoesNotContain(permanent.Rows, r => r.DetailId == seed.Customer2);
+    }
+
+    [Fact]
+    public async Task Ledger_can_require_several_details()
+    {
+        if (!db.Enabled) return;
+        var seed = await SeedAsync();
+        var both = await Ledger(new LedgerRequest(new ReportFilter(seed.YearId), "2411", seed.Customer1, [seed.Customer2]));
+        Assert.Empty(both.Rows);
+        Assert.Contains("مشتری", both.Title);
+    }
+
+    // ------------------------------------------------------------------ چاپ سند
+
+    [Fact]
+    public async Task Print_batch_skips_drafts_and_orders_permanent_first()
+    {
+        if (!db.Enabled) return;
+        var seed = await SeedAsync();
+        var all = await db.Run<VoucherPrintService, List<VoucherPrintDto>>(s => s.GetAsync(new VoucherPrintRequest(seed.YearId), default));
+        Assert.Equal(4, all.Count);
+        Assert.Equal([1, 2, 3], all.Take(3).Select(v => v.VoucherNo!.Value));
+        Assert.Equal(VoucherStatus.Temporary, all[3].Status);
+
+        var permanent = await db.Run<VoucherPrintService, List<VoucherPrintDto>>(s =>
+            s.GetAsync(new VoucherPrintRequest(seed.YearId, IncludeTemporary: false, FromNo: 2), default));
+        Assert.Equal([2, 3], permanent.Select(v => v.VoucherNo!.Value));
+
+        var one = Assert.Single(await db.Run<VoucherPrintService, List<VoucherPrintDto>>(s =>
+            s.GetAsync(new VoucherPrintRequest(seed.YearId, [all[0].Id]), default)));
+        Assert.All(one.Lines, l => Assert.StartsWith(l.GeneralCode, l.AccountCode));
+        Assert.Contains(one.Lines, l => l.Details is not null && l.Details.Contains("مشتری"));
+        Assert.Equal(one.TotalDebit, one.Lines.Sum(l => l.Debit));
+    }
 }

@@ -12,6 +12,7 @@ public static class SecurityPermissions
     public const string Settings = "sec.settings.edit";
     public const string AuditHistory = "sys.audit.history";
     public const string AuditReport = "sys.audit.report";
+    public const string Excel = "sys.export.excel";
 
     public static IPermissionSource List { get; } = new PermissionList("مدیریت سیستم")
         .Add("sec.user", "کاربران", ("manage", "مدیریت"))
@@ -19,7 +20,8 @@ public static class SecurityPermissions
         .Add("sec.company", "شرکت‌ها", ("manage", "مدیریت"))
         .Add("sec.log", "لاگ امنیتی", ("view", "مشاهده"))
         .Add("sec.settings", "تنظیمات امنیتی", ("edit", "اصلاح"))
-        .Add("sys.audit", "لاگ تغییرات", ("history", "تاریخچه فرم‌ها"), ("report", "گزارش کامل"));
+        .Add("sys.audit", "لاگ تغییرات", ("history", "تاریخچه فرم‌ها"), ("report", "گزارش کامل"))
+        .Add("sys.export", "خروجی گرفتن", ("excel", "خروجی اکسل گزارش‌ها و فهرست‌ها"));
 }
 
 /// <summary>همه مجوزهای تعریف‌شده در ماژول‌ها (برای درخت مجوز نقش و پیام «مجوز ... را ندارید»).</summary>

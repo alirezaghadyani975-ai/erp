@@ -3,6 +3,7 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject Erp.Api.Infrastructure.AppSession Session
 
 <TabTitle Text="تراز آزمایشی" />
 
@@ -13,6 +14,7 @@
         <MudToggleItem Value="4" Text="۴ ستونی" />
         <MudToggleItem Value="6" Text="۶ ستونی" />
     </MudToggleGroup>
+    <ExcelButton Build="BuildExcel" Disabled="_result is null" />
     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" OnClick="Print" Disabled="_result is null">چاپ</MudButton>
 </MudStack>
 
@@ -305,4 +307,33 @@
     }
 
     private async Task Print() => await JS.InvokeVoidAsync("print");
+
+    private ExcelFile? BuildExcel()
+    {
+        if (_result is null) return null;
+        var columns = new List<ExcelColumn<TrialBalanceRow>>
+        {
+            new("کد", r => r.Code, ExcelKind.Code),
+            new("عنوان", r => r.Title),
+        };
+        if (_result.Level == TrialBalanceLevel.Detail) columns.Add(new("نوع تفصیلی", r => r.DetailTypeTitle));
+        if (_columns == 6)
+        {
+            columns.Add(new("مانده ابتدا - بدهکار", r => r.OpeningDebit, ExcelKind.Amount));
+            columns.Add(new("مانده ابتدا - بستانکار", r => r.OpeningCredit, ExcelKind.Amount));
+            columns.Add(new("گردش دوره - بدهکار", r => r.PeriodDebit, ExcelKind.Amount));
+            columns.Add(new("گردش دوره - بستانکار", r => r.PeriodCredit, ExcelKind.Amount));
+        }
+        else
+        {
+            columns.Add(new("گردش بدهکار", r => r.TotalDebit, ExcelKind.Amount));
+            columns.Add(new("گردش بستانکار", r => r.TotalCredit, ExcelKind.Amount));
+        }
+        columns.Add(new("مانده بدهکار", r => r.EndingDebit, ExcelKind.Amount));
+        columns.Add(new("مانده بستانکار", r => r.EndingCredit, ExcelKind.Amount));
+        var title = $"تراز آزمایشی {_columns} ستونی {LevelText(_result.Level)}";
+        return ExcelExport.Build(title,
+            ReportHeader.Lines(Session, _result.FromDate, _result.ToDate, _filter.IncludeTemporary, _currentLabel),
+            columns, _result.Rows, _result.Totals);
+    }
 }

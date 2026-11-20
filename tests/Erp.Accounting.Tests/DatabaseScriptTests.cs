@@ -17,7 +17,7 @@ public class DatabaseScriptTests
              "Erp.Database.Migrations.07_costing.sql", "Erp.Database.Migrations.08_new_coding.sql",
              "Erp.Database.Migrations.09_standard_order.sql", "Erp.Database.Migrations.10_posting_expenses.sql",
              "Erp.Database.Migrations.11_treasury.sql", "Erp.Database.Migrations.12_vat_lines_instruments.sql",
-             "Erp.Database.Migrations.13_audit_log.sql"],
+             "Erp.Database.Migrations.13_audit_log.sql", "Erp.Database.Migrations.14_opening.sql", "Erp.Database.Migrations.15_renumber.sql"],
             names);
     }
 

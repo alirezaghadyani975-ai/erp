@@ -1,0 +1,204 @@
+@page "/persons/import"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject TabService Tabs
+@inject IJSRuntime JS
+
+<TabTitle Text="ورود اشخاص از اکسل" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+    <MudText Typo="Typo.h5">ورود اشخاص از اکسل</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Custom.FileFormats.FileExcel" OnClick="TemplateAsync">دریافت فایل نمونه</MudButton>
+    <MudFileUpload T="IBrowserFile" FilesChanged="LoadFileAsync" MaximumFileCount="1" Accept=".xlsx">
+        <CustomContent Context="upload">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile"
+                       Disabled="_busy" OnClick="upload.OpenFilePickerAsync">انتخاب فایل اکسل</MudButton>
+        </CustomContent>
+    </MudFileUpload>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    مشتریان، تأمین‌کنندگان و سایر طرف‌حساب‌ها را یک‌جا وارد کنید تا تفصیلی‌شان ساخته شود و بعد مانده اول دوره‌شان را در سند افتتاحیه بیاورید.
+    همه سطرها پیش از ثبت بررسی می‌شوند؛ اگر حتی یک سطر خطا داشته باشد چیزی ثبت نمی‌شود.
+</MudText>
+
+@if (_busy)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+}
+@if (_fileError is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">@_fileError</MudAlert>
+}
+
+@if (_rows.Count > 0)
+{
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="3">
+            <MudText><b>@_fileName</b> — @_rows.Count شخص</MudText>
+            <MudSpacer />
+            @if (ErrorCount == 0)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_busy || _saved">
+                    ثبت @_rows.Count شخص
+                </MudButton>
+            }
+            else
+            {
+                <MudChip T="string" Color="Color.Error" Size="Size.Small">@ErrorCount سطر خطا دارد؛ فایل را اصلاح و دوباره بارگذاری کنید</MudChip>
+            }
+        </MudStack>
+    </MudPaper>
+
+    <MudTable T="Row" Items="_rows" Dense="true" Hover="true" Bordered="true" Elevation="1" Class="report-table"
+              Filter="r => !_errorsOnly || r.Error is not null" HorizontalScrollbar="true">
+        <ToolBarContent>
+            <MudCheckBox @bind-Value="_errorsOnly" Label="فقط سطرهای دارای خطا" Dense="true" Color="Color.Error" />
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>سطر اکسل</MudTh>
+            <MudTh>نوع</MudTh>
+            <MudTh>نام</MudTh>
+            <MudTh>کد/شناسه ملی</MudTh>
+            <MudTh>موبایل</MudTh>
+            <MudTh>نقش‌ها</MudTh>
+            <MudTh>بررسی</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.ExcelRow</span></MudTd>
+            <MudTd>@(context.Request?.Kind == PersonKind.Legal ? "حقوقی" : "حقیقی")</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd><span class="code">@context.Request?.NationalId</span></MudTd>
+            <MudTd><span class="code">@context.Request?.Mobile</span></MudTd>
+            <MudTd>@context.Roles</MudTd>
+            <MudTd>
+                @if (context.Error is null)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Error">@context.Error</MudText>
+                }
+            </MudTd>
+        </RowTemplate>
+        <PagerContent><MudTablePager PageSizeOptions="[50, 200, 1000]" RowsPerPageString="سطر در صفحه" /></PagerContent>
+    </MudTable>
+}
+
+@code {
+    private sealed record Row(int ExcelRow, SavePersonRequest? Request, string Name, string? Roles, string? Error);
+
+    private List<Row> _rows = [];
+    private List<PersonRoleTypeDto> _roles = [];
+    private string? _fileName, _fileError;
+    private bool _busy, _errorsOnly, _saved;
+
+    private int ErrorCount => _rows.Count(r => r.Error is not null);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var roles = await Backend.Run<PersonService, List<PersonRoleTypeDto>>(s => s.GetRoleTypesAsync(false, default));
+        _roles = roles.Value ?? [];
+    }
+
+    private async Task LoadFileAsync(IBrowserFile? file)
+    {
+        if (file is null) return;
+        _fileError = null;
+        _rows = [];
+        _saved = false;
+        _fileName = file.Name;
+        if (file.Size > ExcelImport.MaxBytes) { _fileError = "حجم فایل بیش از ۱۰ مگابایت است."; return; }
+        _busy = true;
+        try
+        {
+            using var ms = new MemoryStream();
+            await using (var stream = file.OpenReadStream(ExcelImport.MaxBytes)) await stream.CopyToAsync(ms);
+            ms.Position = 0;
+            var rows = ExcelImport.Read(ms, ["نوع", "نام", "نام خانوادگی", "نام شرکت"]);
+            if (rows.Count == 0) { _fileError = "در فایل سطری نیست."; return; }
+            _rows = rows.Select(Parse).ToList();
+        }
+        catch (FormatException ex)
+        {
+            _fileError = ex.Message;
+            return;
+        }
+        finally { _busy = false; }
+        await CheckAsync(commit: false);
+    }
+
+    private Row Parse(ExcelRow x)
+    {
+        var name = x.Text("نام شرکت") ?? $"{x.Text("نام")} {x.Text("نام خانوادگی")}".Trim();
+        try
+        {
+            var kindText = x.Text("نوع");
+            var kind = kindText switch
+            {
+                null => x.Text("نام شرکت") is null ? PersonKind.Natural : PersonKind.Legal,
+                "حقیقی" => PersonKind.Natural,
+                "حقوقی" => PersonKind.Legal,
+                _ => throw new FormatException($"نوع «{kindText}» نامعتبر است؛ «حقیقی» یا «حقوقی».")
+            };
+            var roleIds = new List<short>();
+            foreach (var title in (x.Text("نقش‌ها") ?? "").Split(['،', ',', '؛'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var role = _roles.FirstOrDefault(r => ExcelImport.Key(r.Title) == ExcelImport.Key(title))
+                           ?? throw new FormatException($"نقش «{title}» تعریف نشده است.");
+                roleIds.Add(role.Id);
+            }
+            var request = new SavePersonRequest
+            {
+                Kind = kind,
+                FirstName = kind == PersonKind.Natural ? x.Text("نام") : null,
+                LastName = kind == PersonKind.Natural ? x.Text("نام خانوادگی") : null,
+                LegalName = kind == PersonKind.Legal ? x.Text("نام شرکت") : null,
+                NationalId = x.Code("کد ملی یا شناسه ملی"),
+                EconomicCode = x.Code("کد اقتصادی"),
+                Mobile = x.Code("موبایل"),
+                Phone = x.Code("تلفن"),
+                Email = x.Text("ایمیل"),
+                Notes = x.Text("توضیحات"),
+                RoleIds = roleIds,
+            };
+            return new Row(x.RowNumber, request, name, x.Text("نقش‌ها"), null);
+        }
+        catch (FormatException ex)
+        {
+            return new Row(x.RowNumber, null, name, x.Text("نقش‌ها"), ex.Message);
+        }
+    }
+
+    private async Task<bool> CheckAsync(bool commit)
+    {
+        var valid = _rows.Where(r => r.Request is not null).ToList();
+        if (valid.Count == 0) return false;
+        _busy = true;
+        var result = await Backend.Run<PersonService, List<string?>>(s => s.ImportAsync(valid.Select(r => r.Request!).ToList(), commit, default));
+        _busy = false;
+        if (!result.Success) { Snackbar.Add(result.Error!, Severity.Error); return false; }
+        var errors = result.Value!;
+        var byRow = valid.Select((r, i) => (r.ExcelRow, Error: errors[i])).ToDictionary(x => x.ExcelRow, x => x.Error);
+        _rows = _rows.Select(r => r.Request is null ? r : r with { Error = byRow.GetValueOrDefault(r.ExcelRow) }).ToList();
+        return errors.All(e => e is null);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (ErrorCount > 0) return;
+        if (!await CheckAsync(commit: true)) return;
+        _saved = true;
+        Snackbar.Add($"{_rows.Count} شخص ثبت شد و تفصیلی‌هایشان ساخته شد.", Severity.Success);
+        Tabs.CloseCurrentAndGo("/persons");
+    }
+
+    private async Task TemplateAsync()
+    {
+        var file = ImportTemplates.Persons(_roles.Where(r => r.Code != RoleCodes.Employee).Select(r => r.Title));
+        using var stream = new MemoryStream(file.Content);
+        using var streamRef = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("erpDownload", file.FileName, streamRef);
+    }
+}

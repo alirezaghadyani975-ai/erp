@@ -350,4 +350,54 @@ public class TreasuryTests(SqlFixture db)
         var spare = await db.Run<TreasurySetupService, int>(x => x.SaveCashBoxAsync(null, new SaveCashBoxRequest("صندوق موقت", true, null), default));
         await db.Run<TreasurySetupService>(x => x.DeleteCashBoxAsync(spare, default));
     }
+
+    // ------------------------------------------------------------------ اول دوره
+
+    [Fact]
+    public async Task Opening_receipt_registers_cheques_without_voucher_and_they_can_be_collected()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var rid = await db.Run<ReceiptService, long>(x => x.CreateAsync(new SaveReceiptPaymentRequest("1406/01/01", s.Customer, s.ReceiptType,
+            "چک‌های اول دوره", [new TreasuryLineRequest(Instrument.Cheque, s.Box, null, 700, Cheque: Cheque("OP-1", "1406/03/01"))], IsOpening: true), default));
+        var r = await Receipt(rid);
+        Assert.True(r.IsOpening);
+        Assert.Null(r.Voucher);
+        var cheque = r.Lines[0].Cheque!.Id;
+        Assert.Equal("در صندوق", (await Received(cheque)).StatusTitle);
+        var list = await db.Run<ReceiptService, List<ReceiptPaymentListItemDto>>(x => x.ListAsync(null, null, null, default));
+        Assert.True(list.Single(x => x.Id == rid).IsOpening);
+
+        // عملیات بعدی روی چک اول دوره سند عادی می‌خورد
+        var deposit = await Op(ChequeOperationType.Deposit, "1406/02/01", null, s.Bank, cheque);
+        var dv = await db.Run<ChequeOperationService, ChequeOperationDto>(x => x.GetAsync(deposit, default));
+        Assert.Equal(["2402+", "2401-"], Codes(await Voucher(dv.Voucher!.VoucherId)));
+
+        // نقد و بانک در فرم اول دوره پذیرفته نمی‌شود
+        var ex = await Assert.ThrowsAsync<DomainException>(() => db.Run<ReceiptService, long>(x => x.CreateAsync(new SaveReceiptPaymentRequest(
+            "1406/01/01", s.Customer, s.ReceiptType, null, [new TreasuryLineRequest(Instrument.Cash, s.Box, null, 5)], IsOpening: true), default)));
+        Assert.Contains("اول دوره", ex.Message);
+    }
+
+    [Fact]
+    public async Task Receipt_switched_to_opening_drops_its_voucher_and_opening_payment_uses_leaf()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var line = new TreasuryLineRequest(Instrument.Cheque, s.Box, null, 300, Cheque: Cheque("OP-2", "1406/04/01"));
+        var rid = await ReceiptAsync(s, line);
+        Assert.NotNull((await Receipt(rid)).Voucher);
+        await db.Run<ReceiptService>(x => x.UpdateAsync(rid, new SaveReceiptPaymentRequest("1406/01/01", s.Customer, s.ReceiptType, null,
+            [line], IsOpening: true), default));
+        Assert.Null((await Receipt(rid)).Voucher);
+
+        var leaf = await LeafAsync(s.ChequeBook, "900140");
+        var pid = await db.Run<PaymentService, long>(x => x.CreateAsync(new SaveReceiptPaymentRequest("1406/01/01", s.Supplier, s.PaymentType,
+            "چک صادره پاس‌نشده اول دوره", [new TreasuryLineRequest(Instrument.Cheque, null, null, 800, Cheque: Cheque("", "1406/05/01") with { LeafId = leaf })],
+            IsOpening: true), default));
+        var p = await db.Run<PaymentService, ReceiptPaymentDto>(x => x.GetAsync(pid, default));
+        Assert.True(p.IsOpening);
+        Assert.Null(p.Voucher);
+        Assert.Equal(LeafStatus.Used, await LeafStatusAsync(s.ChequeBook, "900140"));
+    }
 }

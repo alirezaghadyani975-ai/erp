@@ -120,7 +120,7 @@ else
 
 @code {
     private static readonly string[] QuickUrls =
-        ["/vouchers/new", "/treasury/receipts/new", "/treasury/payments/new", "/expenses/new", "/persons/new", "/reports/trial-balance", "/reports/ledger", "/treasury/reports/balances"];
+        ["/vouchers/new", "/treasury/receipts/new", "/treasury/payments/new", "/expenses/new", "/persons/new", "/reports/trial-balance", "/reports/review", "/treasury/reports/balances"];
 
     private List<AppForms.Item> Quick => QuickUrls.Select(u => AppForms.All.First(f => f.Url == u))
         .Where(f => AppMenu.CanOpen(Session, f.Url)).ToList();

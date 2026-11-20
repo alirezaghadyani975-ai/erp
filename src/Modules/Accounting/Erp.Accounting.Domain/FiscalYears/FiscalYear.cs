@@ -60,6 +60,9 @@ public class FiscalYear : AggregateRoot<short>
     public void Open() => Status = Status == PeriodStatus.Closed
         ? throw new DomainException("سال بسته‌شده را نمی‌توان باز کرد.")
         : PeriodStatus.Open;
+
+    /// <summary>بستن قطعی (بعد از دائم شدن اسناد بستن و اختتامیه). سال بسته دیگر سند نمی‌پذیرد و باز نمی‌شود.</summary>
+    public void Close() => Status = PeriodStatus.Closed;
 }
 
 public class FiscalPeriod : Entity<int>

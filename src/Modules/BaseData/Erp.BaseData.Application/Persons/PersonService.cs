@@ -91,6 +91,59 @@ public class PersonService(
         return person.Id;
     }
 
+    /// <summary>
+    /// ورود گروهی اشخاص (از اکسل). همه سطرها اول بررسی می‌شوند (قواعد فرم شخص و تکراری بودن در دیتابیس و خود فایل)؛
+    /// با <paramref name="commit"/> و فقط اگر هیچ سطری خطا ندارد، همه در یک تراکنش ثبت می‌شوند (یا همه یا هیچ).
+    /// خروجی: خطای هر سطر به ترتیب (null یعنی بی‌خطا).
+    /// </summary>
+    public async Task<List<string?>> ImportAsync(List<SavePersonRequest> rows, bool commit, CancellationToken ct)
+    {
+        access.Demand(BaseDataPermissions.PersonCreate);
+        var today = Today();
+        var errors = new List<string?>(rows.Count);
+        var persons = new List<Person>(rows.Count);
+        var seen = new Dictionary<string, int>();
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var r = rows[i];
+            try
+            {
+                var person = Person.Create(r.Kind, await ToProfileAsync(r, ct), today);
+                await ApplyAsync(person, r, ct);
+
+                // تکراری در خود فایل: کد/شناسه ملی، و اگر کد ملی ندارد نام
+                var key = IranianIds.Digits(r.NationalId) is { Length: > 0 } nid ? "id:" + nid : "name:" + person.DisplayName;
+                if (seen.TryGetValue(key, out var first))
+                    throw new DomainException($"تکراری با سطر {first + 1} همین فایل.");
+                seen[key] = i;
+
+                // تکراری در دیتابیس: کد ملی یا موبایل یکسان همیشه؛ نام یکسان فقط وقتی کد ملی داده نشده
+                var duplicates = await FindDuplicatesAsync(r, null, ct);
+                var hasId = key.StartsWith("id:");
+                if (duplicates.FirstOrDefault(d => d.Reason != "نام یکسان" || !hasId) is { } dup)
+                    throw new DomainException($"قبلاً ثبت شده: «{dup.DisplayName}» ({dup.Reason}).");
+
+                persons.Add(person);
+                errors.Add(null);
+            }
+            catch (Exception ex) when (ex is DomainException or FormatException)
+            {
+                errors.Add(ex.Message);
+            }
+        }
+        if (!commit || errors.Any(e => e is not null)) return errors;
+
+        await using var tx = await uow.BeginAsync(ct);
+        foreach (var person in persons)
+        {
+            db.Persons.Add(person);
+            await db.SaveChangesAsync(ct);
+            await SyncLinksAsync(person, ct);
+        }
+        await tx.CommitAsync(ct);
+        return errors;
+    }
+
     public async Task UpdateAsync(int id, SavePersonRequest request, CancellationToken ct)
     {
         access.Demand(BaseDataPermissions.PersonEdit);

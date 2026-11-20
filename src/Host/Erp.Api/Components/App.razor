@@ -64,6 +64,17 @@
                 }, 5000);
             }
         };
+        // دانلود فایل ساخته‌شده در سرور (اکسل) از طریق اتصال Blazor
+        window.erpDownload = async (fileName, streamRef) => {
+            const blob = new Blob([await streamRef.arrayBuffer()]);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = fileName ?? '';
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        };
+        // چاپ بعد از کامل شدن رندر (برای صفحه چاپ سند)
+        window.erpPrint = () => setTimeout(() => window.print(), 300);
         // Ctrl+K (روی صفحه‌کلید فارسی هم): رفتن به جستجوی سراسری
         document.addEventListener('keydown', e => {
             if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {

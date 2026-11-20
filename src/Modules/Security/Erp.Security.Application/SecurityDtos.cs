@@ -106,6 +106,7 @@ public static class SecurityEventTitles
         SecurityEvent.SettingsChanged => "تغییر تنظیمات امنیتی",
         SecurityEvent.AccessDenied => "تلاش بدون مجوز",
         SecurityEvent.IdleLogout => "خروج خودکار (بی‌کاری)",
+        SecurityEvent.Export => "خروجی اکسل",
         _ => e.ToString(),
     };
 }

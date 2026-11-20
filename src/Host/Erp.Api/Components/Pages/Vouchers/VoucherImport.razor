@@ -1,0 +1,271 @@
+@page "/vouchers/import"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject TabService Tabs
+@inject IJSRuntime JS
+
+<TabTitle Text="ورود سند از اکسل" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+    <MudText Typo="Typo.h5">ورود سند از اکسل</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Custom.FileFormats.FileExcel" OnClick="TemplateAsync">دریافت فایل نمونه</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    برای سند افتتاحیه (مانده‌های اول دوره) یا هر سند پرردیف دیگر. فایل نمونه را بگیرید، ردیف‌ها را پر کنید و بارگذاری کنید؛
+    همه ردیف‌ها پیش از ثبت بررسی می‌شوند و سند به‌صورت پیش‌نویس ثبت می‌شود.
+</MudText>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudGrid Spacing="2" Class="align-center">
+        <MudItem xs="12" sm="4" md="2">
+            <MudSelect T="short?" Label="سال مالی" Value="_yearId" ValueChanged="YearChanged" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                @foreach (var y in _years)
+                {
+                    <MudSelectItem T="short?" Value="y.Id">@y.Title</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4" md="2">
+            <MudSelect T="VoucherType" Label="نوع سند" Value="_type" ValueChanged="TypeChanged" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                <MudSelectItem T="VoucherType" Value="VoucherType.Opening">افتتاحیه</MudSelectItem>
+                <MudSelectItem T="VoucherType" Value="VoucherType.Normal">عادی</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4" md="2">
+            <MudTextField @bind-Value="_date" Label="تاریخ سند" Placeholder="1405/01/01" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Disabled="_type == VoucherType.Opening" HelperText="@(_type == VoucherType.Opening ? "روز اول سال" : null)" />
+        </MudItem>
+        <MudItem xs="12" sm="12" md="4">
+            <MudTextField @bind-Value="_description" Label="شرح سند" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" md="2">
+            <MudFileUpload T="IBrowserFile" FilesChanged="LoadFileAsync" MaximumFileCount="1" Accept=".xlsx">
+                <CustomContent Context="upload">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile" FullWidth="true"
+                               Disabled="_busy || _yearId is null" OnClick="upload.OpenFilePickerAsync">انتخاب فایل اکسل</MudButton>
+                </CustomContent>
+            </MudFileUpload>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_busy)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+}
+@if (_fileError is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">@_fileError</MudAlert>
+}
+
+@if (_lines.Count > 0 && _check is not null)
+{
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="3">
+            <MudText><b>@_fileName</b> — @_lines.Count ردیف</MudText>
+            <MudText>جمع بدهکار: <b class="num">@Format.Amount(_check.TotalDebit)</b></MudText>
+            <MudText>جمع بستانکار: <b class="num">@Format.Amount(_check.TotalCredit)</b></MudText>
+            @if (_check.IsBalanced)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success">تراز است</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning">ناتراز: @Format.Amount(Math.Abs(_check.TotalDebit - _check.TotalCredit))</MudChip>
+            }
+            <MudSpacer />
+            @if (_check.IsValid)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="_busy">
+                    ثبت سند پیش‌نویس
+                </MudButton>
+            }
+            else
+            {
+                <MudChip T="string" Color="Color.Error" Size="Size.Small">@_check.Errors.Count خطا؛ فایل را اصلاح و دوباره بارگذاری کنید</MudChip>
+            }
+        </MudStack>
+        @if (!_check.IsBalanced && _check.IsValid)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Warning">سند ناتراز هم به‌صورت پیش‌نویس ثبت می‌شود ولی تا تراز نشود موقت نمی‌شود.</MudText>
+        }
+    </MudPaper>
+
+    @if (_generalErrors.Count > 0)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@string.Join(" | ", _generalErrors)</MudAlert>
+    }
+
+    <MudTable T="ImportLine" Items="_lines" Dense="true" Hover="true" Bordered="true" Elevation="1" Class="report-table"
+              Filter="l => !_errorsOnly || l.Error is not null" HorizontalScrollbar="true">
+        <ToolBarContent>
+            <MudCheckBox @bind-Value="_errorsOnly" Label="فقط ردیف‌های دارای خطا" Dense="true" Color="Color.Error" />
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>سطر اکسل</MudTh>
+            <MudTh>کد حساب</MudTh>
+            <MudTh>تفصیلی‌ها</MudTh>
+            <MudTh Class="num-head">بدهکار</MudTh>
+            <MudTh Class="num-head">بستانکار</MudTh>
+            <MudTh>شرح</MudTh>
+            <MudTh>بررسی</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.ExcelRow</span></MudTd>
+            <MudTd><span class="code">@context.Request.AccountCode</span></MudTd>
+            <MudTd><span class="code">@string.Join(" / ", (context.Request.DetailCodes ?? []).Where(d => d is not null))</span></MudTd>
+            <MudTd Class="num">@(context.Request.Debit == 0 ? "" : Format.Amount(context.Request.Debit))</MudTd>
+            <MudTd Class="num">@(context.Request.Credit == 0 ? "" : Format.Amount(context.Request.Credit))</MudTd>
+            <MudTd>@context.Request.Description</MudTd>
+            <MudTd>
+                @if (context.Error is null)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Error">@context.Error</MudText>
+                }
+            </MudTd>
+        </RowTemplate>
+        <PagerContent><MudTablePager PageSizeOptions="[50, 200, 1000]" RowsPerPageString="ردیف در صفحه" /></PagerContent>
+    </MudTable>
+}
+
+@code {
+    private sealed record ImportLine(int ExcelRow, VoucherLineRequest Request, string? ParseError, string? CheckError = null)
+    {
+        public string? Error => ParseError ?? CheckError;
+    }
+
+    private List<FiscalYearDto> _years = [];
+    private short? _yearId;
+    private VoucherType _type = VoucherType.Opening;
+    private string? _date;
+    private string? _description = "سند افتتاحیه";
+    private string? _fileName;
+    private string? _fileError;
+    private List<ImportLine> _lines = [];
+    private List<string> _generalErrors = [];
+    private VoucherCheckResult? _check;
+    private bool _busy, _errorsOnly;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var years = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+        if (!years.Success) { Snackbar.Add(years.Error!, Severity.Error); return; }
+        _years = years.Value!;
+        await YearChanged(_years.FirstOrDefault()?.Id);
+    }
+
+    private async Task YearChanged(short? id)
+    {
+        _yearId = id;
+        _date = _years.FirstOrDefault(y => y.Id == id)?.StartDate;
+        _description = _type == VoucherType.Opening ? $"سند افتتاحیه سال {_years.FirstOrDefault(y => y.Id == id)?.Title}" : _description;
+        await RecheckAsync();
+    }
+
+    private async Task TypeChanged(VoucherType type)
+    {
+        _type = type;
+        if (type == VoucherType.Opening) await YearChanged(_yearId);
+        else
+        {
+            if (_description?.StartsWith("سند افتتاحیه") == true) _description = null;
+            await RecheckAsync();
+        }
+    }
+
+    private async Task LoadFileAsync(IBrowserFile? file)
+    {
+        if (file is null) return;
+        _fileError = null;
+        _check = null;
+        _lines = [];
+        _fileName = file.Name;
+        if (file.Size > ExcelImport.MaxBytes) { _fileError = "حجم فایل بیش از ۱۰ مگابایت است."; return; }
+        _busy = true;
+        try
+        {
+            using var ms = new MemoryStream();
+            await using (var stream = file.OpenReadStream(ExcelImport.MaxBytes)) await stream.CopyToAsync(ms);
+            ms.Position = 0;
+            var rows = ExcelImport.Read(ms, ["کد حساب", "بدهکار", "بستانکار"]);
+            if (rows.Count == 0) { _fileError = "در فایل ردیفی نیست."; return; }
+            var lines = new List<ImportLine>();
+            foreach (var row in rows)
+            {
+                try
+                {
+                    var details = Enumerable.Range(1, 6).Select(i => row.Code($"تفصیلی {i}")).ToList();
+                    while (details.Count > 0 && details[^1] is null) details.RemoveAt(details.Count - 1);
+                    lines.Add(new ImportLine(row.RowNumber, new VoucherLineRequest(row.Code("کد حساب") ?? "",
+                        details.Count == 0 ? null : details, row.Number("بدهکار") ?? 0, row.Number("بستانکار") ?? 0,
+                        row.Text("شرح")), null));
+                }
+                catch (FormatException ex)
+                {
+                    lines.Add(new ImportLine(row.RowNumber, new VoucherLineRequest(row.Text("کد حساب") ?? "", null, 0, 0), ex.Message));
+                }
+            }
+            _lines = lines;
+        }
+        catch (FormatException ex)
+        {
+            _fileError = ex.Message;
+            return;
+        }
+        finally { _busy = false; }
+        await RecheckAsync();
+    }
+
+    private SaveVoucherRequest Request() =>
+        new(_yearId!.Value, _date ?? "", _description, _lines.Select(l => l.Request).ToList(), _type);
+
+    /// <summary>همه ردیف‌ها با قواعد سند بررسی می‌شوند؛ خطای «ردیف n» به سطر اکسل همان ردیف برمی‌گردد.</summary>
+    private async Task RecheckAsync()
+    {
+        if (_lines.Count == 0 || _yearId is null) return;
+        _busy = true;
+        var result = await Backend.Run<VoucherService, VoucherCheckResult>(s => s.CheckAsync(Request(), default));
+        _busy = false;
+        if (!result.Success) { Snackbar.Add(result.Error!, Severity.Error); return; }
+        var check = result.Value!;
+
+        var byRow = new Dictionary<int, string>();
+        _generalErrors = [];
+        foreach (var error in check.Errors)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(error, @"^ردیف (\d+): (.*)$");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var n) && n >= 1 && n <= _lines.Count)
+                byRow[n] = match.Groups[2].Value;
+            else _generalErrors.Add(error);
+        }
+        _lines = _lines.Select((l, i) => l with { CheckError = byRow.GetValueOrDefault(i + 1) }).ToList();
+        var errors = _generalErrors.Concat(_lines.Where(l => l.Error is not null).Select(l => l.Error!)).ToList();
+        _check = check with { Errors = errors };
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        var result = await Backend.Run<VoucherService, long>(s => s.CreateAsync(Request(), default));
+        _busy = false;
+        if (!result.Success) { Snackbar.Add(result.Error!, Severity.Error); return; }
+        Snackbar.Add($"سند با {_lines.Count} ردیف به‌صورت پیش‌نویس ثبت شد.", Severity.Success);
+        Tabs.CloseCurrentAndGo($"/vouchers/{result.Value}");
+    }
+
+    private async Task TemplateAsync()
+    {
+        var accounts = await Backend.Run<AccountService, List<AccountDto>>(s => s.ListPostableAsync(default));
+        var types = await Backend.Run<DetailService, List<DetailTypeDto>>(s => s.GetTypesAsync(default));
+        if (!accounts.Success) { Snackbar.Add(accounts.Error!, Severity.Error); return; }
+        var file = ImportTemplates.Voucher(accounts.Value!, types.Value ?? []);
+        using var stream = new MemoryStream(file.Content);
+        using var streamRef = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("erpDownload", file.FileName, streamRef);
+    }
+}

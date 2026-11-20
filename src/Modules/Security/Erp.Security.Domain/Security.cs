@@ -306,6 +306,7 @@ public enum SecurityEvent : byte
     SettingsChanged = 16,
     AccessDenied = 17,
     IdleLogout = 18,
+    Export = 19,
 }
 
 /// <summary>یک ردیف لاگ امنیتی (فقط درج).</summary>

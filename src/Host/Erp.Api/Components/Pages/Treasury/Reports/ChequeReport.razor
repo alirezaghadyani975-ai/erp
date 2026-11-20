@@ -2,6 +2,7 @@
 @page "/treasury/reports/cheques-out"
 @inject Backend Backend
 @inject ISnackbar Snackbar
+@inject Erp.Api.Infrastructure.AppSession Session
 @inject NavigationManager Nav
 @inject TabService Tabs
 
@@ -12,6 +13,7 @@
     <MudSpacer />
     <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.SwapVert" OnClick="@(() => Tabs.Go(OpsUrl))">عملیات چک</MudButton>
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <ExcelButton Build="BuildExcel" Disabled="_rows.Count == 0" />
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">با دکمه سابقه در هر ردیف، همه عملیات‌های یک چک دیده می‌شود.</MudText>
 
@@ -93,4 +95,19 @@
         if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
         _loading = false;
     }
+
+    private ExcelFile? BuildExcel() => _rows.Count == 0 ? null : ExcelExport.Build(Title,
+        ReportHeader.Lines(Session, null, null, null,
+            _fromDue is null && _toDue is null ? null : $"سررسید از {_fromDue} تا {_toDue}"),
+        [
+            new("سریال", r => r.SerialNo, ExcelKind.Code),
+            new("صیاد", r => r.SayadId, ExcelKind.Code),
+            new("سررسید", r => r.DueDate, ExcelKind.Code),
+            new("طرف حساب", r => r.PersonName),
+            new("بانک", r => r.BankTitle),
+            new("وضعیت", r => r.StatusTitle),
+            new("محل", r => r.PlaceTitle),
+            new("فرم مبدأ", r => r.SourceDocNo, ExcelKind.Code),
+            new("مبلغ", r => r.Amount, ExcelKind.Amount),
+        ], _rows, null);
 }

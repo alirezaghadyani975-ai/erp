@@ -24,6 +24,11 @@ public static class DependencyInjection
         services.AddScoped<ITreasuryDetailLinks, TreasuryDetailLinks>();
         services.AddScoped<FiscalYearService>();
         services.AddScoped<VoucherService>();
+        services.AddScoped<VoucherPrintService>();
+        services.AddScoped<Closing.ClosingService>();
+        services.AddScoped<Reports.StatementService>();
+        services.AddScoped<Reports.LegalBookService>();
+        services.AddScoped<VoucherNumberingService>();
         services.AddScoped<FinanceLookupService>();
         services.AddScoped<ReportService>();
         services.AddScoped<DashboardService>();

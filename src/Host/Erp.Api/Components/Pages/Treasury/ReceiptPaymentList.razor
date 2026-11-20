@@ -58,6 +58,10 @@
                 {
                     <MudChip T="string" Size="Size.Small" Color="@Format.StatusColor((VoucherStatus)v.Status)">@v.TempNo — @Format.Status((VoucherStatus)v.Status)</MudChip>
                 }
+                else if (context.IsOpening)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary">اول دوره</MudChip>
+                }
             </MudTd>
         </RowTemplate>
         <FooterContent>

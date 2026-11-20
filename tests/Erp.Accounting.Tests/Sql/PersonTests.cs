@@ -299,4 +299,36 @@ public class PersonTests(SqlFixture db)
         Assert.Equal([supplier], level.RoleIds);
         Assert.Equal(2, level.DetailTypeIds.Count);
     }
+
+    [Fact]
+    public async Task Import_checks_all_rows_and_saves_all_or_nothing()
+    {
+        if (!db.Enabled) return;
+        var customer = await Role(RoleCodes.Customer);
+        var code1 = NewNationalCode();
+        var code2 = NewNationalCode();
+        SavePersonRequest P(string first, string last, string? nid) =>
+            new() { Kind = PersonKind.Natural, FirstName = first, LastName = last, NationalId = nid, RoleIds = [customer] };
+
+        var rows = new List<SavePersonRequest> { P("ورودی", "اول", code1), P("ورودی", "دوم", code2), P("ورودی", "سوم", "123") };
+        var check = await db.Run<PersonService, List<string?>>(s => s.ImportAsync(rows, commit: true, default));
+        Assert.Null(check[0]);
+        Assert.NotNull(check[2]); // کد ملی نامعتبر
+        var search = await db.Run<PersonService, List<PersonListItemDto>>(s => s.SearchAsync("ورودی", null, null, true, default));
+        Assert.Empty(search); // با یک سطر خطادار هیچ‌چیز ثبت نمی‌شود
+
+        var dupInFile = await db.Run<PersonService, List<string?>>(s => s.ImportAsync([P("ورودی", "اول", code1), P("ورودی", "تکرار", code1)], false, default));
+        Assert.Contains("سطر 1", dupInFile[1]);
+
+        var ok = await db.Run<PersonService, List<string?>>(s => s.ImportAsync(rows.Take(2).ToList(), commit: true, default));
+        Assert.All(ok, Assert.Null);
+        search = await db.Run<PersonService, List<PersonListItemDto>>(s => s.SearchAsync("ورودی", null, null, true, default));
+        Assert.Equal(2, search.Count);
+        var details = await db.Run<DetailService, List<DetailAccountDto>>(s => s.SearchAsync((short?)null, "ورودی", default));
+        Assert.Equal(2, details.Count(d => d.PersonId is not null));
+
+        // ورود دوباره همان فایل: تکراری
+        var again = await db.Run<PersonService, List<string?>>(s => s.ImportAsync(rows.Take(2).ToList(), false, default));
+        Assert.All(again, Assert.NotNull); // کد ملی تکراری
+    }
 }

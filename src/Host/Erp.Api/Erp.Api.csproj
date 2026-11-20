@@ -3,6 +3,7 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="MudBlazor" />
+    <PackageReference Include="ClosedXML" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Modules\Accounting\Erp.Accounting.Infrastructure\Erp.Accounting.Infrastructure.csproj" />

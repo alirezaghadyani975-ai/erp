@@ -72,7 +72,9 @@ public sealed record TrialBalanceDto(
 
 /// <param name="AccountCode">حساب گروه، کل یا معین (دفتر کل/معین). با تفصیلی: دفتر تفصیلی همان حساب.</param>
 /// <param name="DetailId">دفتر تفصیلی؛ بدون حساب یعنی گردش تفصیلی در همه حساب‌ها.</param>
-public sealed record LedgerRequest(ReportFilter Filter, string? AccountCode = null, int? DetailId = null);
+/// <param name="ExtraDetailIds">تفصیلی‌های دیگری که ردیف باید آن‌ها را هم داشته باشد (از مرور حساب‌ها).</param>
+public sealed record LedgerRequest(ReportFilter Filter, string? AccountCode = null, int? DetailId = null,
+    List<int>? ExtraDetailIds = null);
 
 public sealed record LedgerRow(
     long VoucherId,
@@ -98,3 +100,62 @@ public sealed record LedgerDto(
     decimal TotalDebit,
     decimal TotalCredit,
     decimal EndingBalance);
+
+/// <summary>
+/// سطحی که مرور حساب‌ها بر اساس آن گروه‌بندی می‌کند. در هر قدم می‌شود سطح را عوض کرد
+/// (مثلاً از یک تفصیلی به معین‌هایی که در آن‌ها گردش دارد، یا از معین به تفصیلی سطح ۲).
+/// </summary>
+public enum ReviewDimension : byte
+{
+    Group = 1,
+    General = 2,
+    Subsidiary = 3,
+    Detail1 = 11,
+    Detail2 = 12,
+    Detail3 = 13,
+    Detail4 = 14,
+    Detail5 = 15,
+    Detail6 = 16,
+    /// <summary>هر تفصیلی در هر سطحی (مانده کامل یک تفصیلی در همه حساب‌ها).</summary>
+    AnyDetail = 20,
+    /// <summary>اسناد (با مانده جاری).</summary>
+    Voucher = 30
+}
+
+/// <param name="AccountCode">فقط زیرمجموعه این حساب (گروه، کل یا معین).</param>
+/// <param name="DetailIds">فقط ردیف‌هایی که همه این تفصیلی‌ها را (در هر سطحی) دارند.</param>
+/// <param name="DetailTypeId">در سطح «همه تفصیلی‌ها»: فقط این نوع.</param>
+public sealed record ReviewRequest(
+    ReportFilter Filter,
+    ReviewDimension By,
+    string? AccountCode = null,
+    List<int>? DetailIds = null,
+    short? DetailTypeId = null);
+
+/// <summary>
+/// یک ردیف مرور حساب‌ها. برای سطح «اسناد»: مانده ابتدا صفر است، گردش = گردش سند و مانده پایان = مانده جاری.
+/// ردیف تفصیلی بدون DetailId یعنی «بدون تفصیلی در این سطح».
+/// </summary>
+public sealed record ReviewRow(
+    string Code,
+    string Title,
+    string? Extra,
+    int? AccountId,
+    int? DetailId,
+    long? VoucherId,
+    decimal OpeningDebit,
+    decimal OpeningCredit,
+    decimal PeriodDebit,
+    decimal PeriodCredit,
+    decimal EndingDebit,
+    decimal EndingCredit);
+
+/// <param name="Path">عنوان محدودیت‌های فعلی (حساب و تفصیلی‌ها) برای سربرگ و چاپ.</param>
+public sealed record ReviewDto(
+    ReviewDimension By,
+    string FromDate,
+    string ToDate,
+    List<string> Path,
+    decimal OpeningBalance,
+    List<ReviewRow> Rows,
+    ReviewRow Totals);

@@ -16,4 +16,8 @@ public class ReportsController(ReportService service) : ControllerBase
     /// <summary>دفتر حساب یا تفصیلی با مانده جاری</summary>
     [HttpPost("ledger")]
     public Task<LedgerDto> Ledger(LedgerRequest request, CancellationToken ct) => service.LedgerAsync(request, ct);
+
+    /// <summary>مرور حساب‌ها: گردش و مانده به تفکیک سطح دلخواه با محدودیت حساب و تفصیلی‌ها</summary>
+    [HttpPost("review")]
+    public Task<ReviewDto> Review(ReviewRequest request, CancellationToken ct) => service.ReviewAsync(request, ct);
 }

@@ -45,6 +45,13 @@ else
                     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Undo" OnClick="ReturnToDraftAsync" Disabled="_busy">برگشت به پیش‌نویس</MudButton>
                 }
             }
+            @if (!_editing && Id is not null && _status != VoucherStatus.Void && Session.Has(AccountingPermissions.VoucherPrint))
+            {
+                <MudTooltip Text="چاپ سند (A4)">
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" Disabled="_busy"
+                               OnClick="@(() => Nav.NavigateTo($"/vouchers/print?ids={Id}&year={_yearId}&auto=true"))">چاپ</MudButton>
+                </MudTooltip>
+            }
             @if (!_editing && Id is not null && (_status is VoucherStatus.Draft or VoucherStatus.Temporary) && !IsSystem
                  && Session.Has(AccountingPermissions.VoucherVoid))
             {

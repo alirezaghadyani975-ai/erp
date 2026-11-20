@@ -1,0 +1,213 @@
+@page "/reports/books"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject Erp.Api.Infrastructure.AppSession Session
+
+<TabTitle Text="دفاتر قانونی" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3 no-print" Spacing="2">
+    <MudText Typo="Typo.h5">دفاتر قانونی</MudText>
+    <MudSpacer />
+    <MudToggleGroup T="bool" Value="_general" ValueChanged="KindChanged" Color="Color.Primary" Size="Size.Small" Outlined="true" Style="min-width:240px">
+        <MudToggleItem Value="false" Text="دفتر روزنامه" />
+        <MudToggleItem Value="true" Text="دفتر کل" />
+    </MudToggleGroup>
+    <ExcelButton Build="BuildExcel" Disabled="_journal is null && _ledger is null" />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" OnClick="Print" Disabled="_journal is null && _ledger is null">چاپ</MudButton>
+</MudStack>
+
+<ReportFilterBar Model="_filter" Years="_years">
+    @if (_general)
+    {
+        <MudItem xs="6" sm="3" md="1">
+            <MudTextField @bind-Value="_fromCode" Label="از کل" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="6" sm="3" md="1">
+            <MudTextField @bind-Value="_toCode" Label="تا کل" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+    }
+    <MudItem xs="12" sm="4" md="2">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
+                   OnClick="RunAsync" Disabled="_running || _filter.YearId is null" FullWidth="true">نمایش</MudButton>
+    </MudItem>
+</ReportFilterBar>
+<MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-2 no-print">
+    دفاتر فقط از اسناد دائم و به ترتیب شماره قطعی است (گزینه «اسناد موقت» اینجا اثری ندارد). اگر شماره‌ها با تاریخ نمی‌خوانند،
+    از <MudLink Href="/vouchers/numbering">ترتیب و دائم کردن اسناد</MudLink> شماره‌گذاری مجدد کنید.
+</MudText>
+
+@if (_running)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+}
+
+@if (!_general && _journal is { } j)
+{
+    <div class="book">
+        <div class="statement-head">
+            <div class="vp-company">@Session.Info?.CompanyTitle</div>
+            <div class="statement-title">دفتر روزنامه</div>
+            <div class="statement-sub">از @j.FromDate تا @j.ToDate — @j.VoucherCount سند — مبالغ به ریال</div>
+        </div>
+        <table class="book-table">
+            <thead>
+                <tr><th style="width:9%">تاریخ</th><th style="width:7%">سند</th><th style="width:7%">کد کل</th><th>شرح</th><th style="width:15%">بدهکار</th><th style="width:15%">بستانکار</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var v in j.Rows.GroupBy(r => r.VoucherNo))
+                {
+                    var first = true;
+                    @foreach (var r in v)
+                    {
+                        <tr>
+                            <td class="code">@(first ? r.Date : "")</td>
+                            <td class="code">@(first ? r.VoucherNo.ToString() : "")</td>
+                            <td class="code">@r.GeneralCode</td>
+                            <td class="@(r.Credit > 0 ? "credit-line" : "")">@r.GeneralTitle</td>
+                            <td class="num">@(r.Debit == 0 ? "" : Format.Amount(r.Debit))</td>
+                            <td class="num">@(r.Credit == 0 ? "" : Format.Amount(r.Credit))</td>
+                        </tr>
+                        first = false;
+                    }
+                    <tr class="book-desc"><td></td><td></td><td></td><td colspan="3">@(v.First().VoucherDescription is { Length: > 0 } d ? "بابت " + d : "")</td></tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr><td colspan="4">جمع</td><td class="num">@Format.Amount(j.TotalDebit)</td><td class="num">@Format.Amount(j.TotalCredit)</td></tr>
+            </tfoot>
+        </table>
+    </div>
+}
+
+@if (_general && _ledger is { } g)
+{
+    @if (g.Accounts.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">در این بازه گردشی نیست.</MudAlert>
+    }
+    @foreach (var a in g.Accounts)
+    {
+        <div class="book book-account">
+            <div class="statement-head">
+                <div class="vp-company">@Session.Info?.CompanyTitle</div>
+                <div class="statement-title">دفتر کل — <span class="code">@a.Code</span> @a.Title</div>
+                <div class="statement-sub">از @g.FromDate تا @g.ToDate — مبالغ به ریال</div>
+            </div>
+            <table class="book-table">
+                <thead>
+                    <tr><th style="width:9%">تاریخ</th><th style="width:7%">سند</th><th>شرح</th><th style="width:14%">بدهکار</th><th style="width:14%">بستانکار</th><th style="width:5%">تشخیص</th><th style="width:14%">مانده</th></tr>
+                </thead>
+                <tbody>
+                    @if (a.Opening != 0)
+                    {
+                        <tr class="book-desc"><td></td><td></td><td>نقل از قبل</td><td></td><td></td><td>@Nature(a.Opening)</td><td class="num">@Format.Amount(Math.Abs(a.Opening))</td></tr>
+                    }
+                    @foreach (var r in a.Rows)
+                    {
+                        <tr>
+                            <td class="code">@r.Date</td>
+                            <td class="code">@r.VoucherNo</td>
+                            <td>@r.Description</td>
+                            <td class="num">@(r.Debit == 0 ? "" : Format.Amount(r.Debit))</td>
+                            <td class="num">@(r.Credit == 0 ? "" : Format.Amount(r.Credit))</td>
+                            <td>@Nature(r.Balance)</td>
+                            <td class="num">@Format.Amount(Math.Abs(r.Balance))</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr><td colspan="3">جمع گردش</td><td class="num">@Format.Amount(a.TotalDebit)</td><td class="num">@Format.Amount(a.TotalCredit)</td>
+                        <td>@Nature(a.Ending)</td><td class="num">@Format.Amount(Math.Abs(a.Ending))</td></tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private readonly ReportFilterModel _filter = new();
+    private List<FiscalYearDto> _years = [];
+    private bool _general;
+    private string? _fromCode, _toCode;
+    private JournalDto? _journal;
+    private GeneralLedgerDto? _ledger;
+    private bool _running;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var years = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+        if (!years.Success) { Snackbar.Add(years.Error!, Severity.Error); return; }
+        _years = years.Value!;
+        _filter.SetYear(_years.FirstOrDefault());
+        _filter.IncludeTemporary = false;
+    }
+
+    private void KindChanged(bool general)
+    {
+        _general = general;
+        _journal = null;
+        _ledger = null;
+    }
+
+    private async Task RunAsync()
+    {
+        if (_filter.YearId is null) return;
+        _running = true;
+        var filter = _filter.ToFilter();
+        if (_general)
+        {
+            var r = await Backend.Run<LegalBookService, GeneralLedgerDto>(s => s.GeneralLedgerAsync(filter, _fromCode, _toCode, default));
+            if (r.Success) _ledger = r.Value; else Snackbar.Add(r.Error!, Severity.Error);
+        }
+        else
+        {
+            var r = await Backend.Run<LegalBookService, JournalDto>(s => s.JournalAsync(filter, default));
+            if (r.Success) _journal = r.Value; else Snackbar.Add(r.Error!, Severity.Error);
+        }
+        _running = false;
+    }
+
+    private static string Nature(decimal balance) => balance > 0 ? "بد" : balance < 0 ? "بس" : "—";
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+
+    private sealed record BookLine(string? Date, string? No, string? Code, string? Title, decimal? Debit, decimal? Credit, string? Nature, decimal? Balance);
+
+    private ExcelFile? BuildExcel()
+    {
+        if (!_general && _journal is { } j)
+        {
+            var rows = new List<BookLine>();
+            foreach (var v in j.Rows.GroupBy(r => r.VoucherNo))
+            {
+                rows.AddRange(v.Select(r => new BookLine(r.Date, r.VoucherNo.ToString(), r.GeneralCode, (r.Credit > 0 ? "      " : "") + r.GeneralTitle,
+                    r.Debit, r.Credit, null, null)));
+                if (v.First().VoucherDescription is { Length: > 0 } d) rows.Add(new BookLine(null, null, null, "بابت " + d, null, null, null, null));
+            }
+            return ExcelExport.Build("دفتر روزنامه", ReportHeader.Lines(Session, j.FromDate, j.ToDate, false, "مبالغ به ریال"),
+            [
+                new("تاریخ", r => r.Date, ExcelKind.Code), new("سند", r => r.No, ExcelKind.Code), new("کد کل", r => r.Code, ExcelKind.Code),
+                new("شرح", r => r.Title), new("بدهکار", r => r.Debit, ExcelKind.Amount), new("بستانکار", r => r.Credit, ExcelKind.Amount),
+            ], rows, new BookLine(null, null, null, "جمع", j.TotalDebit, j.TotalCredit, null, null));
+        }
+        if (_general && _ledger is { } g)
+        {
+            var rows = new List<BookLine>();
+            foreach (var a in g.Accounts)
+            {
+                rows.Add(new BookLine(null, null, a.Code, a.Title, null, null, null, null));
+                if (a.Opening != 0) rows.Add(new BookLine(null, null, null, "نقل از قبل", null, null, Nature(a.Opening), Math.Abs(a.Opening)));
+                rows.AddRange(a.Rows.Select(r => new BookLine(r.Date, r.VoucherNo.ToString(), null, r.Description, r.Debit, r.Credit, Nature(r.Balance), Math.Abs(r.Balance))));
+                rows.Add(new BookLine(null, null, null, $"جمع {a.Code}", a.TotalDebit, a.TotalCredit, Nature(a.Ending), Math.Abs(a.Ending)));
+            }
+            return ExcelExport.Build("دفتر کل", ReportHeader.Lines(Session, g.FromDate, g.ToDate, false, "مبالغ به ریال"),
+            [
+                new("تاریخ", r => r.Date, ExcelKind.Code), new("سند", r => r.No, ExcelKind.Code), new("کد کل", r => r.Code, ExcelKind.Code),
+                new("شرح", r => r.Title), new("بدهکار", r => r.Debit, ExcelKind.Amount), new("بستانکار", r => r.Credit, ExcelKind.Amount),
+                new("تشخیص", r => r.Nature), new("مانده", r => r.Balance, ExcelKind.Amount),
+            ], rows, null);
+        }
+        return null;
+    }
+}

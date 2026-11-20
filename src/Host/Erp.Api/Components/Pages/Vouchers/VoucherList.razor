@@ -2,6 +2,7 @@
 @inject Backend Backend
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject Erp.Api.Infrastructure.AppSession Session
 
 <TabTitle Text="اسناد حسابداری" />
 
@@ -23,6 +24,13 @@
         }
     </MudSelect>
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <ExcelButton Build="BuildExcel" Disabled="_rows.Count == 0" />
+    <IfAllowed Url="/vouchers/numbering">
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.FormatListNumbered" Href="@($"/vouchers/numbering?year={_yearId}")">ترتیب و دائم کردن</MudButton>
+    </IfAllowed>
+    <IfAllowed Url="/vouchers/print">
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" Href="@($"/vouchers/print?year={_yearId}")">چاپ گروهی</MudButton>
+    </IfAllowed>
     <IfAllowed Url="/vouchers/new">
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/vouchers/new">
         سند جدید
@@ -92,6 +100,25 @@ else
     private async Task YearChanged(short? id) { _yearId = id; await LoadAsync(); }
 
     private async Task StatusChanged(VoucherStatus? s) { _status = s; await LoadAsync(); }
+
+    private ExcelFile? BuildExcel()
+    {
+        if (_rows.Count == 0) return null;
+        var year = _years.FirstOrDefault(y => y.Id == _yearId)?.Title;
+        return ExcelExport.Build($"فهرست اسناد حسابداری سال {year}",
+            ReportHeader.Lines(Session, null, null, null, _status is { } st ? $"وضعیت: {Format.Status(st)}" : null),
+            [
+                new("ش. موقت", r => r.TempNo, ExcelKind.Number),
+                new("ش. قطعی", r => r.VoucherNo, ExcelKind.Number),
+                new("تاریخ", r => r.Date, ExcelKind.Code),
+                new("شرح", r => r.Description),
+                new("نوع", r => Format.Type(r.Type)),
+                new("منبع", r => r.SourceDocType is null ? "دستی" : SourceLinks.Title(r.SourceDocType)),
+                new("وضعیت", r => Format.Status(r.Status)),
+                new("مبلغ", r => r.TotalDebit, ExcelKind.Amount),
+            ],
+            _rows, null, "فهرست اسناد");
+    }
 
     private async Task LoadAsync()
     {

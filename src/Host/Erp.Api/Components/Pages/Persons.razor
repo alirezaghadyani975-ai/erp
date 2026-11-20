@@ -10,6 +10,9 @@
     <MudText Typo="Typo.h5">اشخاص</MudText>
     <MudSpacer />
     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Label" Href="/base/roles">نقش‌ها</MudButton>
+    <IfAllowed Url="/persons/import">
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.UploadFile" Href="/persons/import">ورود از اکسل</MudButton>
+    </IfAllowed>
     <IfAllowed Url="/persons/new">
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" Href="/persons/new">
         شخص جدید

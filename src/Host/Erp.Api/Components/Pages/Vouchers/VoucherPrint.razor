@@ -1,0 +1,192 @@
+@page "/vouchers/print"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject Erp.Api.Infrastructure.AppSession Session
+
+<TabTitle Text="@(_single ? "چاپ سند" : "چاپ گروهی اسناد")" />
+
+<div class="no-print">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
+        <MudText Typo="Typo.h5">@(_single ? "چاپ سند" : "چاپ گروهی اسناد")</MudText>
+        <MudSpacer />
+        @if (_vouchers.Count > 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary">@_vouchers.Count سند</MudText>
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Print"
+                   OnClick="PrintAsync" Disabled="_vouchers.Count == 0">چاپ</MudButton>
+    </MudStack>
+
+    @if (!_single)
+    {
+        <MudPaper Class="pa-3 mb-3" Elevation="1">
+            <MudGrid Spacing="2" Class="align-center">
+                <MudItem xs="12" sm="4" md="2">
+                    <MudSelect T="short?" Label="سال مالی" @bind-Value="_yearId" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                        @foreach (var y in _years)
+                        {
+                            <MudSelectItem T="short?" Value="y.Id">@y.Title</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" sm="4" md="2">
+                    <MudTextField @bind-Value="_from" Label="از تاریخ" Placeholder="1405/01/01" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" sm="4" md="2">
+                    <MudTextField @bind-Value="_to" Label="تا تاریخ" Placeholder="1405/12/29" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" sm="3" md="1">
+                    <MudNumericField T="int?" @bind-Value="_fromNo" Label="از شماره" HideSpinButtons="true" Min="1" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
+                </MudItem>
+                <MudItem xs="6" sm="3" md="1">
+                    <MudNumericField T="int?" @bind-Value="_toNo" Label="تا شماره" HideSpinButtons="true" Min="1" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudCheckBox @bind-Value="_temp" Label="اسناد موقت هم چاپ شود" Dense="true" Color="Color.Primary" />
+                    <MudCheckBox @bind-Value="_draft" Label="پیش‌نویس‌ها هم چاپ شود" Dense="true" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12" sm="4" md="1">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadAsync" Disabled="_busy || _yearId is null" FullWidth="true">نمایش</MudButton>
+                </MudItem>
+            </MudGrid>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                بازه شماره روی شماره قطعی است (برای سند موقت، شماره موقت). اسناد باطل چاپ نمی‌شوند. هر سند در یک صفحه A4 چاپ می‌شود.
+            </MudText>
+        </MudPaper>
+    }
+    @if (_busy)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+    }
+</div>
+
+@foreach (var v in _vouchers)
+{
+    <div class="voucher-print @(v.Status == VoucherStatus.Draft ? "is-draft" : "")">
+        <div class="vp-head">
+            <div class="vp-side">
+                <div>شماره سند: <b class="code">@(v.VoucherNo?.ToString() ?? "—")</b></div>
+                <div>شماره موقت: <span class="code">@v.TempNo</span></div>
+                <div>تاریخ: <b class="code">@v.Date</b></div>
+            </div>
+            <div class="vp-center">
+                <div class="vp-company">@Session.Info?.CompanyTitle</div>
+                <div class="vp-title">سند حسابداری</div>
+                <div class="vp-sub">سال مالی @v.FiscalYearTitle</div>
+            </div>
+            <div class="vp-side vp-left">
+                <div>نوع: @Format.Type(v.Type)</div>
+                <div>وضعیت: <b>@Format.Status(v.Status)</b></div>
+                @if (v.SourceTitle is not null)
+                {
+                    <div>منبع: @v.SourceTitle</div>
+                }
+            </div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(v.Description))
+        {
+            <div class="vp-desc">شرح سند: @v.Description</div>
+        }
+        <table class="vp-table">
+            <thead>
+                <tr>
+                    <th style="width:4%">ردیف</th>
+                    <th style="width:9%">کد حساب</th>
+                    <th style="width:22%">شرح حساب</th>
+                    <th style="width:20%">تفصیلی</th>
+                    <th>شرح</th>
+                    <th style="width:12%">بدهکار</th>
+                    <th style="width:12%">بستانکار</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var l in v.Lines)
+                {
+                    <tr>
+                        <td class="c">@l.RowNo</td>
+                        <td class="c code">@l.AccountCode</td>
+                        <td>@l.GeneralTitle / @l.AccountTitle</td>
+                        <td class="vp-small">@l.Details</td>
+                        <td>@l.Description</td>
+                        <td class="num">@(l.Debit == 0 ? "" : Format.Amount(l.Debit))</td>
+                        <td class="num">@(l.Credit == 0 ? "" : Format.Amount(l.Credit))</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="5">جمع: @PersianWords.Rial(v.TotalDebit)</td>
+                    <td class="num">@Format.Amount(v.TotalDebit)</td>
+                    <td class="num">@Format.Amount(v.TotalCredit)</td>
+                </tr>
+            </tfoot>
+        </table>
+        <div class="vp-signs">
+            <div>تنظیم‌کننده</div>
+            <div>رسیدگی‌کننده</div>
+            <div>مدیر مالی</div>
+        </div>
+        <div class="vp-foot">چاپ: @Session.Info?.DisplayName — @Format.Today() @DateTime.Now.ToString("HH:mm")</div>
+    </div>
+}
+
+@if (!_busy && _loaded && _vouchers.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="no-print">در این بازه سندی برای چاپ نیست.</MudAlert>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "ids")] public long[]? Ids { get; set; }
+    [SupplyParameterFromQuery(Name = "year")] public int? Year { get; set; }
+    [SupplyParameterFromQuery(Name = "auto")] public bool? Auto { get; set; }
+
+    private List<FiscalYearDto> _years = [];
+    private List<VoucherPrintDto> _vouchers = [];
+    private short? _yearId;
+    private string? _from, _to;
+    private int? _fromNo, _toNo;
+    private bool _temp = true, _draft;
+    private bool _busy, _loaded, _printPending;
+    private bool _single;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _single = Ids is { Length: > 0 };
+        var years = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+        if (!years.Success) { Snackbar.Add(years.Error!, Severity.Error); return; }
+        _years = years.Value!;
+        var year = _years.FirstOrDefault(y => y.Id == Year) ?? _years.FirstOrDefault();
+        _yearId = year?.Id;
+        _from = year?.StartDate;
+        _to = year?.EndDate;
+        if (_single)
+        {
+            await LoadAsync();
+            _printPending = Auto == true && _vouchers.Count > 0;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_printPending) return;
+        _printPending = false;
+        await JS.InvokeVoidAsync("erpPrint");
+    }
+
+    private async Task LoadAsync()
+    {
+        if (_yearId is not short year) return;
+        _busy = true;
+        var request = _single
+            ? new VoucherPrintRequest(year, Ids!.ToList())
+            : new VoucherPrintRequest(year, null, _from, _to, _fromNo, _toNo, _temp, _draft);
+        var result = await Backend.Run<VoucherPrintService, List<VoucherPrintDto>>(s => s.GetAsync(request, default));
+        _busy = false;
+        _loaded = true;
+        if (result.Success) _vouchers = result.Value!;
+        else { _vouchers = []; Snackbar.Add(result.Error!, Severity.Error); }
+    }
+
+    private async Task PrintAsync() => await JS.InvokeVoidAsync("print");
+}

@@ -53,6 +53,20 @@ public class Receipt : TreasuryDocument
 
     public Receipt(int docNo, int createdBy, DateTime nowUtc) => Init(docNo, createdBy, nowUtc);
 
+    /// <summary>
+    /// دریافت اول دوره: فقط چک‌های در جریانِ پیش از شروع کار با نرم‌افزار؛ سند حسابداری نمی‌خورد چون مانده‌اش در سند افتتاحیه است.
+    /// </summary>
+    public bool IsOpening { get; private set; }
+
+    public void SetOpening(bool opening) => IsOpening = opening;
+
+    /// <summary>در فرم اول دوره فقط ردیف چک مجاز است.</summary>
+    public void EnsureOpeningLines()
+    {
+        if (IsOpening && _lines.Any(l => l.Instrument != Instrument.Cheque))
+            throw new DomainException("فرم اول دوره فقط ردیف چک دارد؛ مانده نقد و بانک را در سند افتتاحیه بیاورید.");
+    }
+
     public int PersonId { get; private set; }
     public short TypeId { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
@@ -190,6 +204,20 @@ public class Payment : TreasuryDocument
     private Payment() { } // EF
 
     public Payment(int docNo, int createdBy, DateTime nowUtc) => Init(docNo, createdBy, nowUtc);
+
+    /// <summary>
+    /// پرداخت اول دوره: فقط چک‌های در جریانِ پیش از شروع کار با نرم‌افزار؛ سند حسابداری نمی‌خورد چون مانده‌اش در سند افتتاحیه است.
+    /// </summary>
+    public bool IsOpening { get; private set; }
+
+    public void SetOpening(bool opening) => IsOpening = opening;
+
+    /// <summary>در فرم اول دوره فقط ردیف چک مجاز است.</summary>
+    public void EnsureOpeningLines()
+    {
+        if (IsOpening && _lines.Any(l => l.Instrument != Instrument.Cheque))
+            throw new DomainException("فرم اول دوره فقط ردیف چک دارد؛ مانده نقد و بانک را در سند افتتاحیه بیاورید.");
+    }
 
     public int PersonId { get; private set; }
     public short TypeId { get; private set; }

@@ -1,7 +1,7 @@
 @* انتخاب معین با جستجوی کد یا عنوان *@
 @inject Backend Backend
 
-<MudAutocomplete T="AccountDto" Value="Value" ValueChanged="OnChanged" SearchFunc="Search"
+<MudAutocomplete T="AccountDto" Value="Value" ValueChanged="OnChanged" SearchFunc="Search" Label="@Label"
                  ToStringFunc="@(a => a is null ? null : $"{a.Code} - {a.Title}")"
                  Placeholder="کد یا نام معین" Variant="Variant.Outlined" Margin="Margin.Dense"
                  Dense="true" MaxItems="30" DebounceInterval="250" ResetValueOnEmptyText="true"
@@ -19,6 +19,7 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Error { get; set; }
     [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? Label { get; set; }
 
     private async Task<IEnumerable<AccountDto>> Search(string? term, CancellationToken ct)
     {

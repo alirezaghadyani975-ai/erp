@@ -1,6 +1,7 @@
 @page "/treasury/reports/due"
 @inject Backend Backend
 @inject ISnackbar Snackbar
+@inject Erp.Api.Infrastructure.AppSession Session
 @inject TabService Tabs
 
 <TabTitle Text="سررسید چک‌ها" />
@@ -9,6 +10,7 @@
     <MudText Typo="Typo.h5">جدول سررسید ماهانه چک‌ها</MudText>
     <MudSpacer />
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+    <ExcelButton Build="BuildExcel" Disabled="_rows.Count == 0" />
 </MudStack>
 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
     چک‌های دریافتنی هنوز وصول‌نشده (در صندوق و در جریان وصول) در برابر چک‌های صادره پاس‌نشده، به تفکیک ماه سررسید؛ برای پیش‌بینی نقدینگی.
@@ -61,5 +63,22 @@
         var r = await Backend.Run<TreasuryReportService, List<DueMonthDto>>(s => s.DueScheduleAsync(default));
         if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
         _loading = false;
+    }
+
+    private ExcelFile? BuildExcel()
+    {
+        if (_rows.Count == 0) return null;
+        decimal running = 0;
+        var rows = _rows.Select(r => (Row: r, Running: running += r.Net)).ToList();
+        return ExcelExport.Build("جدول سررسید ماهانه چک‌ها", ReportHeader.Lines(Session, null, null, null),
+        [
+            new("ماه", x => x.Row.Title),
+            new("دریافتنی", x => x.Row.Receivable, ExcelKind.Amount),
+            new("تعداد دریافتنی", x => x.Row.ReceivableCount, ExcelKind.Number),
+            new("پرداختنی", x => x.Row.Payable, ExcelKind.Amount),
+            new("تعداد پرداختنی", x => x.Row.PayableCount, ExcelKind.Number),
+            new("خالص", x => x.Row.Net, ExcelKind.Amount),
+            new("خالص انباشته", x => x.Running, ExcelKind.Amount),
+        ], rows, default, "سررسید چک‌ها");
     }
 }

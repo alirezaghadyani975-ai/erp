@@ -215,3 +215,67 @@ kbd { font-family: inherit; font-size: .75rem; padding: 1px 5px; border: 1px sol
 .idle-warning { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3000; max-width: 92vw;
     background: #8a1c13; color: #fff; padding: 12px 20px; border-radius: 10px; font-weight: 600;
     box-shadow: 0 8px 28px rgba(0,0,0,.3); }
+
+/* چاپ سند حسابداری: هر سند یک صفحه A4 */
+.voucher-print { position: relative; background: #fff; color: #000; padding: 14px 16px; margin: 0 auto 18px; max-width: 1000px;
+    border: 1px solid var(--mud-palette-lines-default); font-size: 10pt; }
+.voucher-print .vp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.voucher-print .vp-side { flex: 0 0 26%; line-height: 1.9; font-size: 9.5pt; }
+.voucher-print .vp-left { text-align: left; }
+.voucher-print .vp-center { flex: 1; text-align: center; }
+.voucher-print .vp-company { font-size: 12pt; font-weight: 700; }
+.voucher-print .vp-title { font-size: 14pt; font-weight: 800; margin: 2px 0; }
+.voucher-print .vp-sub { font-size: 9pt; color: #444; }
+.voucher-print .vp-desc { border: 1px solid #000; border-bottom: none; padding: 4px 6px; }
+.voucher-print .vp-table { width: 100%; border-collapse: collapse; }
+.voucher-print .vp-table th, .voucher-print .vp-table td { border: 1px solid #000; padding: 3px 5px; vertical-align: top; }
+.voucher-print .vp-table th { background: #eee; font-weight: 700; text-align: center; }
+.voucher-print .vp-table td.c { text-align: center; }
+.voucher-print .vp-table tfoot td { font-weight: 700; background: #f4f4f4; }
+.voucher-print .vp-small { font-size: 8.5pt; }
+.voucher-print .vp-signs { display: flex; justify-content: space-around; margin-top: 26px; text-align: center; }
+.voucher-print .vp-signs > div { flex: 0 0 25%; border-top: 1px dashed #000; padding-top: 4px; padding-bottom: 28px; }
+.voucher-print .vp-foot { font-size: 8pt; color: #555; text-align: left; margin-top: 6px; }
+.voucher-print.is-draft::after { content: "پیش‌نویس"; position: absolute; top: 40%; left: 0; right: 0; text-align: center;
+    font-size: 72pt; font-weight: 800; color: rgba(0,0,0,.07); transform: rotate(-18deg); pointer-events: none; }
+@media print {
+    @page { size: A4 portrait; margin: 10mm; }
+    .voucher-print { border: none; padding: 0; margin: 0; max-width: none; page-break-after: always; break-after: page; }
+    .voucher-print:last-of-type { page-break-after: auto; break-after: auto; }
+    .voucher-print .vp-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .voucher-print .vp-table thead { display: table-header-group; }
+}
+
+/* صورت‌های مالی */
+.statement { max-width: 900px; margin: 0 auto; background: var(--mud-palette-surface); padding: 18px 22px; border-radius: 8px; box-shadow: var(--mud-elevation-1); }
+.statement-head { text-align: center; margin-bottom: 12px; }
+.statement-title { font-size: 1.15rem; font-weight: 700; margin-top: 2px; }
+.statement-sub { font-size: .8rem; color: var(--mud-palette-text-secondary); }
+.statement-table { width: 100%; border-collapse: collapse; }
+.statement-table th { font-weight: 600; font-size: .85rem; border-bottom: 2px solid var(--mud-palette-text-primary); padding: 6px 8px; }
+.statement-table th.num-head { text-align: left; width: 22%; }
+.statement-table td { padding: 4px 8px; }
+.statement-table td.num { white-space: nowrap; }
+.statement-table .st-heading td { font-weight: 700; padding-top: 12px; }
+.statement-table .st-line td:first-child { padding-inline-start: 26px; }
+.statement-table .st-code { color: var(--mud-palette-text-secondary); font-size: .8em; margin-inline-end: 6px; }
+.statement-table .st-subtotal td { font-weight: 700; border-top: 1px solid var(--mud-palette-lines-default); }
+.statement-table .st-total td { font-weight: 800; border-top: 1px solid var(--mud-palette-text-primary); border-bottom: 3px double var(--mud-palette-text-primary); }
+@media print { .statement { box-shadow: none; padding: 0; max-width: none; } }
+
+/* دفاتر قانونی */
+.book { max-width: 1100px; margin: 0 auto 16px; background: var(--mud-palette-surface); padding: 16px 20px; border-radius: 8px; box-shadow: var(--mud-elevation-1); }
+.book-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.book-table th, .book-table td { border: 1px solid var(--mud-palette-lines-default); padding: 3px 6px; vertical-align: top; }
+.book-table th { background: var(--mud-palette-background-gray); font-weight: 700; text-align: center; }
+.book-table td.code { text-align: center; }
+.book-table .credit-line { padding-inline-start: 34px; }
+.book-table .book-desc td { color: var(--mud-palette-text-secondary); font-size: .8rem; border-top: none; }
+.book-table tfoot td { font-weight: 700; background: var(--mud-palette-background-gray); }
+@media print {
+    .book { box-shadow: none; padding: 0; max-width: none; }
+    .book-table th, .book-table td { border-color: #000; }
+    .book-table thead { display: table-header-group; }
+    .book-account { page-break-after: always; break-after: page; }
+    .book-account:last-of-type { page-break-after: auto; break-after: auto; }
+}

@@ -15,10 +15,14 @@
 
 <FormWithList Title="@Noun" Load="LoadSideAsync" NewUrl="@($"{BaseUrl}/new")" CurrentUrl="@SelfUrl" Version="_listVersion" Editing="Dirty">
 <FormToolbar Title="@Heading" Permission="@(IsPayment ? "trs.payment" : "trs.receipt")" AuditEntity="@(IsPayment ? "Payment" : "Receipt")" AuditId="Id" IsNew="IsNew" Editing="_editing" CanEdit="!Locked" CanDelete="!Locked" Busy="_saving"
-             SaveText="@(IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId"
+             SaveText="@(_opening ? "ذخیره" : IsNew ? "ثبت و صدور سند" : "ذخیره و اصلاح سند")" VoucherId="_voucher?.VoucherId"
              LockReason="@(Locked ? _lockReason ?? "سند حسابداری این فرم دائم شده است؛ فرم فقط قابل مشاهده است." : null)"
              OnNew="@(() => Tabs.Go($"{BaseUrl}/new"))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
     <Chips>
+        @if (_opening)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Icon="@Icons.Material.Outlined.History">اول دوره — بدون سند</MudChip>
+        }
         @if (_voucher is not null)
         {
             <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
@@ -69,8 +73,13 @@
                 <MudText Typo="Typo.caption" Color="Color.Secondary">طرف حساب در معین @tp.AccountCode - @tp.AccountTitle</MudText>
             }
         </MudItem>
-        <MudItem xs="12">
+        <MudItem xs="12" md="9">
             <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" md="3">
+            <MudTooltip Text="@($"چک‌های در جریان پیش از شروع کار با نرم‌افزار؛ فقط ردیف چک و بدون سند، چون مانده‌شان در سند افتتاحیه است.")">
+                <MudCheckBox @bind-Value="_opening" Label="اول دوره (بدون سند)" Disabled="ReadOnly" Dense="true" Color="Color.Secondary" />
+            </MudTooltip>
         </MudItem>
     </MudGrid>
 </MudPaper>
@@ -272,6 +281,7 @@
     private string? _personName;
     private short? _typeId;
     private string? _description;
+    private bool _opening;
     private int _docNo;
     private TreasuryVoucherDto? _voucher;
     private string? _lockReason;
@@ -304,7 +314,7 @@
 
     private void ResetNew()
     {
-        (_personId, _personName, _description) = (null, null, null);
+        (_personId, _personName, _description, _opening) = (null, null, null, false);
         _lines = [];
         _lines.Add(NewLine(Instrument.Cash));
         _typeId = _types.FirstOrDefault(t => t.IsActive)?.Id;
@@ -317,8 +327,8 @@
             : await Backend.Run<ReceiptService, ReceiptPaymentDto>(s => s.GetAsync(id, default));
         if (!r.Success) { _error = r.Error; return; }
         var x = r.Value!;
-        (_docNo, _date, _personId, _personName, _typeId, _description, _voucher, _lockReason) =
-            (x.DocNo, x.Date, x.PersonId, x.PersonName, x.TypeId, x.Description, x.Voucher, x.LockReason);
+        (_docNo, _date, _personId, _personName, _typeId, _description, _voucher, _lockReason, _opening) =
+            (x.DocNo, x.Date, x.PersonId, x.PersonName, x.TypeId, x.Description, x.Voucher, x.LockReason, x.IsOpening);
         _lines = x.Lines.Select(l => new LineModel
         {
             Instrument = l.Instrument, CashBoxId = l.CashBoxId, BankAccountId = l.BankAccountId, ReceivedChequeId = l.ReceivedChequeId,
@@ -458,7 +468,7 @@
                 l.Instrument is Instrument.Bank || (l.Instrument == Instrument.Cheque && IsPayment) ? l.BankAccountId : null,
                 l.Amount, l.Instrument is Instrument.Cash or Instrument.Bank ? l.RefNo : null, l.Description,
                 l.Instrument == Instrument.Cheque ? new ChequeInput(l.Serial!.Trim(), l.Sayad, l.Due!, l.ChequeBankId, l.Branch, l.Drawer, l.AccountNo, IsPayment ? l.LeafId : null) : null,
-                l.Instrument == Instrument.SpendCheque ? l.ReceivedChequeId : null)).ToList());
+                l.Instrument == Instrument.SpendCheque ? l.ReceivedChequeId : null)).ToList(), _opening);
 
         _saving = true;
         if (Id is long id)

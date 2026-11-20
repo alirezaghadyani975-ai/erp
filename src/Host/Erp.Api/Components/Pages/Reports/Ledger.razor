@@ -3,6 +3,7 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject Erp.Api.Infrastructure.AppSession Session
 
 <TabTitle Text="دفتر حساب" />
 
@@ -10,6 +11,7 @@
     <MudText Typo="Typo.h5">دفتر معین و تفصیلی</MudText>
     <MudSpacer />
     <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.TableChart" Href="/reports/trial-balance">تراز آزمایشی</MudButton>
+    <ExcelButton Build="BuildExcel" Disabled="_result is null" />
     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" OnClick="Print" Disabled="_result is null">چاپ</MudButton>
 </MudStack>
 
@@ -26,6 +28,13 @@
                    FullWidth="true">نمایش</MudButton>
     </MudItem>
 </ReportFilterBar>
+
+@if (_andDetails.Count > 0)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2 no-print" ShowCloseIcon="true" CloseIconClicked="ClearAnd">
+        فقط ردیف‌هایی که @_andDetails.Count تفصیلی دیگرِ انتخاب‌شده در مرور حساب‌ها را هم دارند (در عنوان دفتر آمده‌اند).
+    </MudAlert>
+}
 
 @if (_result is null)
 {
@@ -118,6 +127,8 @@ else
     [SupplyParameterFromQuery(Name = "vto")] public int? VTo { get; set; }
     [SupplyParameterFromQuery(Name = "account")] public string? AccountCode { get; set; }
     [SupplyParameterFromQuery(Name = "detail")] public int? DetailId { get; set; }
+    /// <summary>تفصیلی‌های دیگری که ردیف باید داشته باشد (از مرور حساب‌ها).</summary>
+    [SupplyParameterFromQuery(Name = "and")] public int[]? AndDetails { get; set; }
 
     private readonly ReportFilterModel _filter = new();
     private List<FiscalYearDto> _years = [];
@@ -126,6 +137,7 @@ else
     private LedgerDto? _result;
     private bool _running;
     private bool _showAccount;
+    private List<int> _andDetails = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -157,16 +169,23 @@ else
             else Snackbar.Add(detail.Error!, Severity.Warning);
         }
 
+        _andDetails = AndDetails?.Where(id => id != DetailId).Distinct().ToList() ?? [];
         if (_filter.YearId is not null && (_account is not null || _detail is not null))
             await RunAsync();
     }
 
     private Task Reload() => RunAsync();
 
+    private async Task ClearAnd()
+    {
+        _andDetails = [];
+        if (_result is not null) await RunAsync();
+    }
+
     private async Task RunAsync()
     {
         _running = true;
-        var request = new LedgerRequest(_filter.ToFilter(), _account?.Code, _detail?.Id);
+        var request = new LedgerRequest(_filter.ToFilter(), _account?.Code, _detail?.Id, _andDetails.Count == 0 ? null : _andDetails);
         var result = await Backend.Run<ReportService, LedgerDto>(s => s.LedgerAsync(request, default));
         _running = false;
         if (!result.Success) { Snackbar.Add(result.Error!, Severity.Error); return; }
@@ -183,4 +202,33 @@ else
     private void RowClicked(TableRowClickEventArgs<LedgerRow> args) => Nav.NavigateTo($"/vouchers/{args.Item!.VoucherId}");
 
     private async Task Print() => await JS.InvokeVoidAsync("print");
+
+    private ExcelFile? BuildExcel()
+    {
+        if (_result is null) return null;
+        var columns = new List<ExcelColumn<LedgerRow>>
+        {
+            new("تاریخ", r => r.Date, ExcelKind.Code),
+            new("شماره سند", r => r.VoucherId == 0 ? "" : r.VoucherNo?.ToString() ?? $"موقت {r.TempNo}", ExcelKind.Code),
+            new("ردیف", r => r.VoucherId == 0 ? null : r.RowNo, ExcelKind.Number),
+        };
+        if (_showAccount)
+        {
+            columns.Add(new("کد حساب", r => r.AccountCode, ExcelKind.Code));
+            columns.Add(new("عنوان حساب", r => r.AccountTitle));
+        }
+        columns.Add(new("تفصیلی", r => r.Details));
+        columns.Add(new("شرح", r => r.Description));
+        columns.Add(new("بدهکار", r => r.Debit, ExcelKind.Amount));
+        columns.Add(new("بستانکار", r => r.Credit, ExcelKind.Amount));
+        columns.Add(new("مانده", r => Math.Abs(r.Balance), ExcelKind.Amount));
+        columns.Add(new("تشخیص", r => Nature(r.Balance)));
+        var totals = new LedgerRow(0, "", 0, null, VoucherStatus.Permanent, 0, "", "", null, "جمع گردش",
+            _result.TotalDebit, _result.TotalCredit, _result.EndingBalance);
+        var rows = _result.Rows.Prepend(new LedgerRow(0, "", 0, null, VoucherStatus.Permanent, 0, "", "", null, "مانده ابتدای بازه",
+            0, 0, _result.OpeningBalance));
+        return ExcelExport.Build($"دفتر {_result.Title}",
+            ReportHeader.Lines(Session, _result.FromDate, _result.ToDate, _filter.IncludeTemporary),
+            columns, rows, totals, "دفتر حساب");
+    }
 }

@@ -1,0 +1,408 @@
+@page "/reports/review"
+@inject Backend Backend
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject Erp.Api.Infrastructure.AppSession Session
+
+<TabTitle Text="مرور حساب‌ها" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3 no-print" Spacing="2">
+    <MudText Typo="Typo.h5">مرور حساب‌ها</MudText>
+    <MudSpacer />
+    <ExcelButton Build="BuildExcel" Disabled="_result is null" />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" OnClick="Print" Disabled="_result is null">چاپ</MudButton>
+</MudStack>
+
+@if (!_loading && _years.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        هنوز سال مالی تعریف نشده است. از صفحه <MudLink Href="/fiscal-years">سال و دوره مالی</MudLink> یک سال بسازید.
+    </MudAlert>
+    return;
+}
+
+<ReportFilterBar Model="_filter" Years="_years">
+    <MudItem xs="12" sm="6" md="3">
+        <AccountPicker @bind-Value="_startAccount" Label="شروع از حساب (اختیاری)" />
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <DetailPicker @bind-Value="_startDetail" AllowedTypeIds="null" Label="شروع از تفصیلی (اختیاری)" />
+    </MudItem>
+    <MudItem xs="12" sm="4" md="2">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
+                   OnClick="StartAsync" Disabled="_running || _filter.YearId is null" FullWidth="true">نمایش</MudButton>
+    </MudItem>
+</ReportFilterBar>
+
+<MudPaper Class="pa-2 mb-2 no-print" Elevation="0" Outlined="true">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="ml-1">مسیر:</MudText>
+        <MudButton Size="Size.Small" Variant="@(_steps.Count == 0 ? Variant.Filled : Variant.Text)" Color="Color.Primary"
+                   OnClick="() => BackAsync(-1)">همه حساب‌ها</MudButton>
+        @for (var i = 0; i < _steps.Count; i++)
+        {
+            var index = i;
+            <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" />
+            <MudButton Size="Size.Small" Variant="@(index == _steps.Count - 1 ? Variant.Filled : Variant.Text)" Color="Color.Primary"
+                       OnClick="() => BackAsync(index)">@_steps[index].Label</MudButton>
+        }
+    </MudStack>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Wrap="Wrap.Wrap" Class="mt-1">
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="ml-1">نمایش به تفکیک:</MudText>
+        @foreach (var d in Dimensions)
+        {
+            var dim = d;
+            <MudChip T="string" Size="Size.Small" Color="@(dim == _by ? Color.Primary : Color.Default)"
+                     Variant="@(dim == _by ? Variant.Filled : Variant.Outlined)" OnClick="() => RegroupAsync(dim)">@DimText(dim)</MudChip>
+        }
+        @if (_by == ReviewDimension.AnyDetail)
+        {
+            <MudSelect T="short?" Label="نوع تفصیلی" Value="_detailTypeId" ValueChanged="TypeChanged" Clearable="true"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="max-width:220px">
+                @foreach (var t in _detailTypes)
+                {
+                    <MudSelectItem T="short?" Value="t.Id">@t.Title</MudSelectItem>
+                }
+            </MudSelect>
+        }
+    </MudStack>
+</MudPaper>
+
+@if (_result is not null)
+{
+    <div class="report-head">
+        <MudText Typo="Typo.h6">مرور حساب‌ها به تفکیک @DimText(_result.By)</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            @(_result.Path.Count == 0 ? "همه حساب‌ها" : string.Join(" ← ", _result.Path)) —
+            از <span class="code">@_result.FromDate</span> تا <span class="code">@_result.ToDate</span>
+            @(_filter.IncludeTemporary ? "— اسناد موقت و دائم" : "— فقط اسناد دائم")
+        </MudText>
+    </div>
+
+    <MudTable T="ReviewRow" Items="_result.Rows" Dense="true" Hover="true" Bordered="true" Elevation="1"
+              Loading="_running" CustomHeader="true" CustomFooter="true" OnRowClick="RowClicked"
+              RowStyle="cursor:pointer" Class="report-table" HorizontalScrollbar="true">
+        <HeaderContent>
+            <MudTHeadRow>
+                <MudTh rowspan="2">@(IsVoucher ? "سند" : "کد")</MudTh>
+                @if (IsVoucher)
+                {
+                    <MudTh rowspan="2">تاریخ</MudTh>
+                }
+                <MudTh rowspan="2">@(IsVoucher ? "شرح" : "عنوان")</MudTh>
+                @if (IsDetail)
+                {
+                    <MudTh rowspan="2">نوع</MudTh>
+                }
+                @if (!IsVoucher)
+                {
+                    <MudTh colspan="2" Class="group-head">مانده ابتدای دوره</MudTh>
+                }
+                <MudTh colspan="2" Class="group-head">گردش @(IsVoucher ? "سند" : "طی دوره")</MudTh>
+                <MudTh colspan="2" Class="group-head">@(IsVoucher ? "مانده جاری" : "مانده پایان دوره")</MudTh>
+                <MudTh rowspan="2" Class="no-print"></MudTh>
+            </MudTHeadRow>
+            <MudTHeadRow>
+                @for (var i = 0; i < (IsVoucher ? 2 : 3); i++)
+                {
+                    <MudTh Class="num-head">بدهکار</MudTh>
+                    <MudTh Class="num-head">بستانکار</MudTh>
+                }
+            </MudTHeadRow>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Code</span></MudTd>
+            @if (IsVoucher)
+            {
+                <MudTd><span class="code">@context.Extra</span></MudTd>
+            }
+            <MudTd>
+                @if (context.DetailId is null && IsDetailLevel)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary"><i>@context.Title</i></MudText>
+                }
+                else
+                {
+                    @context.Title
+                }
+            </MudTd>
+            @if (IsDetail)
+            {
+                <MudTd><MudText Typo="Typo.caption">@context.Extra</MudText></MudTd>
+            }
+            @if (!IsVoucher)
+            {
+                <MudTd Class="num">@Amount(context.OpeningDebit)</MudTd>
+                <MudTd Class="num">@Amount(context.OpeningCredit)</MudTd>
+            }
+            <MudTd Class="num">@Amount(context.PeriodDebit)</MudTd>
+            <MudTd Class="num">@Amount(context.PeriodCredit)</MudTd>
+            <MudTd Class="num"><b>@Amount(context.EndingDebit)</b></MudTd>
+            <MudTd Class="num"><b>@Amount(context.EndingCredit)</b></MudTd>
+            <MudTd Class="no-print" Style="white-space:nowrap">
+                @if (!IsVoucher && (context.AccountId is not null || context.DetailId is not null))
+                {
+                    <span @onclick:stopPropagation="true">
+                        <MudTooltip Text="ریز گردش (دفتر)">
+                            <MudIconButton Icon="@Icons.Material.Outlined.MenuBook" Size="Size.Small" OnClick="() => OpenLedger(context)" aria-label="دفتر" />
+                        </MudTooltip>
+                        @if (context.DetailId is not null && _by != ReviewDimension.AnyDetail)
+                        {
+                            <MudTooltip Text="این تفصیلی در کدام حساب‌ها گردش دارد">
+                                <MudIconButton Icon="@Icons.Material.Outlined.AccountTree" Size="Size.Small"
+                                               OnClick="() => DetailAccountsAsync(context)" aria-label="حساب‌های این تفصیلی" />
+                            </MudTooltip>
+                        }
+                    </span>
+                }
+                <MudIcon Icon="@(IsVoucher ? Icons.Material.Outlined.OpenInNew : Icons.Material.Filled.ChevronLeft)" Size="Size.Small" Color="Color.Primary" />
+            </MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTFootRow Class="total-row">
+                <MudTd colspan="@(IsVoucher || IsDetail ? 3 : 2)">@(IsVoucher ? "جمع گردش و مانده آخر" : "جمع")</MudTd>
+                @if (!IsVoucher)
+                {
+                    <MudTd Class="num">@Format.Amount(_result.Totals.OpeningDebit)</MudTd>
+                    <MudTd Class="num">@Format.Amount(_result.Totals.OpeningCredit)</MudTd>
+                }
+                <MudTd Class="num">@Format.Amount(_result.Totals.PeriodDebit)</MudTd>
+                <MudTd Class="num">@Format.Amount(_result.Totals.PeriodCredit)</MudTd>
+                <MudTd Class="num">@Format.Amount(_result.Totals.EndingDebit)</MudTd>
+                <MudTd Class="num">@Format.Amount(_result.Totals.EndingCredit)</MudTd>
+                <MudTd Class="no-print"></MudTd>
+            </MudTFootRow>
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4">در این بازه گردشی نیست.</MudText></NoRecordsContent>
+    </MudTable>
+
+    @if (IsVoucher && _result.OpeningBalance != 0)
+    {
+        <MudText Typo="Typo.body2" Class="mt-2">
+            مانده ابتدای بازه: <b class="code">@Format.Amount(Math.Abs(_result.OpeningBalance))</b> @(_result.OpeningBalance > 0 ? "بدهکار" : "بستانکار")
+        </MudText>
+    }
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2 d-block no-print">
+        روی هر ردیف بزنید تا یک سطح پایین‌تر برود (گروه ← کل ← معین ← تفصیلی سطح ۱ ← سطح ۲ ... ← اسناد). با «نمایش به تفکیک»
+        همان مسیر را به سطح دیگری ببینید؛ مثلاً یک تفصیلی را به تفکیک معین یا سطح بعدی.
+        @if (IsDetail)
+        {
+            <text>ردیفی که چند تفصیلی دارد برای هر کدام حساب می‌شود؛ پس جمع «همه تفصیلی‌ها» لزوماً تراز نیست.</text>
+        }
+    </MudText>
+}
+
+@code {
+    private sealed record Step(string? AccountCode, int? DetailId, string Label, ReviewDimension ShownBy);
+
+    private static readonly ReviewDimension[] Dimensions =
+    [
+        ReviewDimension.Group, ReviewDimension.General, ReviewDimension.Subsidiary,
+        ReviewDimension.Detail1, ReviewDimension.Detail2, ReviewDimension.Detail3,
+        ReviewDimension.Detail4, ReviewDimension.Detail5, ReviewDimension.Detail6,
+        ReviewDimension.AnyDetail, ReviewDimension.Voucher
+    ];
+
+    private readonly ReportFilterModel _filter = new();
+    private List<FiscalYearDto> _years = [];
+    private List<DetailTypeDto> _detailTypes = [];
+    private AccountDto? _startAccount;
+    private DetailAccountDto? _startDetail;
+    private readonly List<Step> _steps = [];
+    private ReviewDimension _by = ReviewDimension.Group;
+    private ReviewDimension _rootBy = ReviewDimension.Group;
+    private short? _detailTypeId;
+    private ReviewDto? _result;
+    private bool _loading = true;
+    private bool _running;
+
+    private bool IsVoucher => _result?.By == ReviewDimension.Voucher;
+    private bool IsDetailLevel => _result?.By is >= ReviewDimension.Detail1 and <= ReviewDimension.Detail6;
+    private bool IsDetail => IsDetailLevel || _result?.By == ReviewDimension.AnyDetail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var years = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+        var types = await Backend.Run<DetailService, List<DetailTypeDto>>(s => s.GetTypesAsync(default));
+        _loading = false;
+        if (!years.Success) { Snackbar.Add(years.Error!, Severity.Error); return; }
+        _years = years.Value!;
+        _detailTypes = types.Value ?? [];
+        _filter.SetYear(_years.FirstOrDefault());
+        if (_filter.YearId is not null) await RunAsync();
+    }
+
+    private static string DimText(ReviewDimension d) => d switch
+    {
+        ReviewDimension.Group => "گروه",
+        ReviewDimension.General => "کل",
+        ReviewDimension.Subsidiary => "معین",
+        >= ReviewDimension.Detail1 and <= ReviewDimension.Detail6 => $"تفصیلی {(int)d - 10}",
+        ReviewDimension.AnyDetail => "همه تفصیلی‌ها",
+        ReviewDimension.Voucher => "اسناد",
+        _ => d.ToString()
+    };
+
+    private static string Amount(decimal v) => v == 0 ? "" : Format.Amount(v);
+
+    private string? AccountCode => _steps.LastOrDefault(s => s.AccountCode is not null)?.AccountCode;
+    private List<int> DetailIds => _steps.Where(s => s.DetailId is not null).Select(s => s.DetailId!.Value).ToList();
+
+    private async Task StartAsync()
+    {
+        _steps.Clear();
+        _by = ReviewDimension.Group;
+        if (_startAccount is { } a)
+        {
+            _by = a.Level switch
+            {
+                AccountLevel.Group => ReviewDimension.General,
+                AccountLevel.General => ReviewDimension.Subsidiary,
+                _ => ReviewDimension.Detail1
+            };
+            _steps.Add(new Step(a.Code, null, $"{Format.Level(a.Level)} {a.Code} {a.Title}", _by));
+        }
+        if (_startDetail is { } d)
+        {
+            _by = _startAccount is null ? ReviewDimension.Subsidiary : _by;
+            _steps.Add(new Step(null, d.Id, $"{d.Code} {d.Title}", _by));
+        }
+        _rootBy = _steps.Count == 0 ? ReviewDimension.Group : _by;
+        await RunAsync();
+    }
+
+    private async Task<bool> RunAsync()
+    {
+        if (_filter.YearId is null) return false;
+        _running = true;
+        var request = new ReviewRequest(_filter.ToFilter(), _by, AccountCode, DetailIds,
+            _by == ReviewDimension.AnyDetail ? _detailTypeId : null);
+        var result = await Backend.Run<ReportService, ReviewDto>(s => s.ReviewAsync(request, default));
+        _running = false;
+        if (!result.Success) { Snackbar.Add(result.Error!, Severity.Error); return false; }
+        _result = result.Value;
+        return true;
+    }
+
+    private async Task RegroupAsync(ReviewDimension by)
+    {
+        _by = by;
+        if (_steps.Count > 0) _steps[^1] = _steps[^1] with { ShownBy = by };
+        else _rootBy = by;
+        await RunAsync();
+    }
+
+    private async Task TypeChanged(short? id)
+    {
+        _detailTypeId = id;
+        await RunAsync();
+    }
+
+    private async Task BackAsync(int index)
+    {
+        if (index < 0)
+        {
+            _steps.Clear();
+            _by = _rootBy;
+        }
+        else
+        {
+            _steps.RemoveRange(index + 1, _steps.Count - index - 1);
+            _by = _steps[index].ShownBy;
+        }
+        await RunAsync();
+    }
+
+    private async Task RowClicked(TableRowClickEventArgs<ReviewRow> args)
+    {
+        var row = args.Item!;
+        if (_result is null) return;
+        switch (_result.By)
+        {
+            case ReviewDimension.Voucher:
+                if (row.VoucherId is long id) Nav.NavigateTo($"/vouchers/{id}");
+                return;
+            case ReviewDimension.Group:
+                await DrillAsync(new Step(row.Code, null, $"گروه {row.Code} {row.Title}", ReviewDimension.General));
+                return;
+            case ReviewDimension.General:
+                await DrillAsync(new Step(row.Code, null, $"کل {row.Code} {row.Title}", ReviewDimension.Subsidiary));
+                return;
+            case ReviewDimension.Subsidiary:
+                await DrillAsync(new Step(row.Code, null, $"معین {row.Code} {row.Title}", ReviewDimension.Detail1));
+                return;
+            case ReviewDimension.AnyDetail:
+                if (row.DetailId is int any)
+                    await DrillAsync(new Step(null, any, $"{row.Code} {row.Title}", ReviewDimension.Subsidiary));
+                return;
+            default:
+                if (row.DetailId is not int detail)
+                {
+                    // ردیف‌های بدون تفصیلی را فقط در سطح اسناد می‌شود دید
+                    await RegroupAsync(ReviewDimension.Voucher);
+                    return;
+                }
+                var next = _result.By == ReviewDimension.Detail6 ? ReviewDimension.Voucher : _result.By + 1;
+                await DrillAsync(new Step(null, detail, $"{row.Code} {row.Title}", next));
+                return;
+        }
+    }
+
+    private async Task DetailAccountsAsync(ReviewRow row)
+    {
+        if (row.DetailId is int id)
+            await DrillAsync(new Step(null, id, $"{row.Code} {row.Title}", ReviewDimension.Subsidiary));
+    }
+
+    private async Task DrillAsync(Step step)
+    {
+        _steps.Add(step);
+        _by = step.ShownBy;
+        if (!await RunAsync()) return;
+        // سطح تفصیلی بعدی خالی است (همه ردیف‌ها بدون تفصیلی): مستقیم اسناد را نشان بده
+        if (IsDetailLevel && _result!.Rows.All(r => r.DetailId is null))
+            await RegroupAsync(ReviewDimension.Voucher);
+    }
+
+    private void OpenLedger(ReviewRow row)
+    {
+        var query = _filter.ToQuery();
+        var details = DetailIds;
+        query["account"] = row.AccountId is not null ? row.Code : AccountCode;
+        query["detail"] = row.DetailId ?? (details.Count > 0 ? details[0] : null);
+        query["and"] = details.Where(d => d != (row.DetailId ?? (details.Count > 0 ? details[0] : 0))).ToArray();
+        Nav.NavigateTo(Nav.GetUriWithQueryParameters("/reports/ledger", query));
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+
+    private ExcelFile? BuildExcel()
+    {
+        if (_result is null) return null;
+        var voucher = IsVoucher;
+        var columns = new List<ExcelColumn<ReviewRow>> { new(voucher ? "سند" : "کد", r => r.Code, ExcelKind.Code) };
+        if (voucher) columns.Add(new("تاریخ", r => r.Extra, ExcelKind.Code));
+        columns.Add(new(voucher ? "شرح" : "عنوان", r => r.Title));
+        if (IsDetail) columns.Add(new("نوع تفصیلی", r => r.Extra));
+        if (!voucher)
+        {
+            columns.Add(new("مانده ابتدا - بدهکار", r => r.OpeningDebit, ExcelKind.Amount));
+            columns.Add(new("مانده ابتدا - بستانکار", r => r.OpeningCredit, ExcelKind.Amount));
+        }
+        columns.Add(new("گردش بدهکار", r => r.PeriodDebit, ExcelKind.Amount));
+        columns.Add(new("گردش بستانکار", r => r.PeriodCredit, ExcelKind.Amount));
+        columns.Add(new(voucher ? "مانده جاری بدهکار" : "مانده بدهکار", r => r.EndingDebit, ExcelKind.Amount));
+        columns.Add(new(voucher ? "مانده جاری بستانکار" : "مانده بستانکار", r => r.EndingCredit, ExcelKind.Amount));
+        var rows = _result.Rows.AsEnumerable();
+        if (voucher)
+        {
+            var o = _result.OpeningBalance;
+            rows = rows.Prepend(new ReviewRow("", "مانده ابتدای بازه", null, null, null, null, 0, 0, 0, 0, Math.Max(o, 0), Math.Max(-o, 0)));
+        }
+        return ExcelExport.Build($"مرور حساب‌ها به تفکیک {DimText(_result.By)}",
+            ReportHeader.Lines(Session, _result.FromDate, _result.ToDate, _filter.IncludeTemporary,
+                _result.Path.Count == 0 ? null : string.Join(" ← ", _result.Path)),
+            columns, rows, _result.Totals, "مرور حساب‌ها");
+    }
+}

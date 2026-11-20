@@ -95,6 +95,26 @@ public class Voucher : AggregateRoot<long>
         return line;
     }
 
+    /// <summary>
+    /// ردیف انتقال مانده (بستن سال، اختتامیه، افتتاحیه): حساب و تفصیلی‌ها عیناً از ردیف‌های ثبت‌شده می‌آیند، پس قواعد
+    /// امروزِ تفصیلی و فعال بودن دوباره بررسی نمی‌شود (ممکن است بعد از ثبت عوض شده باشند؛ مانده باید منتقل شود).
+    /// </summary>
+    public VoucherLine AddCarryLine(Account account, int?[] detailIds, decimal debit, decimal credit, string? description)
+    {
+        EnsureEditable();
+        if (account.Level != AccountLevel.Subsidiary)
+            throw new DomainException($"«{account.Code} - {account.Title}» معین نیست.");
+        ValidateAmounts(debit, credit);
+        if (detailIds.Length != Account.MaxDetailLevels)
+            throw new DomainException("تعداد سطوح تفصیلی نامعتبر است.");
+        if (_lines.Count >= short.MaxValue)
+            throw new DomainException("تعداد ردیف‌های سند بیش از حد مجاز است.");
+        var line = new VoucherLine((short)(_lines.Count + 1), account.Id, detailIds, debit, credit,
+            LineExtras.None with { Description = Clean(description) });
+        _lines.Add(line);
+        return line;
+    }
+
     public void RemoveLine(int rowNo)
     {
         EnsureEditable();
@@ -128,6 +148,15 @@ public class Voucher : AggregateRoot<long>
             throw new DomainException("فقط سند پیش‌نویس را می‌توان موقت کرد.");
         EnsureValidForPosting();
         Status = VoucherStatus.Temporary;
+    }
+
+    /// <summary>شماره‌گذاری مجدد سند دائم (مرتب کردن شماره‌ها به ترتیب تاریخ). عدد منفی فقط مرحله میانی جابه‌جایی است.</summary>
+    public void Renumber(int voucherNo)
+    {
+        if (Status != VoucherStatus.Permanent)
+            throw new DomainException("فقط شماره سند دائم دوباره داده می‌شود.");
+        if (voucherNo == 0) throw new DomainException("شماره سند نامعتبر است.");
+        VoucherNo = voucherNo;
     }
 
     /// <summary>موقت ← پیش‌نویس</summary>

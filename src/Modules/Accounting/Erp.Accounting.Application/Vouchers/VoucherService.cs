@@ -69,6 +69,7 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
         access.Demand(AccountingPermissions.VoucherCreate);
         var fiscalYear = await GetFiscalYearAsync(request.FiscalYearId, ct);
         var date = PersianDate.Parse(request.Date);
+        await EnsureTypeAllowedAsync(request.Type, fiscalYear, date, ct);
 
         for (var attempt = 1; ; attempt++)
         {
@@ -94,6 +95,51 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
         }
     }
 
+    /// <summary>
+    /// بررسی سند بدون ثبت (برای ورود از اکسل): همه خطاها با شماره ردیف برمی‌گردد، نه فقط اولی.
+    /// نبودن تراز خطا نیست (پیش‌نویس می‌تواند ناتراز باشد) و جدا گزارش می‌شود.
+    /// </summary>
+    public async Task<VoucherCheckResult> CheckAsync(SaveVoucherRequest request, CancellationToken ct)
+    {
+        access.Demand(AccountingPermissions.VoucherCreate);
+        var errors = new List<string>();
+        var fiscalYear = await GetFiscalYearAsync(request.FiscalYearId, ct);
+        Voucher voucher;
+        try
+        {
+            var date = PersianDate.Parse(request.Date);
+            await EnsureTypeAllowedAsync(request.Type, fiscalYear, date, ct);
+            voucher = Voucher.Create(fiscalYear, 1, date, request.Description, user.UserId, clock.GetUtcNow().UtcDateTime, request.Type);
+        }
+        catch (Exception ex) when (ex is DomainException or FormatException)
+        {
+            return new VoucherCheckResult([ex.Message], 0, 0);
+        }
+        if (request.Lines.Count == 0) errors.Add("سند ردیف ندارد.");
+        await AddLinesAsync(voucher, request.Lines, ct, errors);
+        return new VoucherCheckResult(errors, request.Lines.Sum(l => l.Debit), request.Lines.Sum(l => l.Credit));
+    }
+
+    /// <summary>
+    /// سند افتتاحیه: یکی در هر سال (غیرباطل) و فقط با تاریخ روز اول سال. سند بستن و اختتامیه فقط از عملیات بستن سال صادر می‌شود.
+    /// </summary>
+    private async Task EnsureTypeAllowedAsync(VoucherType type, FiscalYear year, DateOnly date, CancellationToken ct)
+    {
+        switch (type)
+        {
+            case VoucherType.Opening:
+                if (date != year.StartDate)
+                    throw new DomainException($"تاریخ سند افتتاحیه باید روز اول سال مالی ({PersianDate.ToPersian(year.StartDate)}) باشد.");
+                var existing = await db.Vouchers.Where(v => v.FiscalYearId == year.Id && v.Type == VoucherType.Opening
+                        && v.Status != VoucherStatus.Void).Select(v => (int?)v.TempNo).FirstOrDefaultAsync(ct);
+                if (existing is int no)
+                    throw new DomainException($"سال مالی {year.Title} سند افتتاحیه دارد (شماره موقت {no}); همان را اصلاح کنید یا اول باطلش کنید.");
+                break;
+            case VoucherType.ClosingTemporary or VoucherType.Closing:
+                throw new DomainException("سند بستن حساب‌ها و اختتامیه فقط از عملیات «بستن سال مالی» صادر می‌شود.");
+        }
+    }
+
     /// <summary>ویرایش سند پیش‌نویس (سربرگ و جایگزینی کامل ردیف‌ها).</summary>
     public async Task UpdateAsync(long id, SaveVoucherRequest request, CancellationToken ct)
     {
@@ -103,7 +149,12 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
         var fiscalYear = await GetFiscalYearAsync(voucher.FiscalYearId, ct);
 
         await using var tx = await uow.BeginAsync(ct);
-        voucher.UpdateHeader(fiscalYear, PersianDate.Parse(request.Date), request.Description);
+        var newDate = PersianDate.Parse(request.Date);
+        if (voucher.Type == VoucherType.Opening && newDate != fiscalYear.StartDate)
+            throw new DomainException($"تاریخ سند افتتاحیه باید روز اول سال مالی ({PersianDate.ToPersian(fiscalYear.StartDate)}) باشد.");
+        if (voucher.Type is VoucherType.ClosingTemporary or VoucherType.Closing)
+            throw new DomainException("سند بستن حساب‌ها و اختتامیه دستی اصلاح نمی‌شود؛ بستن سال را برگردانید و دوباره اجرا کنید.");
+        voucher.UpdateHeader(fiscalYear, newDate, request.Description);
         voucher.ClearLines();
         await db.SaveChangesAsync(ct); // ردیف‌های قبلی پیش از درج ردیف‌های جدید حذف شوند (شماره ردیف یکتاست)
 
@@ -174,7 +225,8 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task AddLinesAsync(Voucher voucher, List<VoucherLineRequest> lines, CancellationToken ct)
+    private async Task AddLinesAsync(Voucher voucher, List<VoucherLineRequest> lines, CancellationToken ct,
+        List<string>? collectErrors = null)
     {
         var accountCodes = lines.Select(l => l.AccountCode.Trim()).Distinct().ToList();
         var accounts = await db.Accounts.Include(a => a.DetailLevels).ThenInclude(l => l.AllowedTypes)
@@ -223,9 +275,10 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
 
                 voucher.AddLine(account, lineDetails, line.Debit, line.Credit, extras);
             }
-            catch (DomainException ex)
+            catch (Exception ex) when (ex is DomainException or FormatException)
             {
-                throw new DomainException($"ردیف {row}: {ex.Message}", ex.Code);
+                if (collectErrors is null) throw new DomainException($"ردیف {row}: {ex.Message}", (ex as DomainException)?.Code);
+                collectErrors.Add($"ردیف {row}: {ex.Message}");
             }
         }
     }
@@ -234,6 +287,8 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
     private async Task EnsureManualAsync(Voucher voucher, CancellationToken ct)
     {
         if (!voucher.IsSystemGenerated) return;
+        if (voucher.SourceModule == Closing.ClosingService.Module)
+            throw new DomainException("این سند از عملیات «بستن سال مالی» صادر شده است؛ برای تغییر، بستن سال را برگردانید و دوباره اجرا کنید.");
         var source = await db.PostingTemplates.Where(t => t.SourceDocType == voucher.SourceDocType)
             .Select(t => t.Title).FirstOrDefaultAsync(ct) ?? voucher.SourceDocType;
         throw new DomainException($"این سند خودکار از «{source}» صادر شده است؛ اصلاح و حذفش فقط از همان فرم ممکن است.");

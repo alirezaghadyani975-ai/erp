@@ -1,0 +1,131 @@
+@page "/reports/statements"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject Erp.Api.Infrastructure.AppSession Session
+
+<TabTitle Text="صورت‌های مالی" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3 no-print" Spacing="2">
+    <MudText Typo="Typo.h5">صورت‌های مالی</MudText>
+    <MudSpacer />
+    <MudToggleGroup T="bool" Value="_income" ValueChanged="KindChanged" Color="Color.Primary" Size="Size.Small" Outlined="true" Style="min-width:260px">
+        <MudToggleItem Value="false" Text="ترازنامه" />
+        <MudToggleItem Value="true" Text="سود و زیان" />
+    </MudToggleGroup>
+    <ExcelButton Build="BuildExcel" Disabled="_result is null" />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" OnClick="Print" Disabled="_result is null">چاپ</MudButton>
+</MudStack>
+
+<ReportFilterBar Model="_filter" Years="_years">
+    <MudItem xs="12" sm="4" md="2">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
+                   OnClick="RunAsync" Disabled="_running || _filter.YearId is null" FullWidth="true">نمایش</MudButton>
+    </MudItem>
+</ReportFilterBar>
+
+@if (_result is { } r)
+{
+    <div class="statement">
+        <div class="statement-head">
+            <div class="vp-company">@Session.Info?.CompanyTitle</div>
+            <div class="statement-title">@r.Title</div>
+            <div class="statement-sub">(مبالغ به ریال) @(_filter.IncludeTemporary ? "— با اسناد موقت" : "— فقط اسناد دائم")</div>
+        </div>
+        <table class="statement-table">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th class="num-head">@r.CurrentLabel</th>
+                    @if (r.CompareLabel is not null)
+                    {
+                        <th class="num-head">@r.CompareLabel</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in r.Rows)
+                {
+                    <tr class="st-@row.Kind.ToString().ToLowerInvariant()">
+                        <td>
+                            @if (row.Kind == StatementRowKind.Line && row.Code is not null)
+                            {
+                                <span class="code st-code">@row.Code</span>
+                            }
+                            @row.Title
+                        </td>
+                        <td class="num">@Amount(row.Current)</td>
+                        @if (r.CompareLabel is not null)
+                        {
+                            <td class="num">@Amount(row.Compare)</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @foreach (var note in r.Notes)
+        {
+            <MudText Typo="Typo.caption" Color="@(r.Difference != 0 ? Color.Error : Color.Secondary)" Class="d-block mt-1">@note</MudText>
+        }
+    </div>
+}
+
+@code {
+    private readonly ReportFilterModel _filter = new();
+    private List<FiscalYearDto> _years = [];
+    private bool _income;
+    private StatementDto? _result;
+    private bool _running;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var years = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+        if (!years.Success) { Snackbar.Add(years.Error!, Severity.Error); return; }
+        _years = years.Value!;
+        _filter.SetYear(_years.FirstOrDefault());
+        _filter.IncludeTemporary = true;
+        if (_filter.YearId is not null) await RunAsync();
+    }
+
+    private async Task KindChanged(bool income)
+    {
+        _income = income;
+        await RunAsync();
+    }
+
+    private async Task RunAsync()
+    {
+        if (_filter.YearId is null) return;
+        _running = true;
+        var filter = _filter.ToFilter();
+        var result = _income
+            ? await Backend.Run<StatementService, StatementDto>(s => s.IncomeStatementAsync(filter, default))
+            : await Backend.Run<StatementService, StatementDto>(s => s.BalanceSheetAsync(filter, default));
+        _running = false;
+        if (result.Success) _result = result.Value; else Snackbar.Add(result.Error!, Severity.Error);
+    }
+
+    /// <summary>منفی داخل پرانتز، صفر خالی (روش رایج صورت‌های مالی).</summary>
+    private static string Amount(decimal? v) => v switch
+    {
+        null or 0 => "",
+        < 0 => $"({Format.Amount(-v.Value)})",
+        _ => Format.Amount(v.Value)
+    };
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+
+    private ExcelFile? BuildExcel()
+    {
+        if (_result is not { } r) return null;
+        var columns = new List<ExcelColumn<StatementRow>>
+        {
+            new("کد", x => x.Kind == StatementRowKind.Line ? x.Code : null, ExcelKind.Code),
+            new("شرح", x => x.Kind is StatementRowKind.Subtotal or StatementRowKind.Total ? x.Title : x.Kind == StatementRowKind.Line ? "    " + x.Title : x.Title),
+            new(r.CurrentLabel, x => x.Current, ExcelKind.Amount),
+        };
+        if (r.CompareLabel is not null) columns.Add(new(r.CompareLabel, x => x.Compare, ExcelKind.Amount));
+        return ExcelExport.Build(r.Title, ReportHeader.Lines(Session, null, null, _filter.IncludeTemporary, "مبالغ به ریال").Concat(r.Notes),
+            columns, r.Rows, null, _income ? "صورت سود و زیان" : "ترازنامه");
+    }
+}

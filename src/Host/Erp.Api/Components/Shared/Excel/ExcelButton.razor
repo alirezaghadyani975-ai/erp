@@ -1,0 +1,40 @@
+@* دکمه خروجی اکسل: فقط برای کاربری که مجوز «خروجی اکسل» دارد؛ هر خروجی در لاگ امنیتی ثبت می‌شود. *@
+@using Erp.Security.Domain
+@inject Erp.Api.Infrastructure.AppSession Session
+@inject Backend Backend
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+@if (Session.Has(SecurityPermissions.Excel))
+{
+    <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Custom.FileFormats.FileExcel"
+               OnClick="ExportAsync" Disabled="Disabled || _busy">اکسل</MudButton>
+}
+
+@code {
+    /// <summary>ساخت فایل از داده‌ای که الان روی صفحه است (null یعنی چیزی برای خروجی نیست).</summary>
+    [Parameter, EditorRequired] public Func<ExcelFile?> Build { get; set; } = null!;
+    [Parameter] public bool Disabled { get; set; }
+
+    private bool _busy;
+
+    private async Task ExportAsync()
+    {
+        _busy = true;
+        try
+        {
+            var file = Build();
+            if (file is null) { Snackbar.Add("چیزی برای خروجی نیست.", Severity.Info); return; }
+            await Backend.Run<AuthService>(s => s.LogAsync(SecurityEvent.Export, Session.UserId, Session.UserName,
+                Session.CompanyKey, Session.Ip, file.Title, default));
+            using var stream = new MemoryStream(file.Content);
+            using var streamRef = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("erpDownload", file.FileName, streamRef);
+        }
+        catch (Exception ex) when (ex is not JSDisconnectedException)
+        {
+            Snackbar.Add("ساخت فایل اکسل ممکن نشد: " + ex.Message, Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+}

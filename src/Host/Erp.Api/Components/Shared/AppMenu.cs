@@ -41,9 +41,14 @@ public static class AppMenu
             new("حسابداری", Icons.Material.Outlined.Calculate, Children:
             [
                 new("اسناد حسابداری", Icons.Material.Outlined.ReceiptLong, "/vouchers", P(A.VoucherView), NavLinkMatch.All),
+                new("ورود سند از اکسل", Icons.Material.Outlined.UploadFile, "/vouchers/import", P(A.VoucherCreate)),
+                new("ترتیب و دائم کردن اسناد", Icons.Material.Outlined.FormatListNumbered, "/vouchers/numbering", P(A.VoucherPermanent, A.VoucherRenumber)),
                 new("گزارش‌ها", Icons.Material.Outlined.Assessment, Children:
                 [
                     new("تراز آزمایشی", Icons.Material.Outlined.TableChart, "/reports/trial-balance", P(A.TrialBalance)),
+                    new("مرور حساب‌ها", Icons.Material.Outlined.ManageSearch, "/reports/review", P(A.Review)),
+                    new("ترازنامه و سود و زیان", Icons.Material.Outlined.Summarize, "/reports/statements", P(A.Statements)),
+                    new("دفاتر قانونی", Icons.Material.Outlined.LibraryBooks, "/reports/books", P(A.Books)),
                     new("دفتر معین و تفصیلی", Icons.Material.Outlined.MenuBook, "/reports/ledger", P(A.Ledger)),
                 ]),
                 new("تعاریف", Icons.Material.Outlined.Tune, Expanded: false, Children:
@@ -51,6 +56,7 @@ public static class AppMenu
                     new("کدینگ حساب‌ها", Icons.Material.Outlined.AccountTree, "/accounts", P(A.AccountView)),
                     new("گروه‌ها و حساب‌های تفصیلی", Icons.Material.Outlined.Category, "/detail-types", P(A.DetailView)),
                     new("سال و دوره مالی", Icons.Material.Outlined.CalendarMonth, "/fiscal-years", P(A.FiscalView)),
+                    new("بستن سال مالی", Icons.Material.Outlined.EventBusy, "/fiscal-years/closing", P(A.FiscalClose)),
                     new("الگوهای صدور سند", Icons.Material.Outlined.AutoMode, "/posting-templates", P(A.TemplateView)),
                 ]),
             ]),
@@ -107,9 +113,16 @@ public static class AppMenu
     private static readonly (string Prefix, string[] Permissions)[] Routes =
     [
         ("/vouchers/new", P(A.VoucherCreate)),
+        ("/vouchers/print", P(A.VoucherPrint)),
+        ("/vouchers/import", P(A.VoucherCreate)),
         ("/vouchers", P(A.VoucherView)),
         ("/reports/trial-balance", P(A.TrialBalance)),
         ("/reports/ledger", P(A.Ledger)),
+        ("/reports/review", P(A.Review)),
+        ("/reports/statements", P(A.Statements)),
+        ("/reports/books", P(A.Books)),
+        ("/vouchers/numbering", P(A.VoucherPermanent, A.VoucherRenumber)),
+        ("/fiscal-years/closing", P(A.FiscalClose)),
         ("/accounts", P(A.AccountView)),
         ("/detail-types", P(A.DetailView)),
         ("/fiscal-years", P(A.FiscalView)),
@@ -137,6 +150,7 @@ public static class AppMenu
         ("/costing/factors", P(C.FactorView)),
         ("/costing/center-types", P(C.CenterTypes)),
         ("/persons/new", P(B.PersonCreate)),
+        ("/persons/import", P(B.PersonCreate)),
         ("/persons", P(B.PersonView)),
         ("/base/roles", P(B.PersonRoles)),
         ("/base/lookups", P(B.Lookups)),

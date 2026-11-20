@@ -1,0 +1,136 @@
+@page "/vouchers/numbering"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject Erp.Api.Infrastructure.AppSession Session
+
+<TabTitle Text="ترتیب و دائم کردن اسناد" />
+
+<MudText Typo="Typo.h5" Class="mb-2">ترتیب و دائم کردن اسناد</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    شماره قطعی هنگام دائم شدن داده می‌شود. برای اینکه شماره‌ها به ترتیب تاریخ باشند (لازمه دفاتر قانونی)، اسناد موقت را
+    گروهی و به ترتیب تاریخ دائم کنید؛ اگر قبلاً سندی خارج از ترتیب دائم شده، «شماره‌گذاری مجدد» شماره‌های قطعی سال را به ترتیب
+    تاریخ مرتب می‌کند (فقط در سال باز و پیش از تحریر دفاتر؛ محتوای سند دائم تغییر نمی‌کند).
+</MudText>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudGrid Spacing="2" Class="align-center">
+        <MudItem xs="12" sm="4" md="2">
+            <MudSelect T="short?" Label="سال مالی" Value="_yearId" ValueChanged="YearChanged" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                @foreach (var y in _years)
+                {
+                    <MudSelectItem T="short?" Value="y.Id">@y.Title</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4" md="2">
+            <MudTextField @bind-Value="_toDate" Label="دائم کردن تا تاریخ" Placeholder="1405/06/31" Class="code" Variant="Variant.Outlined"
+                          Margin="Margin.Dense" Immediate="false" OnBlur="LoadAsync" />
+        </MudItem>
+        <MudItem xs="12" sm="4" md="2">
+            <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_busy)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+}
+
+@if (_status is { } s)
+{
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1" Style="height:100%">
+                <MudText Typo="Typo.subtitle1"><b>دائم کردن گروهی</b></MudText>
+                <MudText Class="my-2">
+                    <b>@s.Temporary</b> سند موقت تا @(_toDate ?? "پایان سال") آماده دائم شدن است (به ترتیب تاریخ، بعد از شماره @s.Permanent).
+                </MudText>
+                @if (Session.Has(AccountingPermissions.VoucherPermanent))
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Lock"
+                               Disabled="_busy || s.Temporary == 0 || !s.YearOpen" OnClick="MakePermanentAsync">دائم کردن @s.Temporary سند</MudButton>
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="1" Style="height:100%">
+                <MudText Typo="Typo.subtitle1"><b>شماره‌گذاری مجدد اسناد دائم</b></MudText>
+                @if (s.OutOfOrder == 0)
+                {
+                    <MudText Class="my-2" Color="Color.Success">شماره همه @s.Permanent سند دائم سال @s.YearTitle به ترتیب تاریخ است.</MudText>
+                }
+                else
+                {
+                    <MudText Class="my-2" Color="Color.Warning">
+                        شماره <b>@s.OutOfOrder</b> سند دائم با ترتیب تاریخ نمی‌خواند (از شماره @s.FirstOutOfOrderNo).
+                    </MudText>
+                    @if (Session.Has(AccountingPermissions.VoucherRenumber))
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Outlined.FormatListNumbered"
+                                   Disabled="_busy || !s.YearOpen" OnClick="RenumberAsync">شماره‌گذاری مجدد</MudButton>
+                    }
+                }
+                @if (!s.YearOpen)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">سال باز نیست؛ شماره‌ها تغییر نمی‌کنند.</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "year")] public int? Year { get; set; }
+
+    private List<FiscalYearDto> _years = [];
+    private short? _yearId;
+    private string? _toDate;
+    private NumberingStatusDto? _status;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var years = await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default));
+        if (!years.Success) { Snackbar.Add(years.Error!, Severity.Error); return; }
+        _years = years.Value!;
+        _yearId = (_years.FirstOrDefault(y => y.Id == Year) ?? _years.FirstOrDefault())?.Id;
+        await LoadAsync();
+    }
+
+    private async Task YearChanged(short? id) { _yearId = id; _toDate = null; await LoadAsync(); }
+
+    private async Task LoadAsync()
+    {
+        if (_yearId is not short id) return;
+        _busy = true;
+        var to = string.IsNullOrWhiteSpace(_toDate) ? null : _toDate;
+        var r = await Backend.Run<VoucherNumberingService, NumberingStatusDto>(s => s.StatusAsync(id, to, default));
+        _busy = false;
+        if (r.Success) _status = r.Value; else Snackbar.Add(r.Error!, Severity.Error);
+    }
+
+    private async Task MakePermanentAsync()
+    {
+        if (!await Dialogs.AskAsync("دائم کردن گروهی", $"{_status!.Temporary} سند موقت به ترتیب تاریخ دائم شود؟ سند دائم دیگر اصلاح نمی‌شود.", "دائم کن"))
+            return;
+        _busy = true;
+        var to = string.IsNullOrWhiteSpace(_toDate) ? null : _toDate;
+        var r = await Backend.Run<VoucherNumberingService, int>(s => s.MakePermanentAsync(_yearId!.Value, to, default));
+        _busy = false;
+        if (r.Success) Snackbar.Add($"{r.Value} سند دائم شد.", Severity.Success); else Snackbar.Add(r.Error!, Severity.Error);
+        await LoadAsync();
+    }
+
+    private async Task RenumberAsync()
+    {
+        if (!await Dialogs.AskAsync("شماره‌گذاری مجدد", "شماره قطعی اسناد دائم سال به ترتیب تاریخ دوباره داده شود؟ اگر دفاتر قانونی را چاپ کرده‌اید، شماره‌ها با چاپ قبلی نمی‌خواند.", "شماره‌گذاری"))
+            return;
+        _busy = true;
+        var r = await Backend.Run<VoucherNumberingService, int>(s => s.RenumberAsync(_yearId!.Value, default));
+        _busy = false;
+        if (r.Success) Snackbar.Add($"شماره {r.Value} سند عوض شد.", Severity.Success); else Snackbar.Add(r.Error!, Severity.Error);
+        await LoadAsync();
+    }
+}

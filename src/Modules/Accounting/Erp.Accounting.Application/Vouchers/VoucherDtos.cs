@@ -44,3 +44,10 @@ public sealed record VoucherDto(
 public sealed record VoucherSummaryDto(
     long Id, int TempNo, int? VoucherNo, string Date, string? Description, VoucherType Type, VoucherStatus Status,
     decimal TotalDebit, string? SourceDocType = null);
+
+/// <summary>نتیجه بررسی سند پیش از ثبت (ورود از اکسل).</summary>
+public sealed record VoucherCheckResult(List<string> Errors, decimal TotalDebit, decimal TotalCredit)
+{
+    public bool IsValid => Errors.Count == 0;
+    public bool IsBalanced => TotalDebit == TotalCredit;
+}
