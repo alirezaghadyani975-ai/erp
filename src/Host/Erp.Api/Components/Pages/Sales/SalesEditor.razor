@@ -32,6 +32,8 @@
         {
             <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@_returnCount برگشت</MudChip>
         }
+    </Chips>
+    <Extra>
         @if (!IsNew && !_editing)
         {
             <IfAllowed Url="/sales/returns/new">
@@ -39,22 +41,22 @@
                            OnClick="@(() => Tabs.Go($"/sales/returns/new?invoice={Id}"))">برگشت از این فاکتور</MudButton>
             </IfAllowed>
         }
-    </Chips>
+    </Extra>
 </FormToolbar>
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="mb-3" Style="white-space:pre-line" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
 }
 
 <div class="@(ReadOnly ? "view-mode" : null)">
 <MudPaper Class="pa-4 mb-3" Elevation="1">
     <MudGrid Spacing="2">
         <MudItem xs="12" sm="6" md="3">
-            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" />
+            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" ShowErrors="_check" />
         </MudItem>
         <MudItem xs="12" sm="6" md="5">
-            <PersonPicker @bind-PersonId="_customerId" PersonName="@_customerName" Label="مشتری" Required="true" Disabled="ReadOnly" />
+            <PersonPicker @bind-PersonId="_customerId" PersonName="@_customerName" Label="مشتری" Required="true" Disabled="ReadOnly" ShowErrors="_check" />
         </MudItem>
         <MudItem xs="12" md="4">
             <MudSelect T="TaxInvoiceType" @bind-Value="_type" Label="نوع صورتحساب (مودیان)" Disabled="ReadOnly"
@@ -93,7 +95,7 @@
         <MudSpacer />
         <VatRateHint Date="@_date" />
     </MudStack>
-    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" UseSalesPrice="true" WarnTaxId="true" Changed="() => { }" />
+    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" UseSalesPrice="true" WarnTaxId="true" ShowErrors="_check" Changed="() => { }" />
     @if (_returned.Count > 0)
     {
         <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-1">
@@ -137,7 +139,7 @@
     private TaxStatus _taxStatus;
     private int _docNo, _returnCount;
     private SalesVoucherDto? _voucher;
-    private bool _loading = true, _saving, _editing;
+    private bool _loading = true, _saving, _editing, _check;
     private int _listVersion;
     private string? _error;
 
@@ -179,6 +181,7 @@
     private async Task CancelAsync()
     {
         _error = null;
+        _check = false;
         if (Id is long id) { await LoadAsync(id); _editing = false; }
         else
         {
@@ -191,12 +194,14 @@
     private async Task SaveAsync()
     {
         _error = null;
-        if (_date is null) { _error = "تاریخ الزامی است."; return; }
-        if (_customerId is null) { _error = "مشتری را انتخاب کنید."; return; }
-        var empty = _lines.FindIndex(l => l.Item is null);
-        if (empty >= 0) { _error = $"ردیف {empty + 1}: کالا یا خدمت را انتخاب کنید."; return; }
+        _check = true;
+        List<string> errors = [];
+        if (_date is null) errors.Add("تاریخ الزامی است.");
+        if (_customerId is null) errors.Add("مشتری را انتخاب کنید.");
+        errors.AddRange(_lines.Select((l, i) => (l, i)).Where(x => x.l.Item is null).Select(x => $"ردیف {x.i + 1}: کالا یا خدمت را انتخاب کنید."));
+        if (errors.Count > 0) { _error = string.Join("\n", errors); return; }
 
-        var request = new SaveSalesInvoiceRequest(_date, _customerId.Value, _type, _settlement,
+        var request = new SaveSalesInvoiceRequest(_date!, _customerId!.Value, _type, _settlement,
             _settlement == SettlementMethod.Mixed ? _cash : null, _project?.Id, _description,
             _lines.Select(l => new SalesLineRequest(l.Item!.Id, l.Quantity, l.UnitPrice, l.Discount, l.Vat, l.Description)).ToList());
 

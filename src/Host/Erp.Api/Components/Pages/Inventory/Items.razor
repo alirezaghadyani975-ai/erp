@@ -63,7 +63,7 @@
             <MudTd Style="text-align:left">
                 <IfAllowed Permission="@InventoryPermissions.ItemDelete">
                     <span @onclick:stopPropagation="true">
-                        <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" aria-label="حذف"
+                        <MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="@($"حذف {context.Title}")"
                                        OnClick="() => DeleteAsync(context)" />
                     </span>
                 </IfAllowed>

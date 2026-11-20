@@ -3,6 +3,7 @@
 
 <MudAutocomplete T="PersonListItemDto" Value="_value" ValueChanged="OnChanged" SearchFunc="Search"
                  ToStringFunc="@(p => p?.DisplayName)" Label="@Label" Required="Required" Disabled="Disabled"
+                 Error="@(ShowErrors && Required && PersonId is null)" ErrorText="@($"{Label} را انتخاب کنید")"
                  ResetValueOnEmptyText="true" DebounceInterval="250" Dense="true" MaxItems="30"
                  HelperText="@(_value?.DetailCode is { } c ? $"تفصیلی {c}" : HelperText)"
                  Variant="Variant.Outlined" Margin="Margin.Dense">
@@ -21,6 +22,8 @@
     [Parameter] public string Label { get; set; } = "شخص";
     [Parameter] public string? HelperText { get; set; } = "نام، کد ملی یا کد تفصیلی";
     [Parameter] public bool Required { get; set; }
+    /// <summary>بعد از تلاش برای ذخیره: فیلد اجباری خالی قرمز شود.</summary>
+    [Parameter] public bool ShowErrors { get; set; }
     [Parameter] public bool Disabled { get; set; }
 
     private PersonListItemDto? _value;

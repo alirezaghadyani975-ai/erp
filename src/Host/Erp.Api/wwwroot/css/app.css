@@ -146,6 +146,20 @@ kbd { font-family: inherit; font-size: .75rem; padding: 1px 5px; border: 1px sol
 .voucher-grid td > .mud-input-control { min-width: 90px; }
 .voucher-grid td > .mud-input-control.num { min-width: 115px; }
 .voucher-grid td > .line-vat { min-width: 135px; }
+/* ردیف‌های فاکتور: کنار فهرست فرم بدون اسکرول جا شود؛ شرح ردیف در سطر زیرین */
+.trade-lines td > .mud-input-control { min-width: 64px; }
+.trade-lines td > .mud-input-control.num { min-width: 64px; }
+.trade-lines .trade-line-actions { width: 36px; }
+.trade-lines .trade-line-actions > div { display: flex; flex-direction: column; align-items: center; }
+.trade-lines tr:has(+ .trade-line-desc) td { border-bottom: none; }
+.trade-lines .trade-line-desc td { padding-top: 0; }
+
+/* راهنمای حالت خالی فرم (مثلاً برگشت قبل از انتخاب فاکتور) */
+.empty-hint { display: flex; align-items: center; justify-content: center; gap: 10px; border-style: dashed !important; }
+
+/* دکمه حذف ردیف فهرست: خاکستری، با رفتن موس قرمز */
+.row-delete:not(:disabled) { color: var(--mud-palette-text-secondary); }
+.row-delete:not(:disabled):hover, .row-delete:not(:disabled):focus-visible { color: var(--mud-palette-error); }
 
 /* صفحه‌های ورود، تغییر رمز و انتخاب شرکت */
 .auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px;

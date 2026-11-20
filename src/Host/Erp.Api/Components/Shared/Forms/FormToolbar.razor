@@ -13,7 +13,7 @@
         @Chips
     </div>
     <div class="form-toolbar-buttons">
-        @if (OnNew.HasDelegate && Allowed("create"))
+        @if (!IsNew && OnNew.HasDelegate && Allowed("create"))
         {
             <MudTooltip Text="جدید (Alt+N)">
                 <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="NewAsync" Disabled="Busy">جدید</MudButton>

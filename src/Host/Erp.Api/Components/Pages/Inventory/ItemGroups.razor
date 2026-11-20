@@ -40,7 +40,7 @@
             <MudTd Class="num">@context.ItemCount</MudTd>
             <MudTd Style="text-align:left">
                 <span @onclick:stopPropagation="true">
-                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" Size="Size.Small" aria-label="حذف"
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="@($"حذف {context.Title}")"
                                    Disabled="context.ItemCount > 0" OnClick="() => DeleteAsync(context)" />
                 </span>
             </MudTd>

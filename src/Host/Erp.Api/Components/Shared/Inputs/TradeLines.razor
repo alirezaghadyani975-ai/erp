@@ -1,18 +1,17 @@
 @* ردیف‌های فاکتور خرید و فروش: کالا، مقدار، فی، تخفیف، مبلغ پس از تخفیف و ارزش افزوده ردیفی (به ریال گرد). *@
 
 <div style="overflow-x:auto">
-<table class="voucher-grid" style="min-width:860px">
+<table class="voucher-grid trade-lines">
     <thead>
         <tr>
-            <th style="width:3%">#</th>
-            <th style="width:26%;min-width:220px">کالا / خدمت</th>
-            <th style="width:9%">مقدار</th>
-            <th style="width:12%">فی</th>
-            <th style="width:11%">تخفیف</th>
-            <th style="width:12%">مبلغ پس از تخفیف</th>
-            <th style="width:13%">ارزش افزوده</th>
-            <th>شرح</th>
-            <th style="width:4%"></th>
+            <th style="width:24px">#</th>
+            <th style="min-width:180px">کالا / خدمت</th>
+            <th style="width:72px">مقدار</th>
+            <th style="width:145px">فی</th>
+            <th style="width:110px">تخفیف</th>
+            <th style="width:100px">پس از تخفیف</th>
+            <th style="width:165px">ارزش افزوده</th>
+            <th style="width:36px"></th>
         </tr>
     </thead>
     <tbody>
@@ -24,6 +23,7 @@
                     <MudAutocomplete T="ItemDto" Value="line.Item" ValueChanged="it => ItemChanged(line, it)" SearchFunc="Search"
                                      ToStringFunc="@(it => it is null ? null : $"{it.Code} - {it.Title}")" Placeholder="کد، نام یا بارکد"
                                      ResetValueOnEmptyText="true" Dense="true" MaxItems="40" Disabled="ReadOnly"
+                                     Error="@(ShowErrors && line.Item is null)" ErrorText="کالا یا خدمت را انتخاب کنید"
                                      Variant="Variant.Outlined" Margin="Margin.Dense">
                         <ItemTemplate Context="it">
                             <span class="code ml-2">@it.Code</span> @it.Title
@@ -60,17 +60,30 @@
                                  DefaultSubject="line.Id is null" />
                     }
                 </td>
-                <td>
-                    <MudTextField @bind-Value="line.Description" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                </td>
-                <td>
+                <td class="trade-line-actions">
                     @if (!ReadOnly)
                     {
+                        <div>
+                        <MudTooltip Text="شرح ردیف">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Notes" Size="Size.Small" OnClick="() => ToggleDescription(line)"
+                                           Color="@(HasDescription(line) ? Color.Primary : Color.Default)" aria-label="شرح ردیف" />
+                        </MudTooltip>
                         <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error"
                                        Disabled="Lines.Count == 1" OnClick="() => RemoveAsync(line)" aria-label="حذف ردیف" />
+                        </div>
                     }
                 </td>
             </tr>
+            @if (HasDescription(line))
+            {
+                <tr class="trade-line-desc">
+                    <td></td>
+                    <td colspan="7">
+                        <MudTextField @bind-Value="line.Description" Placeholder="شرح ردیف" MaxLength="500" Disabled="ReadOnly"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" aria-label="شرح ردیف" />
+                    </td>
+                </tr>
+            }
         }
     </tbody>
 </table>
@@ -107,6 +120,17 @@
     /// <summary>هشدار نداشتن شناسه کالای مودیان (فروش).</summary>
     [Parameter] public bool WarnTaxId { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
+    /// <summary>بعد از تلاش برای ذخیره: ردیف بدون کالا قرمز شود.</summary>
+    [Parameter] public bool ShowErrors { get; set; }
+
+    private readonly HashSet<LineModel> _descOpen = [];
+
+    private bool HasDescription(LineModel line) => _descOpen.Contains(line) || !string.IsNullOrEmpty(line.Description);
+
+    private void ToggleDescription(LineModel line)
+    {
+        if (!_descOpen.Remove(line)) _descOpen.Add(line);
+    }
 
     private Task Notify() => Changed.InvokeAsync();
 

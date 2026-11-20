@@ -29,6 +29,8 @@
         {
             <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@_returnCount برگشت</MudChip>
         }
+    </Chips>
+    <Extra>
         @if (!IsNew && !_editing)
         {
             <IfAllowed Url="/purchases/returns/new">
@@ -36,22 +38,22 @@
                            OnClick="@(() => Tabs.Go($"/purchases/returns/new?invoice={Id}"))">برگشت از این فاکتور</MudButton>
             </IfAllowed>
         }
-    </Chips>
+    </Extra>
 </FormToolbar>
 
 @if (_error is not null)
 {
-    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
+    <MudAlert Severity="Severity.Error" Class="mb-3" Style="white-space:pre-line" ShowCloseIcon="true" CloseIconClicked="() => _error = null">@_error</MudAlert>
 }
 
 <div class="@(ReadOnly ? "view-mode" : null)">
 <MudPaper Class="pa-4 mb-3" Elevation="1">
     <MudGrid Spacing="2">
         <MudItem xs="12" sm="6" md="3">
-            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" />
+            <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" ShowErrors="_check" />
         </MudItem>
         <MudItem xs="12" sm="6" md="5">
-            <PersonPicker @bind-PersonId="_supplierId" PersonName="@_supplierName" Label="تأمین‌کننده" Required="true" Disabled="ReadOnly" />
+            <PersonPicker @bind-PersonId="_supplierId" PersonName="@_supplierName" Label="تأمین‌کننده" Required="true" Disabled="ReadOnly" ShowErrors="_check" />
         </MudItem>
         <MudItem xs="12" md="4">
             <MudText Typo="Typo.caption" Color="Color.Secondary">طرف بستانکار</MudText>
@@ -60,7 +62,7 @@
                 <MudRadio T="P.PayableKind" Value="P.PayableKind.Other" Color="Color.Primary" Dense="true">سایر پرداختنی‌ها</MudRadio>
             </MudRadioGroup>
         </MudItem>
-        <MudItem xs="12" sm="4" md="2">
+        <MudItem xs="12" sm="4" md="3">
             <MudTextField @bind-Value="_invoiceNo" Label="ش. فاکتور فروشنده" MaxLength="50" Disabled="ReadOnly"
                           Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
         </MudItem>
@@ -71,7 +73,7 @@
             <MudTextField @bind-Value="_sellerTaxId" Label="شماره مالیاتی صورتحساب" MaxLength="22" Disabled="ReadOnly"
                           HelperText="اختیاری؛ شماره ۲۲ نویسه‌ای از کارپوشه مودیان" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />
         </MudItem>
-        <MudItem xs="12" md="4">
+        <MudItem xs="12" md="3">
             <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
     </MudGrid>
@@ -83,7 +85,7 @@
         <MudSpacer />
         <VatRateHint Date="@_date" />
     </MudStack>
-    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" GoodsOnly="true" Changed="() => { }" />
+    <TradeLines Lines="_lines" Items="_items" Date="@_date" ReadOnly="ReadOnly" GoodsOnly="true" ShowErrors="_check" Changed="() => { }" />
     @if (_returned.Count > 0)
     {
         <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-1">
@@ -122,7 +124,7 @@
     private P.PayableKind _payable = P.PayableKind.Trade;
     private int _docNo, _returnCount;
     private PurchaseVoucherDto? _voucher;
-    private bool _loading = true, _saving, _editing;
+    private bool _loading = true, _saving, _editing, _check;
     private int _listVersion;
     private string? _error;
 
@@ -161,6 +163,7 @@
     private async Task CancelAsync()
     {
         _error = null;
+        _check = false;
         if (Id is long id) { await LoadAsync(id); _editing = false; }
         else
         {
@@ -172,12 +175,14 @@
     private async Task SaveAsync()
     {
         _error = null;
-        if (_date is null) { _error = "تاریخ الزامی است."; return; }
-        if (_supplierId is null) { _error = "تأمین‌کننده را انتخاب کنید."; return; }
-        var empty = _lines.FindIndex(l => l.Item is null);
-        if (empty >= 0) { _error = $"ردیف {empty + 1}: کالا را انتخاب کنید."; return; }
+        _check = true;
+        List<string> errors = [];
+        if (_date is null) errors.Add("تاریخ الزامی است.");
+        if (_supplierId is null) errors.Add("تأمین‌کننده را انتخاب کنید.");
+        errors.AddRange(_lines.Select((l, i) => (l, i)).Where(x => x.l.Item is null).Select(x => $"ردیف {x.i + 1}: کالا را انتخاب کنید."));
+        if (errors.Count > 0) { _error = string.Join("\n", errors); return; }
 
-        var request = new SavePurchaseInvoiceRequest(_date, _supplierId.Value, _payable, _invoiceNo, _invoiceDate, _sellerTaxId, _description,
+        var request = new SavePurchaseInvoiceRequest(_date!, _supplierId!.Value, _payable, _invoiceNo, _invoiceDate, _sellerTaxId, _description,
             _lines.Select(l => new PurchaseLineRequest(l.Item!.Id, l.Quantity, l.UnitPrice, l.Discount, l.Vat, l.Description)).ToList());
 
         _saving = true;
