@@ -22,6 +22,17 @@
     <Project Path="src/Modules/Inventory/Erp.Inventory.Domain/Erp.Inventory.Domain.csproj" />
     <Project Path="src/Modules/Inventory/Erp.Inventory.Infrastructure/Erp.Inventory.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Payroll/">
+    <Project Path="src/Modules/Payroll/Erp.Payroll.Application/Erp.Payroll.Application.csproj" />
+    <Project Path="src/Modules/Payroll/Erp.Payroll.Domain/Erp.Payroll.Domain.csproj" />
+    <Project Path="src/Modules/Payroll/Erp.Payroll.Infrastructure/Erp.Payroll.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Personnel/">
+    <Project Path="src/Modules/Personnel/Erp.Personnel.Application/Erp.Personnel.Application.csproj" />
+    <Project Path="src/Modules/Personnel/Erp.Personnel.Contracts/Erp.Personnel.Contracts.csproj" />
+    <Project Path="src/Modules/Personnel/Erp.Personnel.Domain/Erp.Personnel.Domain.csproj" />
+    <Project Path="src/Modules/Personnel/Erp.Personnel.Infrastructure/Erp.Personnel.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Purchases/">
     <Project Path="src/Modules/Purchases/Erp.Purchases.Application/Erp.Purchases.Application.csproj" />
     <Project Path="src/Modules/Purchases/Erp.Purchases.Domain/Erp.Purchases.Domain.csproj" />

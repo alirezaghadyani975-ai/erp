@@ -1,0 +1,155 @@
+@page "/hr/workshops"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="کارگاه‌های بیمه" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">کارگاه‌های بیمه</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">کارگاه جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر کارمند در یک کارگاه تأمین اجتماعی است و لیست بیمه ماهانه برای هر کارگاه جدا تهیه می‌شود.
+    نرخ‌های بیمه هر کارگاه در فرمول‌های حق بیمه به کار می‌رود. کارگاهی که کارمند دارد حذف نمی‌شود؛ غیرفعالش کنید.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="WorkshopDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>کد کارگاه</MudTh>
+            <MudTh>عنوان</MudTh>
+            <MudTh>کارفرما</MudTh>
+            <MudTh>شعبه</MudTh>
+            <MudTh Style="text-align:left">سهم کارگر٪</MudTh>
+            <MudTh Style="text-align:left">سهم کارفرما٪</MudTh>
+            <MudTh Style="text-align:left">بیکاری٪</MudTh>
+            <MudTh Style="text-align:left">کارمندان</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Code</span></MudTd>
+            <MudTd>
+                @context.Title
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd>@context.EmployerName</MudTd>
+            <MudTd>@context.Branch</MudTd>
+            <MudTd Class="num">@context.EmployeeRate.ToString("0.##")</MudTd>
+            <MudTd Class="num">@context.EmployerRate.ToString("0.##")</MudTd>
+            <MudTd Class="num">@context.UnemploymentRate.ToString("0.##")</MudTd>
+            <MudTd Class="num">@context.EmployeeCount</MudTd>
+            <MudTd Style="text-align:left">
+                <span @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="@($"حذف {context.Title}")"
+                                   Disabled="context.EmployeeCount > 0" OnClick="() => DeleteAsync(context)" />
+                </span>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">کارگاهی تعریف نشده است؛ پیش از پرونده پرسنلی یک کارگاه بسازید.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "کارگاه جدید" : "ویرایش کارگاه")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="5">
+                <MudTextField @bind-Value="_code" Immediate="true" Label="کد کارگاه بیمه" MaxLength="10" AutoFocus="true" Class="code"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="7">
+                <MudTextField @bind-Value="_title" Immediate="true" Label="عنوان" MaxLength="100" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="7">
+                <MudTextField @bind-Value="_employer" Label="نام کارفرما" MaxLength="100" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="5">
+                <MudTextField @bind-Value="_contractRow" Label="ردیف پیمان" MaxLength="3" Class="code" HelperText="کارگاه عادی: 000"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_branch" Label="شعبه تأمین اجتماعی" MaxLength="100" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_address" Label="نشانی کارگاه" MaxLength="300" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudNumericField T="decimal" @bind-Value="_employeeRate" Label="سهم کارگر ٪" Min="0" Max="100" HideSpinButtons="true" Class="num"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudNumericField T="decimal" @bind-Value="_employerRate" Label="سهم کارفرما ٪" Min="0" Max="100" HideSpinButtons="true" Class="num"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="4">
+                <MudNumericField T="decimal" @bind-Value="_unemploymentRate" Label="بیمه بیکاری ٪" Min="0" Max="100" HideSpinButtons="true" Class="num"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_title))">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<WorkshopDto> _rows = [];
+    private bool _loading = true;
+
+    private bool _editOpen, _active = true;
+    private int? _editId;
+    private string? _code, _title, _employer, _branch, _contractRow, _address;
+    private decimal _employeeRate = 7, _employerRate = 20, _unemploymentRate = 3;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<WorkshopService, List<WorkshopDto>>(s => s.GetAllAsync(true, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private void New()
+    {
+        (_editId, _code, _title, _employer, _branch, _contractRow, _address, _active) = (null, null, null, null, null, "000", null, true);
+        (_employeeRate, _employerRate, _unemploymentRate) = (7, 20, 3);
+        _editOpen = true;
+    }
+
+    private void Edit(WorkshopDto w)
+    {
+        (_editId, _code, _title, _employer, _branch, _contractRow, _address, _active) =
+            (w.Id, w.Code, w.Title, w.EmployerName, w.Branch, w.ContractRow, w.Address, w.IsActive);
+        (_employeeRate, _employerRate, _unemploymentRate) = (w.EmployeeRate, w.EmployerRate, w.UnemploymentRate);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveWorkshopRequest(_code!, _title!, _employer, _branch, _contractRow, _address, _employeeRate, _employerRate,
+            _unemploymentRate, _active);
+        var error = _editId is int id
+            ? (await Backend.Run<WorkshopService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<WorkshopService, int>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add("کارگاه ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(WorkshopDto w)
+    {
+        if (!await Dialogs.DeleteAsync($"کارگاه «{w.Title}»", "فقط کارگاه بدون کارمند حذف می‌شود.")) return;
+        var r = await Backend.Run<WorkshopService>(s => s.DeleteAsync(w.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

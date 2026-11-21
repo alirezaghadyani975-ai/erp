@@ -1,0 +1,333 @@
+@page "/hr/employees"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject NavigationManager Nav
+
+<TabTitle Text="پرونده‌های پرسنلی" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">پرونده‌های پرسنلی</MudText>
+    <MudSpacer />
+    <IfAllowed Permission="@PersonnelPermissions.EmployeeCreate">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="NewAsync">پرونده جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    پرونده فقط برای شخص حقیقی با نقش «کارمند» است (نقش را در اطلاعات اشخاص اضافه کنید؛ تفصیلی کارکنان همان‌جا ساخته می‌شود).
+    مرکز هزینه پرونده، پیش‌فرض کارکرد ماهانه است و در هر ماه قابل تغییر و تقسیم است. وضعیت تأهل از اطلاعات شخص خوانده می‌شود.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudTextField T="string" @bind-Value="_term" Immediate="true" Placeholder="نام، شماره پرسنلی یا کد ملی" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
+                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:240px" />
+        <MudSelect T="int?" Value="_workshopFilter" ValueChanged="OnWorkshopFilter" Label="کارگاه" Clearable="true"
+                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="min-width:200px">
+            @foreach (var w in _workshops)
+            {
+                <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="EmployeeStatus?" Value="_statusFilter" ValueChanged="OnStatusFilter" Label="وضعیت" Clearable="true"
+                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="min-width:150px">
+            @foreach (var s in Enum.GetValues<EmployeeStatus>())
+            {
+                <MudSelectItem T="EmployeeStatus?" Value="s">@Titles.Of(s)</MudSelectItem>
+            }
+        </MudSelect>
+    </MudStack>
+
+    <MudTable T="EmployeeListItemDto" Items="Visible" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => EditAsync(a.Item!.Id))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره پرسنلی</MudTh>
+            <MudTh>نام</MudTh>
+            <MudTh>کد ملی</MudTh>
+            <MudTh>کارگاه</MudTh>
+            <MudTh>شغل</MudTh>
+            <MudTh>قرارداد</MudTh>
+            <MudTh>مرکز هزینه</MudTh>
+            <MudTh>استخدام</MudTh>
+            <MudTh>وضعیت</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.PersonnelNo</span></MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd><span class="code">@context.NationalId</span></MudTd>
+            <MudTd>@context.Workshop</MudTd>
+            <MudTd>@context.Job</MudTd>
+            <MudTd>@Titles.Of(context.ContractType)</MudTd>
+            <MudTd>@context.CostCenter</MudTd>
+            <MudTd><span class="code">@context.HireDate</span></MudTd>
+            <MudTd>
+                @if (context.Status == EmployeeStatus.Active) { <MudText Typo="Typo.body2">@Titles.Of(context.Status)</MudText> }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@(context.Status == EmployeeStatus.Left ? Color.Default : Color.Warning)">
+                        @Titles.Of(context.Status) @context.LeaveDate
+                    </MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">پرونده‌ای پیدا نشد.</MudText></NoRecordsContent>
+        <PagerContent><MudTablePager RowsPerPageString="ردیف در صفحه" InfoFormat="{first_item}-{last_item} از {all_items}" PageSizeOptions="[25, 50, 100]" /></PagerContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h6">@(_editId is null ? "پرونده پرسنلی جدید" : $"پرونده {_personnelNo} — {_personName}")</MudText>
+            @if (_editId is not null && _status != EmployeeStatus.Active)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning">@Titles.Of(_status) @_leaveDate</MudChip>
+            }
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="8">
+                @if (_editId is null)
+                {
+                    <PersonPicker @bind-PersonId="_personId" PersonName="@_personName" Label="شخص (نقش کارمند)" Required="true" />
+                }
+                else
+                {
+                    <MudTextField T="string" Value="@($"{_personName}  {_nationalId}")" Label="شخص" ReadOnly="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                }
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_personnelNo" Label="شماره پرسنلی" MaxLength="20" Class="code" HelperText="@(_editId is null ? "خالی = خودکار" : null)"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="int?" @bind-Value="_workshopId" Label="کارگاه بیمه" Required="true" RequiredError="کارگاه الزامی است."
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var w in _workshops.Where(w => w.IsActive || w.Id == _workshopId))
+                    {
+                        <MudSelectItem T="int?" Value="w.Id">@w.Title <span class="select-hint">(@w.Code)</span></MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="int?" @bind-Value="_jobId" Label="شغل" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var j in _jobs.Where(j => j.IsActive || j.Id == _jobId))
+                    {
+                        <MudSelectItem T="int?" Value="j.Id">@j.Title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <EnumSelect TEnum="ContractType" @bind-Value="_contractType" Label="نوع قرارداد" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <PersianDateField @bind-Value="_hireDate" Label="تاریخ استخدام" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int?" @bind-Value="_centerId" Label="مرکز هزینه پیش‌فرض" Required="true" RequiredError="مرکز هزینه الزامی است."
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var c in _centers.Where(c => c.IsActive || c.Id == _centerId))
+                    {
+                        <MudSelectItem T="int?" Value="c.Id">@c.Title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <EnumSelect TEnum="InsuranceStatus" @bind-Value="_insuranceStatus" Label="وضعیت بیمه" Required="true" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <IdField Kind="IdKind.InsuranceNo" @bind-Value="_insuranceNo" Label="شماره بیمه"
+                         Required="@(_insuranceStatus != InsuranceStatus.NotInsured)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="byte" @bind-Value="_children" Label="تعداد فرزندان" Min="0" Max="30" Class="num"
+                                 HelperText="مبنای حق اولاد" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <IdField Kind="IdKind.Iban" @bind-Value="_iban" Label="شبای حقوق" HelperText="برای فایل پرداخت گروهی بانک" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="decimal?" @bind-Value="_taxExempt" Label="معافیت مالیاتی ٪" Min="0" Max="100" HideSpinButtons="true" Class="num"
+                                 HelperText="مثلاً مناطق محروم؛ خالی = ندارد" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_notes" Label="توضیحات" MaxLength="500" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+
+            @if (_editId is not null && _leaveOpen)
+            {
+                <MudItem xs="12"><MudDivider /></MudItem>
+                <MudItem xs="12" sm="4"><PersianDateField @bind-Value="_leaveDateInput" Label="تاریخ ترک کار" Required="true" /></MudItem>
+                <MudItem xs="12" sm="5">
+                    <MudTextField @bind-Value="_leaveReason" Label="علت ترک کار" MaxLength="200" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" sm="3" Class="d-flex align-center gap-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="LeaveAsync" Disabled="string.IsNullOrWhiteSpace(_leaveDateInput)">ثبت ترک کار</MudButton>
+                    <MudButton OnClick="() => _leaveOpen = false">بستن</MudButton>
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        @if (_editId is int id)
+        {
+            <MudButton StartIcon="@Icons.Material.Outlined.History" OnClick="() => _historyOpen = true">تاریخچه</MudButton>
+            <IfAllowed Permission="@PayrollPermissions.DecreeView">
+                <MudButton StartIcon="@Icons.Material.Outlined.HistoryEdu" OnClick="@(() => OpenDecrees(id))">احکام</MudButton>
+            </IfAllowed>
+            <IfAllowed Permission="@PersonnelPermissions.EmployeeEdit">
+                @if (_status == EmployeeStatus.Left)
+                {
+                    <MudButton OnClick="ReturnAsync">بازگشت به کار</MudButton>
+                }
+                else
+                {
+                    <MudButton OnClick="() => _leaveOpen = true">ترک کار</MudButton>
+                    <MudButton OnClick="SuspendAsync">@(_status == EmployeeStatus.Suspended ? "رفع تعلیق" : "تعلیق")</MudButton>
+                }
+            </IfAllowed>
+            <IfAllowed Permission="@PersonnelPermissions.EmployeeDelete">
+                <MudButton Color="Color.Error" OnClick="DeleteAsync">حذف</MudButton>
+            </IfAllowed>
+        }
+        <MudSpacer />
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(_personId is null || _workshopId is null || _centerId is null || string.IsNullOrWhiteSpace(_hireDate))">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@if (_editId is int historyId)
+{
+    <AuditHistoryDialog @bind-Visible="_historyOpen" Entity="Employee" Id="historyId" Title="@($"پرونده {_personnelNo}")" />
+}
+
+@code {
+    private List<EmployeeListItemDto> _rows = [];
+    private List<WorkshopDto> _workshops = [];
+    private List<JobDto> _jobs = [];
+    private List<CostCenterListItemDto> _centers = [];
+    private bool _loading = true;
+    private string? _term;
+    private int? _workshopFilter;
+    private EmployeeStatus? _statusFilter = EmployeeStatus.Active;
+
+    private bool _editOpen, _leaveOpen, _historyOpen;
+    private int? _editId, _personId, _workshopId, _jobId, _centerId;
+    private string? _personName, _nationalId, _personnelNo, _hireDate, _insuranceNo, _iban, _notes, _leaveDate, _leaveDateInput, _leaveReason;
+    private ContractType? _contractType = ContractType.Temporary;
+    private InsuranceStatus? _insuranceStatus = InsuranceStatus.Insured;
+    private EmployeeStatus _status;
+    private byte _children;
+    private decimal? _taxExempt;
+
+    private IEnumerable<EmployeeListItemDto> Visible
+    {
+        get
+        {
+            var t = PersianText.NormalizeOrNull(_term);
+            return t is null ? _rows : _rows.Where(r => r.Name.Contains(t) || r.PersonnelNo.Contains(t) || (r.NationalId ?? "").StartsWith(t));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _workshops = (await Backend.Run<WorkshopService, List<WorkshopDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        _jobs = (await Backend.Run<JobService, List<JobDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        _centers = (await Backend.Run<CostCenterService, List<CostCenterListItemDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<EmployeeService, List<EmployeeListItemDto>>(s => s.ListAsync(null, _workshopFilter, _statusFilter, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private Task OnWorkshopFilter(int? v) { _workshopFilter = v; return LoadAsync(); }
+    private Task OnStatusFilter(EmployeeStatus? v) { _statusFilter = v; return LoadAsync(); }
+
+    private Task NewAsync()
+    {
+        (_editId, _personId, _personName, _nationalId, _personnelNo, _jobId, _hireDate, _insuranceNo, _iban, _notes, _taxExempt) =
+            (null, null, null, null, null, null, null, null, null, null, null);
+        _workshopId = _workshops.Count(w => w.IsActive) == 1 ? _workshops.First(w => w.IsActive).Id : null;
+        _centerId = null;
+        (_contractType, _insuranceStatus, _children, _status, _leaveOpen) = (ContractType.Temporary, InsuranceStatus.Insured, 0, EmployeeStatus.Active, false);
+        if (_workshops.Count == 0) Snackbar.Add("اول در «کارگاه‌های بیمه» یک کارگاه تعریف کنید.", Severity.Warning);
+        _editOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task EditAsync(int id)
+    {
+        var r = await Backend.Run<EmployeeService, EmployeeDto>(s => s.GetAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        var e = r.Value!;
+        (_editId, _personId, _personName, _nationalId, _personnelNo, _workshopId, _jobId, _contractType, _hireDate) =
+            (e.Id, e.PersonId, e.PersonName, e.NationalId, e.PersonnelNo, e.WorkshopId, e.JobId, e.ContractType, e.HireDate);
+        (_insuranceNo, _insuranceStatus, _children, _centerId, _iban, _taxExempt, _status, _notes, _leaveDate) =
+            (e.InsuranceNo, e.InsuranceStatus, e.ChildrenCount, e.CostCenterId, e.Iban, e.TaxExemptPercent, e.Status, e.Notes, e.LeaveDate);
+        (_leaveOpen, _leaveDateInput, _leaveReason) = (false, null, null);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveEmployeeRequest(_personId!.Value, _personnelNo, _workshopId!.Value, _jobId, _contractType ?? ContractType.Temporary,
+            _hireDate!, _insuranceNo, _insuranceStatus ?? InsuranceStatus.Insured, _children, _centerId!.Value, _iban, _taxExempt, _notes);
+        var error = _editId is int id
+            ? (await Backend.Run<EmployeeService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<EmployeeService, int>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add("پرونده پرسنلی ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task LeaveAsync()
+    {
+        var r = await Backend.Run<EmployeeService>(s => s.LeaveAsync(_editId!.Value, _leaveDateInput!, _leaveReason, default));
+        await AfterActionAsync(r.Error, "ترک کار ثبت شد.");
+    }
+
+    private async Task ReturnAsync()
+    {
+        var r = await Backend.Run<EmployeeService>(s => s.ReturnAsync(_editId!.Value, default));
+        await AfterActionAsync(r.Error, "بازگشت به کار ثبت شد.");
+    }
+
+    private async Task SuspendAsync()
+    {
+        var suspend = _status != EmployeeStatus.Suspended;
+        var r = await Backend.Run<EmployeeService>(s => s.SuspendAsync(_editId!.Value, suspend, default));
+        await AfterActionAsync(r.Error, suspend ? "پرونده تعلیق شد." : "تعلیق برداشته شد.");
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.DeleteAsync($"پرونده {_personnelNo}", "پرونده‌ای که حکم یا کارکرد دارد حذف نمی‌شود؛ ترک کار ثبت کنید.")) return;
+        var r = await Backend.Run<EmployeeService>(s => s.DeleteAsync(_editId!.Value, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _editOpen = false;
+        await LoadAsync();
+    }
+
+    private async Task AfterActionAsync(string? error, string message)
+    {
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        Snackbar.Add(message, Severity.Success);
+        await EditAsync(_editId!.Value);
+        await LoadAsync();
+    }
+
+    private void OpenDecrees(int id)
+    {
+        _editOpen = false;
+        Nav.NavigateTo($"/payroll/decrees?employee={id}");
+    }
+}

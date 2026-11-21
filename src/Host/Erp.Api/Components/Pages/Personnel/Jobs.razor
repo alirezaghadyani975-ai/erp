@@ -1,0 +1,113 @@
+@page "/hr/jobs"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="مشاغل" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">مشاغل</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">شغل جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    کد شغل در لیست بیمه تأمین اجتماعی برای هر کارمند فرستاده می‌شود. شغلی که در پرونده پرسنلی آمده حذف نمی‌شود؛ غیرفعالش کنید.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="JobDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>عنوان شغل</MudTh>
+            <MudTh>کد شغل بیمه</MudTh>
+            <MudTh Style="text-align:left">کارمندان</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                @context.Title
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd><span class="code">@context.InsuranceJobCode</span></MudTd>
+            <MudTd Class="num">@context.EmployeeCount</MudTd>
+            <MudTd Style="text-align:left">
+                <span @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="@($"حذف {context.Title}")"
+                                   Disabled="context.EmployeeCount > 0" OnClick="() => DeleteAsync(context)" />
+                </span>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">شغلی تعریف نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "شغل جدید" : "ویرایش شغل")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_title" Immediate="true" Label="عنوان شغل" MaxLength="100" AutoFocus="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_code" Label="کد شغل بیمه" MaxLength="6" Class="code" HelperText="از فهرست مشاغل تأمین اجتماعی"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="@string.IsNullOrWhiteSpace(_title)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<JobDto> _rows = [];
+    private bool _loading = true;
+
+    private bool _editOpen, _active = true;
+    private int? _editId;
+    private string? _title, _code;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<JobService, List<JobDto>>(s => s.GetAllAsync(true, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private void New()
+    {
+        (_editId, _title, _code, _active) = (null, null, null, true);
+        _editOpen = true;
+    }
+
+    private void Edit(JobDto j)
+    {
+        (_editId, _title, _code, _active) = (j.Id, j.Title, j.InsuranceJobCode, j.IsActive);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveJobRequest(_title!, _code, _active);
+        var error = _editId is int id
+            ? (await Backend.Run<JobService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<JobService, int>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add("شغل ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(JobDto j)
+    {
+        if (!await Dialogs.DeleteAsync($"شغل «{j.Title}»", "فقط شغلی که در پرونده‌ها نیامده حذف می‌شود.")) return;
+        var r = await Backend.Run<JobService>(s => s.DeleteAsync(j.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+}

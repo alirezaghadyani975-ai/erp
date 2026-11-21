@@ -1,0 +1,282 @@
+@page "/payroll/items"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="اقلام حقوق" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">اقلام حقوق</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">قلم جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    مقدار هر قلم از حکم، فرمول، ورود ماهانه، وام و مساعده یا فایل نتیجه سامانه مالیات می‌آید. در فرمول، کد اقلام دیگر، پارامترهای قانونی سال
+    و متغیرهای کارکرد (مثل DAYS) به کار می‌رود. مزایا با عامل هزینه و مرکز کارکرد به هزینه می‌رود؛ کسور، سهم کارفرما و ذخیره حساب بستانکار دارند.
+    اقلام قانونی (قفل) حذف نمی‌شوند و کد، نوع و منبعشان ثابت است؛ فرمول و حسابشان قابل اصلاح است.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudChipSet T="PayItemKind?" @bind-SelectedValue="_kindFilter" SelectionMode="SelectionMode.ToggleSelection" CheckMark="true">
+            @foreach (var k in Enum.GetValues<PayItemKind>())
+            {
+                <MudChip T="PayItemKind?" Value="k" Size="Size.Small">@Titles.Of(k)</MudChip>
+            }
+        </MudChipSet>
+        <MudSpacer />
+        <MudCheckBox T="bool" @bind-Value="_showInactive" Label="غیرفعال‌ها هم" Dense="true" />
+    </MudStack>
+
+    <MudTable T="PayItemDto" Items="Visible" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>کد</MudTh>
+            <MudTh>عنوان</MudTh>
+            <MudTh>نوع</MudTh>
+            <MudTh>منبع</MudTh>
+            <MudTh>فرمول</MudTh>
+            <MudTh>بیمه</MudTh>
+            <MudTh>مالیات</MudTh>
+            <MudTh>عامل هزینه / حساب</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Code</span></MudTd>
+            <MudTd>
+                @context.Title
+                @if (context.IsSystem) { <MudIcon Icon="@Icons.Material.Outlined.Lock" Size="Size.Small" Title="قانونی (سیستمی)" Class="mr-1" Style="vertical-align:middle" /> }
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd>@Titles.Of(context.Kind)</MudTd>
+            <MudTd>@Titles.Of(context.Source)</MudTd>
+            <MudTd><bdi class="formula">@context.Formula</bdi></MudTd>
+            <MudTd>@(context.InsuranceSubject ? "مشمول" : "")</MudTd>
+            <MudTd>@(context.TaxSubject ? "مشمول" : "")</MudTd>
+            <MudTd>
+                @context.CostFactor
+                @if (context.CostFactor is not null && context.Account is not null) { <span> / </span> }
+                @context.Account
+            </MudTd>
+            <MudTd Style="text-align:left">
+                @if (!context.IsSystem)
+                {
+                    <span @onclick:stopPropagation="true">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="@($"حذف {context.Title}")"
+                                       OnClick="() => DeleteAsync(context)" />
+                    </span>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">قلمی پیدا نشد.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_editId is null ? "قلم جدید" : $"ویرایش قلم «{_title}»")
+            @if (_isSystem) { <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Outlined.Lock">قانونی</MudChip> }
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_code" Immediate="true" Label="کد (لاتین)" MaxLength="30" Class="code" Disabled="_isSystem"
+                              HelperText="حروف بزرگ لاتین، رقم و _؛ در فرمول‌ها به کار می‌رود" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="_title" Immediate="true" Label="عنوان (روی فیش)" MaxLength="100" AutoFocus="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <EnumSelect TEnum="PayItemKind" Value="_kind" ValueChanged="OnKindChanged" Label="نوع" Required="true" Disabled="_isSystem" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <EnumSelect TEnum="PayItemSource" @bind-Value="_source" Label="منبع مقدار" Required="true" Disabled="_isSystem" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="int" @bind-Value="_sort" Label="ترتیب نمایش" Class="num" HideSpinButtons="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+
+            @if (_source == PayItemSource.Formula)
+            {
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_formula" Label="فرمول" Lines="2" MaxLength="1000" Class="formula-input" Immediate="true"
+                                  HelperText="مثال: ROUND(DAILY_WAGE * DAYS, 0) — تابع‌ها: MIN، MAX، ROUND، FLOOR، CEILING، ABS، IF(شرط, بله, نه)"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Outlined.FactCheck"
+                                  OnAdornmentClick="CheckAsync" AdornmentAriaLabel="کنترل فرمول" />
+                    @if (_check is { } c)
+                    {
+                        <MudAlert Severity="@(c.Ok ? Severity.Success : Severity.Error)" Dense="true" Class="mt-1">
+                            @(c.Ok ? $"فرمول درست است. متغیرها: {string.Join("، ", c.Variables)}" : c.Error)
+                        </MudAlert>
+                    }
+                    <MudExpansionPanels Elevation="0" Class="mt-2">
+                        <MudExpansionPanel Text="متغیرهای قابل استفاده (برای افزودن به فرمول کلیک کنید)">
+                            @foreach (var g in _variables.GroupBy(v => v.Group))
+                            {
+                                <MudText Typo="Typo.subtitle2" Class="mt-1">@g.Key</MudText>
+                                <div class="d-flex flex-wrap gap-1">
+                                    @foreach (var v in g.Where(v => v.Code != _code))
+                                    {
+                                        <MudTooltip Text="@v.Title">
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" OnClick="() => Append(v.Code)"><bdi>@v.Code</bdi></MudChip>
+                                        </MudTooltip>
+                                    }
+                                </div>
+                            }
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                </MudItem>
+            }
+
+            @if (_kind == PayItemKind.Earning)
+            {
+                <MudItem xs="6" sm="3"><MudSwitch T="bool" @bind-Value="_ins" Color="Color.Primary" Label="مشمول بیمه" /></MudItem>
+                <MudItem xs="6" sm="3"><MudSwitch T="bool" @bind-Value="_tax" Color="Color.Primary" Label="مشمول مالیات" /></MudItem>
+            }
+            @if (_kind is PayItemKind.Earning or PayItemKind.EmployerShare or PayItemKind.Provision)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="int?" @bind-Value="_factorId" SearchFunc="SearchFactors" ToStringFunc="FactorTitle" Label="عامل هزینه"
+                                     Required="true" RequiredError="عامل هزینه الزامی است." Clearable="true" ResetValueOnEmptyText="true" MaxItems="null"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" />
+                </MudItem>
+            }
+            @if (_kind is PayItemKind.Deduction or PayItemKind.EmployerShare or PayItemKind.Provision)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="int?" @bind-Value="_accountId" SearchFunc="SearchAccounts" ToStringFunc="AccountTitle" Label="حساب معین بستانکار"
+                                     Required="true" RequiredError="حساب الزامی است." Clearable="true" ResetValueOnEmptyText="true"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" />
+                </MudItem>
+            }
+            <MudItem xs="6" sm="3">
+                <MudSwitch T="bool" @bind-Value="_slip" Color="Color.Primary" Label="روی فیش" Disabled="@(_kind == PayItemKind.Info)" />
+            </MudItem>
+            <MudItem xs="6" sm="3"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" Disabled="_isSystem" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_title) || _kind is null || _source is null)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<PayItemDto> _rows = [];
+    private List<FormulaVariableDto> _variables = [];
+    private List<Erp.Payroll.Application.FactorRef> _factors = [];
+    private List<Erp.Payroll.Application.AccountRef> _accounts = [];
+    private bool _loading = true, _showInactive;
+    private PayItemKind? _kindFilter;
+
+    private bool _editOpen, _isSystem, _ins, _tax, _slip = true, _active = true;
+    private int? _editId, _factorId, _accountId;
+    private string? _code, _title, _formula;
+    private PayItemKind? _kind;
+    private PayItemSource? _source;
+    private int _sort = 100;
+    private FormulaCheckDto? _check;
+
+    private IEnumerable<PayItemDto> Visible =>
+        _rows.Where(r => (_showInactive || r.IsActive) && (_kindFilter is null || r.Kind == _kindFilter));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _factors = (await Backend.Run<PayItemService, List<Erp.Payroll.Application.FactorRef>>(s => s.FactorsAsync(default))).Value ?? [];
+        _accounts = (await Backend.Run<PayItemService, List<Erp.Payroll.Application.AccountRef>>(s => s.AccountsAsync(default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<PayItemService, List<PayItemDto>>(s => s.GetAllAsync(true, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _variables = (await Backend.Run<PayItemService, List<FormulaVariableDto>>(s => s.VariablesAsync(default))).Value ?? [];
+        _loading = false;
+    }
+
+    private void New()
+    {
+        (_editId, _isSystem, _code, _title, _formula, _kind, _source, _ins, _tax, _factorId, _accountId, _slip, _sort, _active, _check) =
+            (null, false, null, null, null, PayItemKind.Earning, PayItemSource.Formula, true, true, null, null, true, 100, true, null);
+        _editOpen = true;
+    }
+
+    private void Edit(PayItemDto i)
+    {
+        (_editId, _isSystem, _code, _title, _formula, _kind, _source, _ins, _tax, _factorId, _accountId, _slip, _sort, _active, _check) =
+            (i.Id, i.IsSystem, i.Code, i.Title, i.Formula, i.Kind, i.Source, i.InsuranceSubject, i.TaxSubject, i.CostFactorId, i.AccountId,
+             i.OnPayslip, i.SortOrder, i.IsActive, null);
+        _editOpen = true;
+    }
+
+    private void OnKindChanged(PayItemKind? kind)
+    {
+        _kind = kind;
+        if (kind != PayItemKind.Earning) (_ins, _tax) = (false, false);
+        if (kind is PayItemKind.Deduction or PayItemKind.Info) _factorId = null;
+        if (kind is PayItemKind.Earning or PayItemKind.Info) _accountId = null;
+        if (kind == PayItemKind.Info) _slip = false;
+    }
+
+    private void Append(string code)
+    {
+        _formula = string.IsNullOrWhiteSpace(_formula) ? code : $"{_formula.TrimEnd()} {code}";
+        _check = null;
+    }
+
+    private SavePayItemRequest Request() => new(_code ?? "", _title ?? "", _kind ?? PayItemKind.Earning, _source ?? PayItemSource.Formula,
+        _source == PayItemSource.Formula ? _formula : null, _kind == PayItemKind.Earning && _ins, _kind == PayItemKind.Earning && _tax,
+        _factorId, _accountId, _slip, _sort, _active);
+
+    private async Task CheckAsync()
+    {
+        var request = Request();
+        var id = _editId;
+        var r = await Backend.Run<PayItemService, FormulaCheckDto>(s => s.CheckFormulaAsync(id, request, default));
+        _check = r.Success ? r.Value : new FormulaCheckDto(false, r.Error, []);
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = Request();
+        var error = _editId is int id
+            ? (await Backend.Run<PayItemService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<PayItemService, int>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add("قلم حقوق ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(PayItemDto i)
+    {
+        if (!await Dialogs.DeleteAsync($"قلم «{i.Title}»", "قلمی که در حکم یا فرمول دیگری آمده حذف نمی‌شود.")) return;
+        var r = await Backend.Run<PayItemService>(s => s.DeleteAsync(i.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+
+    private string? FactorTitle(int? id) => id is int i ? _factors.FirstOrDefault(f => f.Id == i)?.Title ?? "؟" : null;
+    private string? AccountTitle(int? id) => id is int i ? _accounts.FirstOrDefault(a => a.Id == i) is { } a ? $"{a.Code} {a.Title}" : "؟" : null;
+
+    private Task<IEnumerable<int?>> SearchFactors(string? term, CancellationToken ct)
+    {
+        var t = PersianText.NormalizeOrNull(term);
+        var q = _factors.Where(f => f.IsActive || f.Id == _factorId);
+        if (t is not null && t != FactorTitle(_factorId)) q = q.Where(f => f.Title.Contains(t));
+        return Task.FromResult(q.Select(f => (int?)f.Id));
+    }
+
+    private Task<IEnumerable<int?>> SearchAccounts(string? term, CancellationToken ct)
+    {
+        var t = PersianText.NormalizeOrNull(term);
+        var q = _accounts.Where(a => a.IsActive || a.Id == _accountId);
+        if (t is not null && t != AccountTitle(_accountId)) q = q.Where(a => a.Code.StartsWith(t) || a.Title.Contains(t));
+        return Task.FromResult(q.Take(50).Select(a => (int?)a.Id));
+    }
+}

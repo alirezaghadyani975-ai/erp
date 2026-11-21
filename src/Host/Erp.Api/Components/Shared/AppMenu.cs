@@ -15,6 +15,8 @@ using T = Erp.Treasury.Application.TreasuryPermissions;
 using I = Erp.Inventory.Application.InventoryPermissions;
 using PU = Erp.Purchases.Application.PurchasePermissions;
 using SL = Erp.Sales.Application.SalesPermissions;
+using H = Erp.Personnel.Application.PersonnelPermissions;
+using PY = Erp.Payroll.Application.PayrollPermissions;
 
 namespace Erp.Api.Components.Shared;
 
@@ -74,6 +76,18 @@ public static class AppMenu
                 new("مراکز هزینه", Icons.Material.Outlined.Hub, "/costing/centers", P(C.CenterView)),
                 new("عوامل هزینه", Icons.Material.Outlined.Category, "/costing/factors", P(C.FactorView)),
                 new("انواع مرکز هزینه", Icons.Material.Outlined.Lan, "/costing/center-types", P(C.CenterTypes)),
+            ]),
+        ]),
+        new("منابع انسانی", Icons.Material.Outlined.Badge, Children:
+        [
+            new("پرونده‌های پرسنلی", Icons.Material.Outlined.Badge, "/hr/employees", P(H.EmployeeView)),
+            new("احکام حقوقی", Icons.Material.Outlined.HistoryEdu, "/payroll/decrees", P(PY.DecreeView)),
+            new("تعاریف کارگزینی و حقوق", Icons.Material.Outlined.Tune, Expanded: false, Children:
+            [
+                new("اقلام حقوق", Icons.Material.Outlined.Functions, "/payroll/items", P(PY.Setup)),
+                new("پارامترهای قانونی سال", Icons.Material.Outlined.Gavel, "/payroll/params", P(PY.Setup)),
+                new("کارگاه‌های بیمه", Icons.Material.Outlined.Business, "/hr/workshops", P(H.Setup)),
+                new("مشاغل", Icons.Material.Outlined.Work, "/hr/jobs", P(H.Setup)),
             ]),
         ]),
         new("مالی", Icons.Material.Outlined.AccountBalanceWallet, Children:
@@ -201,6 +215,12 @@ public static class AppMenu
         ("/costing/centers", P(C.CenterView)),
         ("/costing/factors", P(C.FactorView)),
         ("/costing/center-types", P(C.CenterTypes)),
+        ("/hr/employees", P(H.EmployeeView)),
+        ("/hr/workshops", P(H.Setup)),
+        ("/hr/jobs", P(H.Setup)),
+        ("/payroll/decrees", P(PY.DecreeView)),
+        ("/payroll/items", P(PY.Setup)),
+        ("/payroll/params", P(PY.Setup)),
         ("/persons/new", P(B.PersonCreate)),
         ("/persons/import", P(B.PersonCreate)),
         ("/persons", P(B.PersonView)),

@@ -217,6 +217,40 @@ INSERT inv.StockDocLines (DocId, RowNo, ItemId, Quantity) VALUES (@SRec, 2, @Ite
 INSERT @R VALUES (N'علامت «نیازمند محاسبه دوباره» بعد از تغییر سند انبار', N'2',
     (SELECT CAST(MAX([Status]) AS NVARCHAR(50)) FROM inv.CostRuns WHERE @D1 BETWEEN StartDate AND EndDate));
 
+-- 16) پرونده پرسنلی فقط برای شخص با نقش کارمند؛ ردیف حکم فقط از اقلام حکمی (اسکریپت ۲۰)
+DECLARE @Ws INT, @Ctr INT, @Emp INT, @Dec INT;
+INSERT hr.Workshops (Code, Title) VALUES ('9999999999', N'کارگاه تست');
+SET @Ws = SCOPE_IDENTITY();
+INSERT cost.CostCenters (Title, CenterTypeId) SELECT TOP (1) N'مرکز تست حقوق', Id FROM cost.CostCenterTypes ORDER BY Id;
+SET @Ctr = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT hr.Employees (PersonId, PersonnelNo, WorkshopId, HireDate, CostCenterId) VALUES (@PersonId, N'SMOKE1', @Ws, @D1, @Ctr);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد پرونده پرسنلی شخص بدون نقش کارمند', N'50401', CAST(@err AS NVARCHAR(50)));
+
+INSERT base.PersonRoles (PersonId, RoleId) SELECT @PersonId, Id FROM base.PersonRoleTypes WHERE Code = 'employee';
+INSERT hr.Employees (PersonId, PersonnelNo, WorkshopId, HireDate, CostCenterId) VALUES (@PersonId, N'SMOKE1', @Ws, @D1, @Ctr);
+SET @Emp = SCOPE_IDENTITY();
+INSERT pay.Decrees (EmployeeId, DocNo, EffectiveDate, DecreeType, CreatedBy) VALUES (@Emp, -1, @D1, 1, 1);
+SET @Dec = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT pay.DecreeItems (DecreeId, PayItemId, Amount) SELECT @Dec, Id, 1 FROM pay.PayItems WHERE Code = 'BASE';
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد قلم فرمولی در ردیف حکم', N'50410', CAST(@err AS NVARCHAR(50)));
+
+-- 17) اقلام قانونی حقوق با عامل هزینه و حساب درست
+INSERT @R VALUES (N'۱۸ قلم قانونی حقوق با عامل هزینه و حساب', N'18', (SELECT CAST(COUNT(*) AS NVARCHAR(50)) FROM pay.PayItems
+    WHERE IsSystem = 1 AND ((Kind = 2 AND AccountId IS NOT NULL) OR (Kind = 1 AND CostFactorId IS NOT NULL)
+        OR (Kind IN (3, 4) AND CostFactorId IS NOT NULL AND AccountId IS NOT NULL) OR Kind = 5)));
+
+DELETE pay.Decrees WHERE Id = @Dec;
+DELETE hr.Employees WHERE Id = @Emp;
+DELETE base.PersonRoles WHERE PersonId = @PersonId;
+DELETE hr.Workshops WHERE Id = @Ws;
+DELETE cost.CostCenters WHERE Id = @Ctr;
+
 DELETE pur.PurchaseReturns WHERE Id = @PRet;
 DELETE pur.PurchaseInvoices WHERE Id = @PInv;
 DELETE inv.StockDocs WHERE Id IN (@SRec, @SIss);

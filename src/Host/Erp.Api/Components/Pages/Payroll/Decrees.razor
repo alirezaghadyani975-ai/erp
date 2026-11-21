@@ -1,0 +1,229 @@
+@page "/payroll/decrees"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="احکام حقوقی" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">احکام حقوقی</MudText>
+    <MudSpacer />
+    <IfAllowed Permission="@PayrollPermissions.DecreeCreate">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="NewAsync">حکم جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    حکم مقدار اقلام «حکمی» (مزد روزانه، پایه سنوات و ...) را از تاریخ اجرا تا حکم بعدی تعیین می‌کند؛ حقوق هر ماه از حکمِ نافذ در آن ماه حساب می‌شود.
+    حکم تازه با مبالغ آخرین حکم کارمند پر می‌شود. اقلام حکمی را در «اقلام حقوق» با منبع «حکم» تعریف کنید.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudAutocomplete T="int?" Value="_employeeFilter" ValueChanged="OnFilterChanged" SearchFunc="SearchEmployees" ToStringFunc="EmployeeTitle"
+                         Label="کارمند" Clearable="true" ResetValueOnEmptyText="true" Dense="true" MaxItems="null"
+                         Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:300px" />
+    </MudStack>
+    <MudTable T="DecreeListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => EditAsync(a.Item!.Id))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره</MudTh>
+            <MudTh>تاریخ اجرا</MudTh>
+            <MudTh>شماره پرسنلی</MudTh>
+            <MudTh>کارمند</MudTh>
+            <MudTh>نوع حکم</MudTh>
+            <MudTh Style="text-align:left">مزد روزانه</MudTh>
+            <MudTh>شرح</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.EffectiveDate</span></MudTd>
+            <MudTd><span class="code">@context.PersonnelNo</span></MudTd>
+            <MudTd>@context.Employee</MudTd>
+            <MudTd>@Titles.Of(context.DecreeType)</MudTd>
+            <MudTd Class="num">@Format.Amount(context.DailyWage)</MudTd>
+            <MudTd>@context.Description</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">حکمی ثبت نشده است.</MudText></NoRecordsContent>
+        <PagerContent><MudTablePager RowsPerPageString="ردیف در صفحه" InfoFormat="{first_item}-{last_item} از {all_items}" PageSizeOptions="[25, 50, 100]" /></PagerContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_model?.Id is > 0 ? $"حکم {Format.No(_model.DocNo)} — {_model.Employee}" : "حکم جدید")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12">
+                @if (_model?.Id is > 0)
+                {
+                    <MudTextField T="string" Value="@($"{_model.PersonnelNo} — {_model.Employee}")" Label="کارمند" ReadOnly="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                }
+                else
+                {
+                    <MudAutocomplete T="int?" Value="_employeeId" ValueChanged="OnEmployeeChosen" SearchFunc="SearchEmployees" ToStringFunc="EmployeeTitle"
+                                     Label="کارمند" Required="true" RequiredError="کارمند الزامی است." Clearable="true" ResetValueOnEmptyText="true"
+                                     Dense="true" MaxItems="null" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" />
+                }
+            </MudItem>
+            @if (_model is not null)
+            {
+                <MudItem xs="12" sm="6"><PersianDateField @bind-Value="_date" Label="تاریخ اجرا" Required="true" /></MudItem>
+                <MudItem xs="12" sm="6"><EnumSelect TEnum="DecreeType" @bind-Value="_type" Label="نوع حکم" Required="true" /></MudItem>
+                <MudItem xs="12">
+                    <table class="voucher-grid">
+                        <thead><tr><th>قلم حکمی</th><th style="text-align:left">مبلغ (ریال)</th></tr></thead>
+                        <tbody>
+                            @foreach (var row in _amounts)
+                            {
+                                <tr>
+                                    <td>@row.Title <span class="select-hint code">@row.Code</span></td>
+                                    <td>
+                                        <MudNumericField T="decimal" @bind-Value="row.Amount" Format="#,0.####" HideSpinButtons="true" Min="0" Class="num"
+                                                         Variant="Variant.Text" Margin="Margin.Dense" aria-label="@row.Title" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (_amounts.FirstOrDefault(a => a.Code == DecreeService.DailyWageCode) is { Amount: > 0 } wage)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
+                            مزد ماهانه (۳۰ روز): @Format.Amount(wage.Amount * 30) ریال
+                        </MudText>
+                    }
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        @if (_model?.Id is int id and > 0)
+        {
+            <MudButton StartIcon="@Icons.Material.Outlined.History" OnClick="() => _historyOpen = true">تاریخچه</MudButton>
+            <IfAllowed Permission="@PayrollPermissions.DecreeDelete">
+                <MudButton Color="Color.Error" OnClick="DeleteAsync">حذف</MudButton>
+            </IfAllowed>
+        }
+        <MudSpacer />
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(_model is null || string.IsNullOrWhiteSpace(_date) || _type is null)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@if (_model?.Id is int historyId and > 0)
+{
+    <AuditHistoryDialog @bind-Visible="_historyOpen" Entity="Decree" Id="historyId" Title="@($"حکم {Format.No(_model.DocNo)}")" />
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "employee")] public int? EmployeeQuery { get; set; }
+
+    private sealed class AmountRow
+    {
+        public int PayItemId { get; init; }
+        public string Code { get; init; } = "";
+        public string Title { get; init; } = "";
+        public decimal Amount { get; set; }
+    }
+
+    private List<EmployeeOptionDto> _employees = [];
+    private List<DecreeListItemDto> _rows = [];
+    private bool _loading = true;
+    private int? _employeeFilter;
+
+    private bool _editOpen, _historyOpen;
+    private DecreeDto? _model;
+    private int? _employeeId;
+    private string? _date, _description;
+    private DecreeType? _type;
+    private List<AmountRow> _amounts = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _employeeFilter = EmployeeQuery;
+        _employees = (await Backend.Run<DecreeService, List<EmployeeOptionDto>>(s => s.EmployeesAsync(EmployeeQuery, default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var filter = _employeeFilter;
+        var r = await Backend.Run<DecreeService, List<DecreeListItemDto>>(s => s.ListAsync(filter, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private Task OnFilterChanged(int? id) { _employeeFilter = id; return LoadAsync(); }
+
+    private async Task NewAsync()
+    {
+        (_model, _employeeId, _date, _description, _type, _amounts) = (null, null, null, null, null, []);
+        _editOpen = true;
+        if (_employeeFilter is int e) await OnEmployeeChosen(e);
+    }
+
+    private async Task OnEmployeeChosen(int? id)
+    {
+        _employeeId = id;
+        if (id is not int e) { _model = null; return; }
+        var r = await Backend.Run<DecreeService, DecreeDto>(s => s.DraftAsync(e, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Fill(r.Value!);
+    }
+
+    private async Task EditAsync(int id)
+    {
+        var r = await Backend.Run<DecreeService, DecreeDto>(s => s.GetAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Fill(r.Value!);
+        _employeeId = _model!.EmployeeId;
+        _editOpen = true;
+    }
+
+    private void Fill(DecreeDto d)
+    {
+        _model = d;
+        (_date, _type, _description) = (d.EffectiveDate, d.DecreeType, d.Description);
+        _amounts = d.Items.Select(i => new AmountRow { PayItemId = i.PayItemId, Code = i.Code, Title = i.Title, Amount = i.Amount }).ToList();
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveDecreeRequest(_model!.EmployeeId, _date!, _type ?? DecreeType.Other, _description,
+            _amounts.Select(a => new DecreeItemInput(a.PayItemId, a.Amount)).ToList());
+        var error = _model.Id is int id and > 0
+            ? (await Backend.Run<DecreeService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<DecreeService, int>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add("حکم ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.DeleteAsync($"حکم {Format.No(_model!.DocNo)}", "حقوق ماه‌هایی که از این حکم حساب شده‌اند باید دوباره محاسبه شوند.")) return;
+        var id = _model.Id;
+        var r = await Backend.Run<DecreeService>(s => s.DeleteAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _editOpen = false;
+        await LoadAsync();
+    }
+
+    private string? EmployeeTitle(int? id) =>
+        id is int i ? _employees.FirstOrDefault(e => e.Id == i) is { } e ? $"{e.PersonnelNo} — {e.Name}" : "؟" : null;
+
+    private Task<IEnumerable<int?>> SearchEmployees(string? term, CancellationToken ct)
+    {
+        var t = PersianText.NormalizeOrNull(term);
+        IEnumerable<EmployeeOptionDto> q = _employees;
+        if (t is not null && t != EmployeeTitle(_employeeId) && t != EmployeeTitle(_employeeFilter))
+            q = q.Where(e => e.Name.Contains(t) || e.PersonnelNo.StartsWith(t));
+        return Task.FromResult(q.Select(e => (int?)e.Id));
+    }
+}

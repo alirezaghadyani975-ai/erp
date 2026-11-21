@@ -21,6 +21,10 @@ html, body {
 
 .code { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
 
+/* فرمول اقلام حقوق: چپ‌به‌راست با قلم هم‌عرض */
+.formula { direction: ltr; unicode-bidi: isolate; font-family: Consolas, "Courier New", monospace; font-size: .8rem; }
+.formula-input textarea { direction: ltr; text-align: left; font-family: Consolas, "Courier New", monospace; }
+
 .voucher-grid { width: 100%; border-collapse: collapse; }
 .voucher-grid th { font-weight: 600; font-size: .85rem; color: var(--mud-palette-text-secondary);
     text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--mud-palette-lines-default); }

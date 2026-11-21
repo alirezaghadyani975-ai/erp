@@ -6,6 +6,8 @@ using Erp.BaseData.Infrastructure;
 using Erp.Costing.Infrastructure;
 using Erp.Expenses.Infrastructure;
 using Erp.Inventory.Infrastructure.Persistence;
+using Erp.Payroll.Infrastructure;
+using Erp.Personnel.Infrastructure;
 using Erp.Purchases.Infrastructure;
 using Erp.Sales.Infrastructure;
 using Erp.Treasury.Infrastructure;
@@ -49,6 +51,8 @@ builder.Services.AddInventoryModule();
 builder.Services.AddPurchasesModule();
 builder.Services.AddSalesModule();
 builder.Services.AddTreasuryModule();
+builder.Services.AddPersonnelModule();
+builder.Services.AddPayrollModule();
 
 builder.Services.AddControllers().AddJsonOptions(o =>
 {

@@ -1,0 +1,189 @@
+@page "/payroll/params"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="پارامترهای قانونی سال" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">پارامترهای قانونی سال</MudText>
+    <MudSpacer />
+    <MudSelect T="short?" Value="_year" ValueChanged="OnYearChanged" Label="سال" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="max-width:140px">
+        @foreach (var y in _years)
+        {
+            <MudSelectItem T="short?" Value="y">@y</MudSelectItem>
+        }
+    </MudSelect>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.ContentCopy" OnClick="() => _copyOpen = true">کپی به سال جدید</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">پارامتر جدید</MudButton>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    ارقام مصوب شورای عالی کار و بخشنامه‌های تأمین اجتماعی برای هر سال؛ هر کد در فرمول اقلام حقوق یک متغیر است و محاسبه هر ماه
+    از پارامترهای سال همان ماه استفاده می‌کند. برای سال تازه، پارامترهای سال قبل را کپی و ارقام مصوب جدید را وارد کنید.
+</MudText>
+
+<MudGrid Spacing="3">
+    <MudItem xs="12" md="8">
+        <MudPaper Class="pa-3" Elevation="1">
+            <MudTable T="YearParamDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+                      OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+                <HeaderContent>
+                    <MudTh>کد</MudTh>
+                    <MudTh>عنوان</MudTh>
+                    <MudTh Style="text-align:left">مقدار</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><span class="code">@context.Code</span></MudTd>
+                    <MudTd>@context.Title</MudTd>
+                    <MudTd Class="num">@Format.Amount(context.Value)</MudTd>
+                    <MudTd Style="text-align:left">
+                        <span @onclick:stopPropagation="true">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="@($"حذف {context.Code}")"
+                                           OnClick="() => DeleteAsync(context)" />
+                        </span>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Class="pa-4">برای این سال پارامتری ثبت نشده است؛ از سال قبل کپی کنید.</MudText></NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="pa-3" Elevation="1">
+            <MudText Typo="Typo.h6" Class="mb-2">تنظیمات حقوق</MudText>
+            <EnumSelect TEnum="MonthDaysMode" Value="_mode" ValueChanged="SaveModeAsync" Label="روزهای ماه (MONTH_DAYS)" Required="true" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-2">
+                «همیشه ۳۰ روز»: حقوق ماهانه ثابت، کارکرد کامل هر ماه ۳۰ روز. «روز واقعی ماه»: ۳۱ روز در شش ماه اول، ۳۰ و ۲۹ در بقیه.
+                روزهای بیمه (INS_DAYS) همیشه روز واقعی کارکرد است.
+            </MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_isNew ? $"پارامتر جدید سال {_year}" : $"پارامتر {_code} سال {_year}")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="5">
+                <MudTextField @bind-Value="_code" Immediate="true" Label="کد (لاتین)" MaxLength="30" Class="code" Disabled="!_isNew" AutoFocus="_isNew"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12" sm="7">
+                <MudTextField @bind-Value="_title" Immediate="true" Label="عنوان" MaxLength="100" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudNumericField T="decimal" @bind-Value="_value" Label="مقدار" Format="#,0.######" HideSpinButtons="true" Min="0" Class="num"
+                                 AutoFocus="!_isNew" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(string.IsNullOrWhiteSpace(_code) || string.IsNullOrWhiteSpace(_title))">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_copyOpen" Options="new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">کپی پارامترهای سال @_year</MudText></TitleContent>
+    <DialogContent>
+        <MudNumericField T="short" @bind-Value="_copyTo" Label="به سال" Min="1300" Max="1500" HideSpinButtons="true" Class="num"
+                         HelperText="فقط کدهایی که در سال مقصد نیستند کپی می‌شوند" Variant="Variant.Outlined" Margin="Margin.Dense" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _copyOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CopyAsync">کپی</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<short> _years = [];
+    private List<YearParamDto> _rows = [];
+    private short? _year;
+    private bool _loading = true;
+    private MonthDaysMode? _mode;
+
+    private bool _editOpen, _isNew, _copyOpen;
+    private string? _code, _title;
+    private decimal _value;
+    private short _copyTo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _mode = (await Backend.Run<PaySettingsService, PaySettingsDto>(s => s.GetAsync(default))).Value?.MonthDaysMode;
+        await LoadYearsAsync(null);
+    }
+
+    private async Task LoadYearsAsync(short? select)
+    {
+        _years = (await Backend.Run<YearParamService, List<short>>(s => s.YearsAsync(default))).Value ?? [];
+        _year = select ?? _years.FirstOrDefault();
+        if (_year == 0) _year = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        if (_year is short y)
+        {
+            var r = await Backend.Run<YearParamService, List<YearParamDto>>(s => s.ListAsync(y, default));
+            if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        }
+        else _rows = [];
+        _loading = false;
+    }
+
+    private Task OnYearChanged(short? y) { _year = y; return LoadAsync(); }
+
+    private void New()
+    {
+        if (_year is null) { Snackbar.Add("سالی انتخاب نشده است.", Severity.Warning); return; }
+        (_isNew, _code, _title, _value) = (true, null, null, 0);
+        _editOpen = true;
+    }
+
+    private void Edit(YearParamDto p)
+    {
+        (_isNew, _code, _title, _value) = (false, p.Code, p.Title, p.Value);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var year = _year!.Value;
+        var request = new SaveYearParamRequest(_code!, _title!, _value);
+        var r = await Backend.Run<YearParamService>(s => s.SaveAsync(year, request, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add("پارامتر ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(YearParamDto p)
+    {
+        if (!await Dialogs.DeleteAsync($"پارامتر {p.Code} سال {p.Year}", "پارامتری که فقط در همین سال هست و در فرمول آمده حذف نمی‌شود.")) return;
+        var r = await Backend.Run<YearParamService>(s => s.DeleteAsync(p.Year, p.Code, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+
+    private async Task CopyAsync()
+    {
+        var (from, to) = (_year ?? 0, _copyTo);
+        var r = await Backend.Run<YearParamService, int>(s => s.CopyAsync(from, to, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _copyOpen = false;
+        Snackbar.Add($"{r.Value} پارامتر به سال {to} کپی شد.", Severity.Success);
+        await LoadYearsAsync(to);
+    }
+
+    private async Task SaveModeAsync(MonthDaysMode? mode)
+    {
+        if (mode is not { } m) return;
+        var r = await Backend.Run<PaySettingsService>(s => s.SaveAsync(new PaySettingsDto(m), default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _mode = m;
+        Snackbar.Add("تنظیمات حقوق ذخیره شد.", Severity.Success);
+    }
+}
