@@ -114,6 +114,73 @@ public class PayrollTests(SqlFixture db)
     }
 
     [Fact]
+    public async Task Monthly_run_calculates_insurance_and_takes_tax_after_calculation()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        // کارگاه و کارمند جدا تا اجرای ماه فقط همین کارمند را داشته باشد
+        var roles = await db.Run<PersonService, List<PersonRoleTypeDto>>(x => x.GetRoleTypesAsync(false, default));
+        var nationalId = PersonTests.NewNationalCode();
+        var person = await db.Run<PersonService, int>(x => x.CreateAsync(new SavePersonRequest
+        {
+            Kind = PersonKind.Natural, FirstName = "کارمند", LastName = "اجرای ماه", NationalId = nationalId,
+            RoleIds = [roles.Single(r => r.Code == RoleCodes.Employee).Id]
+        }, default));
+        var workshop = await db.Run<WorkshopService, int>(x => x.CreateAsync(new SaveWorkshopRequest("9900445566", "کارگاه اجرای ماه"), default));
+        var employee = await db.Run<EmployeeService, int>(x => x.CreateAsync(new SaveEmployeeRequest(person, null, workshop, null,
+            ContractType.Temporary, "1405/01/15", "1234567891", InsuranceStatus.Insured, 2, s.Center), default));
+        var draft = await db.Run<DecreeService, DecreeDto>(x => x.DraftAsync(employee, default));
+        var wage = draft.Items.Single(i => i.Code == DecreeService.DailyWageCode).PayItemId;
+        await db.Run<DecreeService, int>(x => x.CreateAsync(
+            new SaveDecreeRequest(employee, "1405/01/15", DecreeType.Hire, null, [new DecreeItemInput(wage, 6_000_000)]), default));
+
+        // اردیبهشت ۳۱ روز: کارکرد ۳۰ (همیشه ۳۰ روز)، روز بیمه ۳۱
+        var runId = await db.Run<PayRunService, int>(x => x.CreateAsync(new CreatePayRunRequest(1405, 2, workshop), default));
+        var run = await db.Run<PayRunService, PayRunDto>(x => x.GetAsync(runId, default));
+        var row = Assert.Single(run.Rows);
+        Assert.Equal(30, row.WorkDays);
+        Assert.Equal(31, row.InsuranceDays);
+        Assert.Equal(s.Center, Assert.Single(row.Centers).CostCenterId);
+
+        var duplicate = await Assert.ThrowsAsync<DomainException>(() => db.Run<PayRunService, int>(x =>
+            x.CreateAsync(new CreatePayRunRequest(1405, 2, workshop), default)));
+        Assert.Contains("قبلاً", duplicate.Message);
+
+        var calc = await db.Run<PayRunService, CalcResultDto>(x => x.CalculateAsync(runId, default));
+        Assert.Contains(calc.Warnings, w => w.Message.Contains("مالیات"));
+        var sum = Assert.Single(await db.Run<PayRunService, List<RunSummaryRowDto>>(x => x.SummaryAsync(runId, default)));
+        const decimal child = 5_541_850m * 3 * 2;          // حق اولاد دو فرزند (مشمول بیمه نیست)
+        const decimal insSubject = 180_000_000m + 30_000_000 + 22_000_000;
+        Assert.Equal(insSubject + child, sum.Earnings);
+        Assert.Equal(insSubject, sum.InsuranceSubject);
+        Assert.Equal(16_240_000, sum.InsuranceWorker);      // ۷٪
+        Assert.Equal(46_400_000 + 6_960_000, sum.EmployerShare); // ۲۰٪ + بیکاری ۳٪
+        Assert.Equal(0, sum.Tax);
+
+        // نتیجه سامانه مالیاتی با کد ملی؛ اجرا خودکار دوباره محاسبه می‌شود
+        var tax = await db.Run<PayRunService, TaxImportResultDto>(x => x.SetTaxAsync(runId,
+            [new TaxRowInput(nationalId, 5_000_000), new TaxRowInput("0000000000", 1)], default));
+        Assert.Equal(1, tax.Matched);
+        Assert.Equal(["0000000000"], tax.Unmatched);
+        sum = Assert.Single(await db.Run<PayRunService, List<RunSummaryRowDto>>(x => x.SummaryAsync(runId, default)));
+        Assert.Equal(5_000_000, sum.Tax);
+        Assert.Equal(insSubject + child - 16_240_000 - 5_000_000, sum.Net);
+
+        // تغییر کارکرد: اجرا نیازمند محاسبه، و با ۱۵ روز نصف می‌شود
+        await db.Run<PayRunService>(x => x.SaveAttendanceAsync(runId, [new SaveAttendanceRequest(row.Id, 15, 15, 0, 0, 0, 0,
+            [new CenterShareInput(s.Center, 100)], new Dictionary<int, decimal>())], default));
+        Assert.Equal(PayRunStatus.Draft, (await db.Run<PayRunService, PayRunDto>(x => x.GetAsync(runId, default))).Status);
+        await db.Run<PayRunService, CalcResultDto>(x => x.CalculateAsync(runId, default));
+        var slip = await db.Run<PayRunService, PayslipDto>(x => x.PayslipAsync(runId, employee, default));
+        Assert.Equal(90_000_000, slip.Earnings.Single(l => l.Code == "BASE").Amount);
+        Assert.Equal(5_000_000, slip.Deductions.Single(l => l.Code == "TAX").Amount);
+
+        var badSplit = await Assert.ThrowsAsync<DomainException>(() => db.Run<PayRunService>(x => x.SaveAttendanceAsync(runId,
+            [new SaveAttendanceRequest(row.Id, 15, 15, 0, 0, 0, 0, [new CenterShareInput(s.Center, 60)], new Dictionary<int, decimal>())], default)));
+        Assert.Contains("۱۰۰", badSplit.Message);
+    }
+
+    [Fact]
     public async Task Decree_requires_daily_wage_and_valid_date()
     {
         if (!db.Enabled) return;

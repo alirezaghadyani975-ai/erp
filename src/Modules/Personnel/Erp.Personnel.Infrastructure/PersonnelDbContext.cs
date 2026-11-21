@@ -20,7 +20,8 @@ public class PersonnelDbContext : DbContext, IPersonnelDbContext
 
     public async Task<bool> IsEmployeeUsedAsync(int employeeId, CancellationToken ct) =>
         await Database.SqlQuery<int>($"""
-            SELECT CASE WHEN EXISTS (SELECT 1 FROM pay.Decrees WHERE EmployeeId = {employeeId}) THEN 1 ELSE 0 END AS Value
+            SELECT CASE WHEN EXISTS (SELECT 1 FROM pay.Decrees WHERE EmployeeId = {employeeId})
+                          OR EXISTS (SELECT 1 FROM pay.Attendance WHERE EmployeeId = {employeeId}) THEN 1 ELSE 0 END AS Value
             """).SingleAsync(ct) == 1;
 
     void IPersonnelDbContext.Add<T>(T entity) => Set<T>().Add(entity);

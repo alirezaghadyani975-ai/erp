@@ -1,0 +1,138 @@
+@page "/payroll/runs"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject TabService Tabs
+
+<TabTitle Text="محاسبه حقوق" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">محاسبه حقوق</MudText>
+    <MudSpacer />
+    <IfAllowed Permission="@PayrollPermissions.RunCreate">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">حقوق ماه جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    برای هر کارگاه در هر ماه یک اجرا ساخته می‌شود؛ کارکرد پیش‌فرض همه کارکنان شاغل با مرکز هزینه پرونده پر می‌شود.
+    بعد از ورود کارکرد «محاسبه» بزنید؛ بیمه با نرخ‌های کارگاه کسر می‌شود. مالیات حقوق را بعد از محاسبه از نتیجه سامانه مالیاتی وارد کنید.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="PayRunListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/payroll/runs/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>ماه</MudTh>
+            <MudTh>کارگاه</MudTh>
+            <MudTh>وضعیت</MudTh>
+            <MudTh Style="text-align:left">کارکنان</MudTh>
+            <MudTh Style="text-align:left">جمع مزایا</MudTh>
+            <MudTh Style="text-align:left">جمع کسور</MudTh>
+            <MudTh Style="text-align:left">خالص پرداختی</MudTh>
+            <MudTh Style="text-align:left">سهم کارفرما</MudTh>
+            <MudTh>آخرین محاسبه</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Title</span></MudTd>
+            <MudTd>@context.Workshop</MudTd>
+            <MudTd><RunStatusChip Status="context.Status" /></MudTd>
+            <MudTd Class="num">@context.EmployeeCount</MudTd>
+            <MudTd Class="num">@Format.Amount(context.Earnings)</MudTd>
+            <MudTd Class="num">@Format.Amount(context.Deductions)</MudTd>
+            <MudTd Class="num"><b>@Format.Amount(context.Net)</b></MudTd>
+            <MudTd Class="num">@Format.Amount(context.EmployerShare)</MudTd>
+            <MudTd><span class="code">@context.CalculatedAt</span></MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">هنوز حقوقی محاسبه نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_newOpen" Options="new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">حقوق ماه جدید</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="6">
+                <MudNumericField T="short" @bind-Value="_year" Label="سال" Min="1300" Max="1500" HideSpinButtons="true" Class="num"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudSelect T="byte" @bind-Value="_month" Label="ماه" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @for (byte m = 1; m <= 12; m++)
+                    {
+                        var month = m;
+                        <MudSelectItem T="byte" Value="month">@month.ToString("00") — @MonthNames[month - 1]</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudSelect T="int?" @bind-Value="_workshopId" Label="کارگاه" Required="true" RequiredError="کارگاه الزامی است."
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var w in _workshops.Where(w => w.IsActive))
+                    {
+                        <MudSelectItem T="int?" Value="w.Id">@w.Title <span class="select-hint">(@w.Code)</span></MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_description" Label="شرح (اختیاری)" MaxLength="300" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _newOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" Disabled="@(_workshopId is null || _busy)">ساخت و ورود کارکرد</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public static readonly string[] MonthNames =
+        ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"];
+
+    private List<PayRunListItemDto> _rows = [];
+    private List<WorkshopDto> _workshops = [];
+    private bool _loading = true, _newOpen, _busy;
+    private short _year;
+    private byte _month = 1;
+    private int? _workshopId;
+    private string? _description;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _workshops = (await Backend.Run<WorkshopService, List<WorkshopDto>>(s => s.GetAllAsync(false, default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<PayRunService, List<PayRunListItemDto>>(s => s.ListAsync(null, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private void New()
+    {
+        var today = PersianDate.ToPersian(DateOnly.FromDateTime(DateTime.Now));
+        _year = short.Parse(today[..4]);
+        _month = byte.Parse(today.Substring(5, 2));
+        // پیشنهاد: ماه بعد از آخرین اجرا
+        if (_rows.Count > 0)
+        {
+            var last = _rows[0];
+            (_year, _month) = last.Month == 12 ? ((short)(last.Year + 1), (byte)1) : (last.Year, (byte)(last.Month + 1));
+        }
+        _workshopId = _workshops.Count(w => w.IsActive) == 1 ? _workshops.First(w => w.IsActive).Id : null;
+        _description = null;
+        _newOpen = true;
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        var request = new CreatePayRunRequest(_year, _month, _workshopId!.Value, _description);
+        var r = await Backend.Run<PayRunService, int>(s => s.CreateAsync(request, default));
+        _busy = false;
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _newOpen = false;
+        Tabs.Go($"/payroll/runs/{r.Value}");
+    }
+}

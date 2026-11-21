@@ -19,6 +19,9 @@ public static class PersianDate
     public static DateOnly FromPersian(int year, int month, int day) =>
         DateOnly.FromDateTime(Calendar.ToDateTime(year, month, day, 0, 0, 0, 0));
 
+    /// <summary>تعداد روزهای ماه شمسی (۲۹ تا ۳۱).</summary>
+    public static int DaysInMonth(int year, int month) => Calendar.GetDaysInMonth(year, month);
+
     /// <summary>ورودی مثل 1405/07/21 یا 1405-7-21.</summary>
     public static DateOnly Parse(string value)
     {

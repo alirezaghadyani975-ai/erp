@@ -25,6 +25,12 @@ html, body {
 .formula { direction: ltr; unicode-bidi: isolate; font-family: Consolas, "Courier New", monospace; font-size: .8rem; }
 .formula-input textarea { direction: ltr; text-align: left; font-family: Consolas, "Courier New", monospace; }
 
+/* جدول کارکرد ماه */
+.attendance-grid td { vertical-align: middle; }
+.attendance-grid .num-cell { margin: 0; }
+.attendance-grid .num-cell input { text-align: left; padding: 2px 0; }
+.attendance-grid tr.row-dirty td { background: var(--mud-palette-warning-lighten, rgba(255, 152, 0, .08)); }
+
 .voucher-grid { width: 100%; border-collapse: collapse; }
 .voucher-grid th { font-weight: 600; font-size: .85rem; color: var(--mud-palette-text-secondary);
     text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--mud-palette-lines-default); }

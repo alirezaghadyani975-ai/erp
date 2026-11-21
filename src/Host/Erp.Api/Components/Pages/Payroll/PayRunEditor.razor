@@ -1,0 +1,480 @@
+@page "/payroll/runs/{Id:int}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="@(_run is null ? "محاسبه حقوق" : $"حقوق {_run.Title}")" />
+
+@if (_run is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    var editable = _run.Status != PayRunStatus.Final;
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.h5">حقوق @_run.Title</MudText>
+        <MudText Typo="Typo.subtitle1" Color="Color.Secondary">@_run.Workshop</MudText>
+        <RunStatusChip Status="_run.Status" />
+        <MudSpacer />
+        @if (editable)
+        {
+            <IfAllowed Permission="@PayrollPermissions.RunEdit">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Calculate" OnClick="CalculateAsync"
+                           Disabled="_busy">@(_dirty.Count > 0 ? "ذخیره و محاسبه" : "محاسبه")</MudButton>
+                <MudFileUpload T="IBrowserFile" FilesChanged="ImportTaxAsync" MaximumFileCount="1" Accept=".xlsx" Disabled="_busy">
+                    <CustomContent Context="upload">
+                        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.UploadFile" OnClick="upload.OpenFilePickerAsync"
+                                   Disabled="_busy">ورود مالیات از اکسل</MudButton>
+                    </CustomContent>
+                </MudFileUpload>
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" AriaLabel="کارهای دیگر" AnchorOrigin="Origin.BottomLeft">
+                    <MudMenuItem Icon="@Icons.Material.Outlined.PersonAdd" OnClick="AddMissingAsync">افزودن کارکنان تازه</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Outlined.History" OnClick="() => _historyOpen = true">تاریخچه</MudMenuItem>
+                    <IfAllowed Permission="@PayrollPermissions.RunDelete">
+                        <MudMenuItem Icon="@Icons.Material.Outlined.Delete" IconColor="Color.Error" OnClick="DeleteAsync">حذف این اجرا</MudMenuItem>
+                    </IfAllowed>
+                </MudMenu>
+            </IfAllowed>
+        }
+    </MudStack>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+        روزهای ماه در فرمول‌ها (MONTH_DAYS): @_run.MonthDays — روزهای تقویمی ماه (سقف روز بیمه): @_run.CalendarDays.
+        @if (_run.CalculatedAt is { } at) { <span>آخرین محاسبه: <span class="code">@at</span>.</span> }
+        @if (_run.Status == PayRunStatus.Draft && _run.CalculatedAt is not null) { <b> بعد از آخرین محاسبه تغییر کرده است؛ دوباره محاسبه کنید.</b> }
+    </MudText>
+
+    @if (_calc is { } c)
+    {
+        <MudAlert Severity="@(c.Warnings.Count == 0 ? Severity.Success : Severity.Warning)" Class="mb-2" Dense="true"
+                  ShowCloseIcon="true" CloseIconClicked="() => _calc = null">
+            محاسبه @c.Employees نفر انجام شد: مزایا @Format.Amount(c.Earnings)، کسور @Format.Amount(c.Deductions)، خالص @Format.Amount(c.Net)،
+            سهم کارفرما @Format.Amount(c.EmployerShare) ریال.
+            @if (c.Warnings.Count > 0)
+            {
+                <ul class="mt-1 mb-0">
+                    @foreach (var w in c.Warnings)
+                    {
+                        <li>@(string.IsNullOrEmpty(w.PersonnelNo) ? "" : $"{w.PersonnelNo} {w.Employee}: ")@w.Message</li>
+                    }
+                </ul>
+            }
+        </MudAlert>
+    }
+    @if (_taxResult is { } t)
+    {
+        <MudAlert Severity="@(t.Unmatched.Count == 0 ? Severity.Success : Severity.Warning)" Class="mb-2" Dense="true"
+                  ShowCloseIcon="true" CloseIconClicked="() => _taxResult = null">
+            مالیات @t.Matched نفر وارد و حقوق دوباره محاسبه شد.
+            @if (t.Unmatched.Count > 0) { <span>پیدا نشد (کد ملی یا شماره پرسنلی): <span class="code">@string.Join("، ", t.Unmatched)</span></span> }
+        </MudAlert>
+    }
+
+    <MudTabs Elevation="1" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pa-3" KeepPanelsAlive="true" @bind-ActivePanelIndex="_tab">
+        <MudTabPanel Text="کارکرد ماه">
+            <div style="overflow-x:auto">
+                <table class="voucher-grid attendance-grid">
+                    <thead>
+                        <tr>
+                            <th>پرسنلی</th>
+                            <th>نام</th>
+                            <th>کارکرد</th>
+                            <th>روز بیمه</th>
+                            <th>اضافه‌کار (ساعت)</th>
+                            <th>شب‌کاری</th>
+                            <th>تعطیل‌کاری</th>
+                            <th>غیبت (روز)</th>
+                            @foreach (var col in _run.InputColumns)
+                            {
+                                <th title="@col.Code">@col.Title</th>
+                            }
+                            <th>مرکز هزینه</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _edit)
+                        {
+                            <tr class="@(_dirty.Contains(row.Id) ? "row-dirty" : null)">
+                                <td><span class="code">@row.PersonnelNo</span></td>
+                                <td style="white-space:nowrap">@row.Name</td>
+                                <td><NumCell @bind-Value="row.WorkDays" Disabled="!editable" OnChange="() => Dirty(row)" Label="کارکرد" /></td>
+                                <td><NumCell @bind-Value="row.InsuranceDays" Disabled="!editable" OnChange="() => Dirty(row)" Label="روز بیمه" /></td>
+                                <td><NumCell @bind-Value="row.OtHours" Disabled="!editable" OnChange="() => Dirty(row)" Label="اضافه‌کار" /></td>
+                                <td><NumCell @bind-Value="row.NightHours" Disabled="!editable" OnChange="() => Dirty(row)" Label="شب‌کاری" /></td>
+                                <td><NumCell @bind-Value="row.HolidayHours" Disabled="!editable" OnChange="() => Dirty(row)" Label="تعطیل‌کاری" /></td>
+                                <td><NumCell @bind-Value="row.AbsentDays" Disabled="!editable" OnChange="() => Dirty(row)" Label="غیبت" /></td>
+                                @foreach (var col in _run.InputColumns)
+                                {
+                                    var itemId = col.PayItemId;
+                                    <td>
+                                        <NumCell Value="row.Inputs.GetValueOrDefault(itemId)" ValueChanged="v => { row.Inputs[itemId] = v; Dirty(row); }"
+                                                 Disabled="!editable" Amount="true" Label="@col.Title" />
+                                    </td>
+                                }
+                                <td style="white-space:nowrap">
+                                    @string.Join("، ", row.Centers.Select(x => x.Percent == 100 ? x.Title : $"{x.Title} {x.Percent:0.##}٪"))
+                                    @if (editable)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small" aria-label="@($"تقسیم مرکز هزینه {row.Name}")"
+                                                       OnClick="() => OpenCenters(row)" />
+                                    }
+                                </td>
+                                <td>
+                                    @if (editable)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Outlined.PersonRemove" Class="row-delete" Size="Size.Small"
+                                                       aria-label="@($"حذف {row.Name} از این ماه")" OnClick="() => RemoveAsync(row)" />
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (editable)
+            {
+                <MudStack Row="true" Class="mt-2" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SaveAsync" Disabled="@(_dirty.Count == 0 || _busy)">ذخیره کارکرد</MudButton>
+                    @if (_dirty.Count > 0) { <MudText Typo="Typo.caption" Color="Color.Warning">@_dirty.Count ردیف ذخیره نشده</MudText> }
+                    <MudSpacer />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        ستون مالیات را می‌توان دستی پر کرد یا از اکسل نتیجه سامانه (ستون «مالیات» و «کد ملی» یا «شماره پرسنلی») وارد کرد.
+                    </MudText>
+                </MudStack>
+            }
+        </MudTabPanel>
+
+        <MudTabPanel Text="لیست حقوق">
+            <MudStack Row="true" Class="mb-2" AlignItems="AlignItems.Center">
+                @if (_run.CalculatedAt is null) { <MudText Color="Color.Secondary">هنوز محاسبه نشده است.</MudText> }
+                <MudSpacer />
+                <ExcelButton Build="BuildExcel" />
+            </MudStack>
+            <MudTable T="RunSummaryRowDto" Items="_summary" Dense="true" Hover="true" Elevation="0" OnRowClick="@(a => OpenSlipAsync(a.Item!))"
+                      RowStyle="cursor:pointer" HorizontalScrollbar="true">
+                <HeaderContent>
+                    <MudTh>پرسنلی</MudTh>
+                    <MudTh>نام</MudTh>
+                    <MudTh Style="text-align:left">کارکرد</MudTh>
+                    <MudTh Style="text-align:left">جمع مزایا</MudTh>
+                    <MudTh Style="text-align:left">مشمول بیمه</MudTh>
+                    <MudTh Style="text-align:left">بیمه سهم کارگر</MudTh>
+                    <MudTh Style="text-align:left">مالیات</MudTh>
+                    <MudTh Style="text-align:left">سایر کسور</MudTh>
+                    <MudTh Style="text-align:left">خالص پرداختی</MudTh>
+                    <MudTh Style="text-align:left">سهم کارفرما</MudTh>
+                    <MudTh Style="text-align:left">ذخیره‌ها</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><span class="code">@context.PersonnelNo</span></MudTd>
+                    <MudTd>@context.Name</MudTd>
+                    <MudTd Class="num">@context.WorkDays.ToString("0.##")</MudTd>
+                    <MudTd Class="num">@Format.Amount(context.Earnings)</MudTd>
+                    <MudTd Class="num">@Format.Amount(context.InsuranceSubject)</MudTd>
+                    <MudTd Class="num">@Format.Amount(context.InsuranceWorker)</MudTd>
+                    <MudTd Class="num">@(context.Tax == 0 ? "—" : Format.Amount(context.Tax))</MudTd>
+                    <MudTd Class="num">@Format.Amount(context.OtherDeductions)</MudTd>
+                    <MudTd Class="num"><b>@Format.Amount(context.Net)</b></MudTd>
+                    <MudTd Class="num">@Format.Amount(context.EmployerShare)</MudTd>
+                    <MudTd Class="num">@Format.Amount(context.Provisions)</MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTd colspan="3"><b>جمع (@_summary.Count نفر)</b></MudTd>
+                    <MudTd Class="num"><b>@Format.Amount(_summary.Sum(x => x.Earnings))</b></MudTd>
+                    <MudTd Class="num"><b>@Format.Amount(_summary.Sum(x => x.InsuranceSubject))</b></MudTd>
+                    <MudTd Class="num"><b>@Format.Amount(_summary.Sum(x => x.InsuranceWorker))</b></MudTd>
+                    <MudTd Class="num"><b>@Format.Amount(_summary.Sum(x => x.Tax))</b></MudTd>
+                    <MudTd Class="num"><b>@Format.Amount(_summary.Sum(x => x.OtherDeductions))</b></MudTd>
+                    <MudTd Class="num"><b>@Format.Amount(_summary.Sum(x => x.Net))</b></MudTd>
+                    <MudTd Class="num"><b>@Format.Amount(_summary.Sum(x => x.EmployerShare))</b></MudTd>
+                    <MudTd Class="num"><b>@Format.Amount(_summary.Sum(x => x.Provisions))</b></MudTd>
+                </FooterContent>
+                <NoRecordsContent><MudText Class="pa-4">نتیجه‌ای نیست؛ «محاسبه» بزنید.</MudText></NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+    </MudTabs>
+
+    <AuditHistoryDialog @bind-Visible="_historyOpen" Entity="PayRun" Id="Id" Title="@($"حقوق {_run.Title}")" />
+}
+
+<MudDialog @bind-Visible="_centersOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">تقسیم هزینه @_centersRow?.Name بین مراکز</MudText></TitleContent>
+    <DialogContent>
+        @foreach (var share in _centerEdit)
+        {
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-1">
+                <MudSelect T="int" @bind-Value="share.CenterId" Label="مرکز هزینه" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="min-width:240px">
+                    @foreach (var center in _centers.Where(x => x.IsActive || x.Id == share.CenterId))
+                    {
+                        <MudSelectItem T="int" Value="center.Id">@center.Title</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudNumericField T="decimal" @bind-Value="share.Percent" Label="درصد" Min="0" Max="100" HideSpinButtons="true" Class="num"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:110px" />
+                <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small" aria-label="حذف مرکز" Disabled="_centerEdit.Count == 1"
+                               OnClick="() => _centerEdit.Remove(share)" />
+            </MudStack>
+        }
+        <MudStack Row="true" AlignItems="AlignItems.Center">
+            <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="AddShare">مرکز دیگر</MudButton>
+            <MudSpacer />
+            <MudText Color="@(_centerEdit.Sum(x => x.Percent) == 100 ? Color.Success : Color.Error)">جمع: @_centerEdit.Sum(x => x.Percent).ToString("0.##")٪</MudText>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _centersOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyCenters"
+                   Disabled="@(_centerEdit.Sum(x => x.Percent) != 100 || _centerEdit.Select(x => x.CenterId).Distinct().Count() != _centerEdit.Count)">تأیید</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_slipOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">فیش حقوقی @_slip?.RunTitle — @_slip?.Name</MudText></TitleContent>
+    <DialogContent>
+        @if (_slip is { } s)
+        {
+            <MudText Typo="Typo.body2" Class="mb-2">
+                پرسنلی <span class="code">@s.PersonnelNo</span> — کد ملی <span class="code">@s.NationalId</span> — @s.Workshop —
+                کارکرد @s.WorkDays.ToString("0.##") روز، بیمه @s.InsuranceDays روز
+                @if (s.OtHours > 0) { <span>، اضافه‌کار @s.OtHours.ToString("0.##") ساعت</span> }
+                @if (s.AbsentDays > 0) { <span>، غیبت @s.AbsentDays.ToString("0.##") روز</span> }
+            </MudText>
+            <MudGrid Spacing="3">
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.subtitle2">مزایا</MudText>
+                    <table class="voucher-grid">
+                        @foreach (var l in s.Earnings) { <tr><td>@l.Title</td><td class="num">@Format.Amount(l.Amount)</td></tr> }
+                        <tr><td><b>جمع مزایا</b></td><td class="num"><b>@Format.Amount(s.TotalEarnings)</b></td></tr>
+                    </table>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudText Typo="Typo.subtitle2">کسور</MudText>
+                    <table class="voucher-grid">
+                        @foreach (var l in s.Deductions) { <tr><td>@l.Title</td><td class="num">@Format.Amount(l.Amount)</td></tr> }
+                        <tr><td><b>جمع کسور</b></td><td class="num"><b>@Format.Amount(s.TotalDeductions)</b></td></tr>
+                    </table>
+                </MudItem>
+            </MudGrid>
+            <MudPaper Class="pa-2 mt-3" Outlined="true">
+                <MudText Typo="Typo.h6">خالص پرداختی: @Format.Amount(s.Net) ریال</MudText>
+                <MudText Typo="Typo.caption">@PersianWords.Rial(s.Net)</MudText>
+            </MudPaper>
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-2">
+                مزایای مشمول بیمه: @Format.Amount(s.InsuranceSubject) —
+                سهم کارفرما (روی فیش نمی‌آید): @string.Join("، ", s.EmployerShares.Select(l => $"{l.Title} {Format.Amount(l.Amount)}"))
+            </MudText>
+        }
+    </DialogContent>
+    <DialogActions><MudButton OnClick="() => _slipOpen = false">بستن</MudButton></DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private sealed class EditRow
+    {
+        public int Id { get; init; }
+        public string PersonnelNo { get; init; } = "";
+        public string Name { get; init; } = "";
+        public decimal WorkDays { get; set; }
+        public decimal InsuranceDays { get; set; }
+        public decimal OtHours { get; set; }
+        public decimal NightHours { get; set; }
+        public decimal HolidayHours { get; set; }
+        public decimal AbsentDays { get; set; }
+        public Dictionary<int, decimal> Inputs { get; init; } = [];
+        public List<CenterShareDto> Centers { get; set; } = [];
+    }
+
+    private sealed class ShareEdit
+    {
+        public int CenterId { get; set; }
+        public decimal Percent { get; set; }
+    }
+
+    private PayRunDto? _run;
+    private List<EditRow> _edit = [];
+    private readonly HashSet<int> _dirty = [];
+    private List<RunSummaryRowDto> _summary = [];
+    private List<CostCenterListItemDto> _centers = [];
+    private CalcResultDto? _calc;
+    private TaxImportResultDto? _taxResult;
+    private bool _busy, _historyOpen, _centersOpen, _slipOpen;
+    private int _tab;
+    private EditRow? _centersRow;
+    private List<ShareEdit> _centerEdit = [];
+    private PayslipDto? _slip;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _centers = (await Backend.Run<CostCenterService, List<CostCenterListItemDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        await LoadAsync();
+        if (_run?.CalculatedAt is not null) _tab = 1;
+    }
+
+    private async Task LoadAsync()
+    {
+        var r = await Backend.Run<PayRunService, PayRunDto>(s => s.GetAsync(Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _run = r.Value!;
+        _edit = _run.Rows.Select(x => new EditRow
+        {
+            Id = x.Id, PersonnelNo = x.PersonnelNo, Name = x.Name, WorkDays = x.WorkDays, InsuranceDays = x.InsuranceDays,
+            OtHours = x.OtHours, NightHours = x.NightHours, HolidayHours = x.HolidayHours, AbsentDays = x.AbsentDays,
+            Inputs = new Dictionary<int, decimal>(x.Inputs), Centers = x.Centers
+        }).ToList();
+        _dirty.Clear();
+        _summary = (await Backend.Run<PayRunService, List<RunSummaryRowDto>>(s => s.SummaryAsync(Id, default))).Value ?? [];
+    }
+
+    private void Dirty(EditRow row) => _dirty.Add(row.Id);
+
+    private List<SaveAttendanceRequest> DirtyRequests() => _edit.Where(r => _dirty.Contains(r.Id)).Select(r => new SaveAttendanceRequest(
+        r.Id, r.WorkDays, (int)r.InsuranceDays, r.OtHours, r.NightHours, r.HolidayHours, r.AbsentDays,
+        r.Centers.Select(c => new CenterShareInput(c.CostCenterId, c.Percent)).ToList(),
+        _run!.InputColumns.ToDictionary(c => c.PayItemId, c => r.Inputs.GetValueOrDefault(c.PayItemId)))).ToList();
+
+    private async Task<bool> SaveCoreAsync()
+    {
+        if (_dirty.Count == 0) return true;
+        if (_edit.Any(r => _dirty.Contains(r.Id) && r.InsuranceDays != decimal.Truncate(r.InsuranceDays)))
+        {
+            Snackbar.Add("روز بیمه باید عدد صحیح باشد.", Severity.Error);
+            return false;
+        }
+        var rows = DirtyRequests();
+        var r = await Backend.Run<PayRunService>(s => s.SaveAttendanceAsync(Id, rows, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return false; }
+        return true;
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        if (await SaveCoreAsync())
+        {
+            Snackbar.Add("کارکرد ذخیره شد؛ برای به‌روز شدن لیست حقوق «محاسبه» بزنید.", Severity.Success);
+            await LoadAsync();
+        }
+        _busy = false;
+    }
+
+    private async Task CalculateAsync()
+    {
+        _busy = true;
+        try
+        {
+            if (!await SaveCoreAsync()) return;
+            var r = await Backend.Run<PayRunService, CalcResultDto>(s => s.CalculateAsync(Id, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            (_calc, _taxResult) = (r.Value, null);
+            await LoadAsync();
+            _tab = 1;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ImportTaxAsync(IBrowserFile? file)
+    {
+        if (file is null) return;
+        if (_dirty.Count > 0) { Snackbar.Add("اول کارکرد را ذخیره کنید.", Severity.Warning); return; }
+        if (file.Size > ExcelImport.MaxBytes) { Snackbar.Add("حجم فایل بیش از ۱۰ مگابایت است.", Severity.Error); return; }
+        _busy = true;
+        try
+        {
+            using var ms = new MemoryStream();
+            await using (var stream = file.OpenReadStream(ExcelImport.MaxBytes)) await stream.CopyToAsync(ms);
+            ms.Position = 0;
+            List<TaxRowInput> rows;
+            try
+            {
+                rows = ExcelImport.Read(ms, ["مالیات"])
+                    .Select(x => (Key: x.Code("کد ملی") ?? x.Code("شماره پرسنلی"), Amount: x.Number("مالیات")))
+                    .Where(x => x.Key is not null && x.Amount is not null)
+                    .Select(x => new TaxRowInput(x.Key!, x.Amount!.Value)).ToList();
+            }
+            catch (FormatException ex) { Snackbar.Add(ex.Message, Severity.Error); return; }
+            if (rows.Count == 0) { Snackbar.Add("در فایل سطری با «کد ملی» یا «شماره پرسنلی» و «مالیات» پیدا نشد.", Severity.Error); return; }
+            var r = await Backend.Run<PayRunService, TaxImportResultDto>(s => s.SetTaxAsync(Id, rows, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            (_taxResult, _calc) = (r.Value, r.Value!.Calculation);
+            await LoadAsync();
+            _tab = 1;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task AddMissingAsync()
+    {
+        if (!await SaveCoreAsync()) return;
+        var r = await Backend.Run<PayRunService, int>(s => s.AddMissingEmployeesAsync(Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Snackbar.Add(r.Value == 0 ? "کارمند تازه‌ای نیست." : $"{r.Value} کارمند اضافه شد.", r.Value == 0 ? Severity.Info : Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task RemoveAsync(EditRow row)
+    {
+        if (!await Dialogs.DeleteAsync($"کارکرد {row.Name} در این ماه", "حقوق این ماه برای او حساب نمی‌شود؛ با «افزودن کارکنان تازه» برمی‌گردد.")) return;
+        var r = await Backend.Run<PayRunService>(s => s.RemoveEmployeeAsync(Id, row.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.DeleteAsync($"حقوق {_run!.Title} {_run.Workshop}", "کارکرد و نتیجه محاسبه این ماه پاک می‌شود.")) return;
+        var r = await Backend.Run<PayRunService>(s => s.DeleteAsync(Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Tabs.CloseCurrentAndGo("/payroll/runs");
+    }
+
+    private void OpenCenters(EditRow row)
+    {
+        _centersRow = row;
+        _centerEdit = row.Centers.Select(c => new ShareEdit { CenterId = c.CostCenterId, Percent = c.Percent }).ToList();
+        _centersOpen = true;
+    }
+
+    private void AddShare()
+    {
+        var used = _centerEdit.Select(x => x.CenterId).ToHashSet();
+        var next = _centers.FirstOrDefault(c => c.IsActive && !used.Contains(c.Id));
+        if (next is null) { Snackbar.Add("مرکز هزینه فعال دیگری نیست.", Severity.Info); return; }
+        _centerEdit.Add(new ShareEdit { CenterId = next.Id, Percent = Math.Max(0, 100 - _centerEdit.Sum(x => x.Percent)) });
+    }
+
+    private void ApplyCenters()
+    {
+        _centersRow!.Centers = _centerEdit.Select(x => new CenterShareDto(x.CenterId, _centers.FirstOrDefault(c => c.Id == x.CenterId)?.Title ?? "?", x.Percent)).ToList();
+        Dirty(_centersRow);
+        _centersOpen = false;
+    }
+
+    private async Task OpenSlipAsync(RunSummaryRowDto row)
+    {
+        var r = await Backend.Run<PayRunService, PayslipDto>(s => s.PayslipAsync(Id, row.EmployeeId, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _slip = r.Value;
+        _slipOpen = true;
+    }
+
+    private ExcelFile BuildExcel() => ExcelExport.Build($"لیست حقوق {_run?.Title}", [_run?.Workshop],
+    [
+        new ExcelColumn<RunSummaryRowDto>("شماره پرسنلی", x => x.PersonnelNo, ExcelKind.Code),
+        new("نام", x => x.Name),
+        new("کد ملی", x => x.NationalId, ExcelKind.Code),
+        new("کارکرد", x => x.WorkDays, ExcelKind.Number),
+        new("روز بیمه", x => x.InsuranceDays, ExcelKind.Number),
+        new("جمع مزایا", x => x.Earnings, ExcelKind.Amount),
+        new("مشمول بیمه", x => x.InsuranceSubject, ExcelKind.Amount),
+        new("مشمول مالیات", x => x.TaxSubject, ExcelKind.Amount),
+        new("بیمه سهم کارگر", x => x.InsuranceWorker, ExcelKind.Amount),
+        new("مالیات", x => x.Tax, ExcelKind.Amount),
+        new("سایر کسور", x => x.OtherDeductions, ExcelKind.Amount),
+        new("خالص پرداختی", x => x.Net, ExcelKind.Amount),
+        new("سهم کارفرما", x => x.EmployerShare, ExcelKind.Amount),
+    ], _summary);
+}

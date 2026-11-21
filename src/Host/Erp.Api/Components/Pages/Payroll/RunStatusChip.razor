@@ -1,0 +1,13 @@
+@* وضعیت اجرای حقوق *@
+<MudChip T="string" Size="Size.Small" Color="@Color" Variant="Variant.Outlined">@Titles.Of(Status)</MudChip>
+
+@code {
+    [Parameter] public PayRunStatus Status { get; set; }
+
+    private Color Color => Status switch
+    {
+        PayRunStatus.Calculated => Color.Success,
+        PayRunStatus.Final => Color.Primary,
+        _ => Color.Warning
+    };
+}

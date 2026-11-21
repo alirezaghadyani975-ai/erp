@@ -32,7 +32,7 @@ public enum EmployeeStatus : byte
 public sealed class EmployeeRef
 {
     public const string Sql = """
-        SELECT e.Id, e.PersonId, e.PersonnelNo, p.DisplayName, e.WorkshopId, w.Title AS WorkshopTitle, e.CostCenterId,
+        SELECT e.Id, e.PersonId, e.PersonnelNo, p.DisplayName, p.NationalId, e.WorkshopId, w.Title AS WorkshopTitle, e.CostCenterId,
                e.ChildrenCount, CAST(CASE WHEN p.MaritalStatus = 2 THEN 1 ELSE 0 END AS BIT) AS IsMarried,
                e.InsuranceStatus, e.[Status], e.HireDate, e.LeaveDate,
                w.EmployeeRate, w.EmployerRate, w.UnemploymentRate
@@ -43,6 +43,7 @@ public sealed class EmployeeRef
     public int PersonId { get; init; }
     public string PersonnelNo { get; init; } = "";
     public string DisplayName { get; init; } = "";
+    public string? NationalId { get; init; }
     public int WorkshopId { get; init; }
     public string WorkshopTitle { get; init; } = "";
     public int CostCenterId { get; init; }

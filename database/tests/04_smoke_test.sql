@@ -245,6 +245,44 @@ INSERT @R VALUES (N'۱۸ قلم قانونی حقوق با عامل هزینه �
     WHERE IsSystem = 1 AND ((Kind = 2 AND AccountId IS NOT NULL) OR (Kind = 1 AND CostFactorId IS NOT NULL)
         OR (Kind IN (3, 4) AND CostFactorId IS NOT NULL AND AccountId IS NOT NULL) OR Kind = 5)));
 
+-- 18) اجرای ماهانه حقوق (اسکریپت ۲۱)
+DECLARE @Run INT, @Att INT, @Ws2 INT, @Run2 INT;
+INSERT pay.Runs ([Year], [Month], WorkshopId, MonthDays, CreatedBy) VALUES (1419, 1, @Ws, 30, 1);
+SET @Run = SCOPE_IDENTITY();
+INSERT pay.Attendance (RunId, EmployeeId, WorkDays, InsuranceDays) VALUES (@Run, @Emp, 30, 31);
+SET @Att = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT pay.AttendanceInputs (AttendanceId, PayItemId, Amount) SELECT @Att, Id, 1 FROM pay.PayItems WHERE Code = 'BASE';
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد ورودی ماه برای قلم فرمولی', N'50420', CAST(@err AS NVARCHAR(50)));
+
+INSERT hr.Workshops (Code, Title) VALUES ('9999999998', N'کارگاه تست ۲');
+SET @Ws2 = SCOPE_IDENTITY();
+INSERT pay.Runs ([Year], [Month], WorkshopId, MonthDays, CreatedBy) VALUES (1419, 1, @Ws2, 30, 1);
+SET @Run2 = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT pay.Attendance (RunId, EmployeeId, WorkDays, InsuranceDays) VALUES (@Run2, @Emp, 30, 31);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد کارکرد کارمند کارگاه دیگر', N'50423', CAST(@err AS NVARCHAR(50)));
+
+UPDATE pay.Runs SET [Status] = 3 WHERE Id = @Run;
+BEGIN TRY
+    UPDATE pay.Attendance SET WorkDays = 10 WHERE Id = @Att;
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد تغییر کارکرد اجرای قطعی', N'50421', CAST(@err AS NVARCHAR(50)));
+BEGIN TRY
+    INSERT pay.RunLines (RunId, EmployeeId, PayItemId, Amount) SELECT @Run, @Emp, Id, 1 FROM pay.PayItems WHERE Code = 'BASE';
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد تغییر نتیجه اجرای قطعی', N'50422', CAST(@err AS NVARCHAR(50)));
+
+UPDATE pay.Runs SET [Status] = 1 WHERE Id = @Run;
+DELETE pay.Runs WHERE Id IN (@Run, @Run2);
+DELETE hr.Workshops WHERE Id = @Ws2;
+
 DELETE pay.Decrees WHERE Id = @Dec;
 DELETE hr.Employees WHERE Id = @Emp;
 DELETE base.PersonRoles WHERE PersonId = @PersonId;

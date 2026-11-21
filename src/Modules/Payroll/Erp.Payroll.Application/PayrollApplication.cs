@@ -12,12 +12,14 @@ public interface IPayrollDbContext
     IQueryable<YearParam> YearParams { get; }
     IQueryable<PaySettings> Settings { get; }
     IQueryable<Decree> Decrees { get; }
+    IQueryable<PayRun> Runs { get; }
 
     /// <summary>فقط‌خواندنی از کارگزینی.</summary>
     IQueryable<EmployeeRef> Employees { get; }
 
     IQueryable<FactorRef> Factors { get; }
     IQueryable<AccountRef> Accounts { get; }
+    IQueryable<CenterRef> Centers { get; }
 
     void Add<T>(T entity) where T : class;
     void Remove<T>(T entity) where T : class;
@@ -48,10 +50,15 @@ public static class PayrollPermissions
     public const string DecreeCreate = "pay.decree.create";
     public const string DecreeEdit = "pay.decree.edit";
     public const string DecreeDelete = "pay.decree.delete";
+    public const string RunView = "pay.run.view";
+    public const string RunCreate = "pay.run.create";
+    public const string RunEdit = "pay.run.edit";
+    public const string RunDelete = "pay.run.delete";
 
     public static IPermissionSource List { get; } = new PermissionList("حقوق و دستمزد")
         .Add("pay.setup", "اقلام، پارامترهای سال و تنظیمات حقوق", ("edit", "تعریف و اصلاح"))
-        .Crud("pay.decree", "حکم حقوقی");
+        .Crud("pay.decree", "حکم حقوقی")
+        .Crud("pay.run", "اجرای حقوق (کارکرد، محاسبه، مالیات)");
 }
 
 public sealed record PayItemDto(int Id, string Code, string Title, PayItemKind Kind, PayItemSource Source, string? Formula,
@@ -96,6 +103,57 @@ public static class DependencyInjection
         services.AddScoped<YearParamService>();
         services.AddScoped<PaySettingsService>();
         services.AddScoped<DecreeService>();
+        services.AddScoped<PayRunService>();
         return services;
     }
 }
+
+public sealed class CenterRef
+{
+    public int Id { get; init; }
+    public string Title { get; init; } = "";
+    public bool IsActive { get; init; }
+}
+
+public sealed record PayRunListItemDto(int Id, short Year, byte Month, string Title, int WorkshopId, string Workshop, PayRunStatus Status,
+    int EmployeeCount, decimal Earnings, decimal Deductions, decimal Net, decimal EmployerShare, string? CalculatedAt, string? Description);
+
+public sealed record CreatePayRunRequest(short Year, byte Month, int WorkshopId, string? Description = null);
+
+/// <summary>ستون ورودی ماه در جدول کارکرد (اقلام ورود ماهانه، وام و مساعده، مالیات).</summary>
+public sealed record InputColumnDto(int PayItemId, string Code, string Title, PayItemSource Source, PayItemKind Kind);
+
+public sealed record CenterShareDto(int CostCenterId, string Title, decimal Percent);
+
+public sealed record AttendanceRowDto(int Id, int EmployeeId, string PersonnelNo, string Name, string? NationalId, decimal WorkDays,
+    int InsuranceDays, decimal OtHours, decimal NightHours, decimal HolidayHours, decimal AbsentDays, List<CenterShareDto> Centers,
+    Dictionary<int, decimal> Inputs);
+
+public sealed record PayRunDto(int Id, short Year, byte Month, string Title, int WorkshopId, string Workshop, PayRunStatus Status,
+    int MonthDays, int CalendarDays, string? Description, string? CalculatedAt, List<InputColumnDto> InputColumns, List<AttendanceRowDto> Rows);
+
+public sealed record CenterShareInput(int CostCenterId, decimal Percent);
+
+public sealed record SaveAttendanceRequest(int AttendanceId, decimal WorkDays, int InsuranceDays, decimal OtHours, decimal NightHours,
+    decimal HolidayHours, decimal AbsentDays, List<CenterShareInput> Centers, Dictionary<int, decimal> Inputs);
+
+public sealed record CalcWarningDto(string PersonnelNo, string Employee, string Message);
+
+public sealed record CalcResultDto(int Employees, decimal Earnings, decimal Deductions, decimal Net, decimal EmployerShare, List<CalcWarningDto> Warnings);
+
+/// <summary>یک سطر لیست حقوق.</summary>
+public sealed record RunSummaryRowDto(int EmployeeId, string PersonnelNo, string Name, string? NationalId, decimal WorkDays, int InsuranceDays,
+    decimal Earnings, decimal InsuranceSubject, decimal TaxSubject, decimal InsuranceWorker, decimal Tax, decimal OtherDeductions, decimal Net,
+    decimal EmployerShare, decimal Provisions);
+
+public sealed record PayslipLineDto(string Code, string Title, decimal Amount);
+
+public sealed record PayslipDto(string RunTitle, string Workshop, string PersonnelNo, string Name, string? NationalId, decimal WorkDays,
+    int InsuranceDays, decimal OtHours, decimal NightHours, decimal HolidayHours, decimal AbsentDays, List<PayslipLineDto> Earnings,
+    List<PayslipLineDto> Deductions, List<PayslipLineDto> EmployerShares, decimal TotalEarnings, decimal TotalDeductions, decimal Net,
+    decimal InsuranceSubject);
+
+/// <param name="Key">کد ملی یا شماره پرسنلی</param>
+public sealed record TaxRowInput(string Key, decimal Amount);
+
+public sealed record TaxImportResultDto(int Matched, List<string> Unmatched, CalcResultDto Calculation);

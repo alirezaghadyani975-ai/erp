@@ -17,6 +17,8 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
     public IQueryable<YearParam> YearParams => Set<YearParam>();
     public IQueryable<PaySettings> Settings => Set<PaySettings>();
     public IQueryable<Decree> Decrees => Set<Decree>();
+    public IQueryable<PayRun> Runs => Set<PayRun>();
+    public IQueryable<CenterRef> Centers => Set<CenterRef>().AsNoTracking();
     public IQueryable<EmployeeRef> Employees => Set<EmployeeRef>().AsNoTracking();
     public IQueryable<FactorRef> Factors => Set<FactorRef>().AsNoTracking();
     public IQueryable<AccountRef> Accounts => Set<AccountRef>().AsNoTracking();
@@ -63,6 +65,60 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
             e.ToTable("DecreeItems", "pay", t => t.HasTrigger("trg_DecreeItems_Source"));
             e.HasKey(x => new { x.DecreeId, x.PayItemId });
             e.Property(x => x.Amount).HasPrecision(24, 4);
+        });
+        b.Entity<PayRun>(e =>
+        {
+            e.ToTable("Runs", "pay");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
+            e.Property(x => x.CalculatedAt).HasColumnType("datetime2(0)");
+            e.Ignore(x => x.Title);
+            e.HasMany(x => x.Attendances).WithOne().HasForeignKey(a => a.RunId).OnDelete(DeleteBehavior.Cascade);
+            e.Navigation(x => x.Attendances).UsePropertyAccessMode(PropertyAccessMode.Field);
+            e.HasMany(x => x.Lines).WithOne().HasForeignKey(l => l.RunId).OnDelete(DeleteBehavior.Cascade);
+            e.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            e.Ignore(x => x.DomainEvents);
+        });
+        b.Entity<Attendance>(e =>
+        {
+            e.ToTable("Attendance", "pay", t =>
+            {
+                t.HasTrigger("trg_Attendance_Final");
+                t.HasTrigger("trg_Attendance_Workshop");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.WorkDays).HasPrecision(5, 2);
+            e.Property(x => x.OtHours).HasPrecision(6, 2);
+            e.Property(x => x.NightHours).HasPrecision(6, 2);
+            e.Property(x => x.HolidayHours).HasPrecision(6, 2);
+            e.Property(x => x.AbsentDays).HasPrecision(5, 2);
+            e.HasMany(x => x.Centers).WithOne().HasForeignKey(c => c.AttendanceId).OnDelete(DeleteBehavior.Cascade);
+            e.Navigation(x => x.Centers).UsePropertyAccessMode(PropertyAccessMode.Field);
+            e.HasMany(x => x.Inputs).WithOne().HasForeignKey(i => i.AttendanceId).OnDelete(DeleteBehavior.Cascade);
+            e.Navigation(x => x.Inputs).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+        b.Entity<AttendanceCenter>(e =>
+        {
+            e.ToTable("AttendanceCenters", "pay");
+            e.HasKey(x => new { x.AttendanceId, x.CostCenterId });
+            e.Property(x => x.Percent).HasPrecision(5, 2);
+        });
+        b.Entity<AttendanceInput>(e =>
+        {
+            e.ToTable("AttendanceInputs", "pay", t => t.HasTrigger("trg_AttendanceInputs_Source"));
+            e.HasKey(x => new { x.AttendanceId, x.PayItemId });
+            e.Property(x => x.Amount).HasPrecision(24, 0);
+        });
+        b.Entity<RunLine>(e =>
+        {
+            e.ToTable("RunLines", "pay", t => t.HasTrigger("trg_RunLines_Final"));
+            e.HasKey(x => new { x.RunId, x.EmployeeId, x.PayItemId });
+            e.Property(x => x.Amount).HasPrecision(24, 4);
+        });
+        b.Entity<CenterRef>(e =>
+        {
+            e.ToTable("CostCenters", "cost", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
         });
         b.Entity<EmployeeRef>(e =>
         {

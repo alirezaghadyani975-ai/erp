@@ -1,0 +1,21 @@
+@* خانه عددی فشرده برای جدول‌های ورود (کارکرد ماه و ...). با Amount جداکننده هزارگان دارد. *@
+<MudNumericField T="decimal" Value="Value" ValueChanged="OnValueChanged" Disabled="Disabled" Min="0" HideSpinButtons="true"
+                 Format="@(Amount ? "#,0" : "0.##")" Class="num num-cell" Variant="Variant.Text" Margin="Margin.Dense"
+                 aria-label="@Label" Style="@(Amount ? "min-width:110px" : "min-width:56px")" />
+
+@code {
+    [Parameter] public decimal Value { get; set; }
+    [Parameter] public EventCallback<decimal> ValueChanged { get; set; }
+    /// <summary>بعد از تغییر مقدار (مثلاً علامت ردیف ذخیره‌نشده).</summary>
+    [Parameter] public EventCallback OnChange { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Amount { get; set; }
+    [Parameter] public string? Label { get; set; }
+
+    private async Task OnValueChanged(decimal v)
+    {
+        Value = v;
+        await ValueChanged.InvokeAsync(v);
+        await OnChange.InvokeAsync();
+    }
+}
