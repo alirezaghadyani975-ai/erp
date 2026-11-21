@@ -256,6 +256,7 @@ public static class DependencyInjection
         services.AddScoped<ItemGroupService>();
         services.AddScoped<ItemService>();
         services.AddScoped<ItemCategoryService>();
+        services.AddScoped<IProductionStock, ProductionStock>();
         services.AddScoped<WarehouseService>();
         services.AddScoped<StockDocService>();
         services.AddScoped<StockReportService>();

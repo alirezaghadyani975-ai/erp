@@ -189,6 +189,7 @@ internal class StockDocConfiguration : IEntityTypeConfiguration<StockDoc>
         b.Property(d => d.CreatedAt).HasColumnType("datetime2(0)");
         b.Property(d => d.UpdatedAt).HasColumnType("datetime2(0)");
         b.Property(d => d.RowVer).IsRowVersion();
+        b.Property(d => d.SourceModule).HasMaxLength(20).IsUnicode(false);
         b.HasMany(d => d.Lines).WithOne().HasForeignKey(l => l.DocId).OnDelete(DeleteBehavior.Cascade);
         b.Navigation(d => d.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
         b.Ignore(d => d.DomainEvents);

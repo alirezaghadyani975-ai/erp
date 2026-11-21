@@ -9,12 +9,16 @@ public enum StockDocType : byte
     PurchaseReceipt = 2,
     /// <summary>رسید برگشت از فروش (از ردیف حواله فروش).</summary>
     SalesReturnReceipt = 3,
+    /// <summary>رسید محصول و ضایعات تولید (فقط از گزارش تولید).</summary>
+    ProductionReceipt = 4,
     /// <summary>حواله فروش (قبل از فاکتور فروش).</summary>
     SalesIssue = 11,
     /// <summary>حواله برگشت از خرید (از ردیف رسید خرید).</summary>
     PurchaseReturnIssue = 12,
     /// <summary>حواله مصرف غیرتولیدی (با عامل و مرکز هزینه).</summary>
-    Consumption = 13
+    Consumption = 13,
+    /// <summary>حواله مصرف تولید (فقط از گزارش تولید).</summary>
+    ProductionIssue = 14
 }
 
 /// <summary>
@@ -64,6 +68,9 @@ public static class StockDocTypes
         type is StockDocType.PurchaseReceipt or StockDocType.SalesReturnReceipt or StockDocType.SalesIssue or StockDocType.PurchaseReturnIssue;
 
     /// <summary>برگشت است و به ردیف سند مبدأ ارجاع دارد.</summary>
+    /// <summary>سند تولید: فقط از گزارش تولید ساخته و اصلاح می‌شود.</summary>
+    public static bool IsProduction(this StockDocType type) => type is StockDocType.ProductionReceipt or StockDocType.ProductionIssue;
+
     public static bool IsReturn(this StockDocType type) =>
         type is StockDocType.SalesReturnReceipt or StockDocType.PurchaseReturnIssue;
 
@@ -83,10 +90,31 @@ public static class StockDocTypes
         StockDocType.SalesIssue => "حواله فروش",
         StockDocType.PurchaseReturnIssue => "حواله برگشت از خرید",
         StockDocType.Consumption => "حواله مصرف",
+        StockDocType.ProductionReceipt => "رسید تولید",
+        StockDocType.ProductionIssue => "حواله مصرف تولید",
         _ => "سند انبار"
     };
 
     /// <summary>عنوان طرف حساب در فرم.</summary>
     public static string PartyTitle(this StockDocType type) =>
         type is StockDocType.PurchaseReceipt or StockDocType.PurchaseReturnIssue ? "تأمین‌کننده" : "مشتری";
+}
+
+/// <summary>ردیف سند انبار تولید.</summary>
+public sealed record ProductionStockLine(int ItemId, decimal Quantity, string? Description = null);
+
+/// <summary>
+/// ساخت، اصلاح و حذف سندهای انبار تولید (رسید تولید و حواله مصرف تولید) از ماژول تولید؛ پیاده‌سازی در انبار با همه کنترل‌های
+/// سند انبار (موجودی منفی، ماه قفل، نوع کالا). این سندها از فرم‌های انبار اصلاح یا حذف نمی‌شوند.
+/// </summary>
+public interface IProductionStock
+{
+    /// <summary>ساخت یا (با existingId) بازنویسی سند؛ شناسه سند.</summary>
+    Task<long> SaveAsync(long? existingId, StockDocType type, DateOnly date, int warehouseId, string sourceModule, long sourceId,
+        string? description, IReadOnlyList<ProductionStockLine> lines, CancellationToken ct);
+
+    Task DeleteAsync(long docId, CancellationToken ct);
+
+    /// <summary>شماره سند (برای نمایش).</summary>
+    Task<IReadOnlyDictionary<long, int>> NumbersAsync(IReadOnlyCollection<long> docIds, CancellationToken ct);
 }

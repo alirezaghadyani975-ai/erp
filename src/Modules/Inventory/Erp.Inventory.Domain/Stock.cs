@@ -73,6 +73,11 @@ public class StockDoc : AggregateRoot<long>
     public DateTime CreatedAt { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
     public byte[] RowVer { get; private set; } = [];
+    /// <summary>ماژول سازنده (مثلاً production)؛ سند ساخته‌شده از ماژول دیگر از فرم انبار اصلاح نمی‌شود.</summary>
+    public string? SourceModule { get; private set; }
+    public long? SourceId { get; private set; }
+
+    public void SetSource(string module, long id) => (SourceModule, SourceId) = (module, id);
 
     public IReadOnlyList<StockDocLine> Lines => _lines.AsReadOnly();
 

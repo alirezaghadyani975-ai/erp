@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Erp.Production.Domain\Erp.Production.Domain.csproj" />
+    <ProjectReference Include="..\..\Inventory\Erp.Inventory.Contracts\Erp.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\Personnel\Erp.Personnel.Contracts\Erp.Personnel.Contracts.csproj" />
+  </ItemGroup>
+</Project>

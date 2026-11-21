@@ -142,10 +142,18 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
     public async Task<long> CreateAsync(SaveStockDocRequest request, CancellationToken ct)
     {
         access.Demand(request.Type.IsReceipt() ? InventoryPermissions.ReceiptCreate : InventoryPermissions.IssueCreate);
+        if (request.Type.IsProduction()) throw new DomainException($"«{request.Type.Title()}» فقط از گزارش تولید ساخته می‌شود.");
+        return await CreateCoreAsync(request, null, ct);
+    }
+
+    /// <summary>ساخت سند (بدون کنترل مجوز؛ برای ماژول تولید از راه IProductionStock).</summary>
+    internal async Task<long> CreateCoreAsync(SaveStockDocRequest request, (string Module, long Id)? source, CancellationToken ct)
+    {
         await using var tx = await uow.BeginAsync(ct);
         var docNo = (await db.StockDocs.Where(d => d.DocType == request.Type).MaxAsync(d => (int?)d.DocNo, ct) ?? 0) + 1;
         var doc = new StockDoc(request.Type, docNo, user.UserId, clock.GetUtcNow().UtcDateTime);
         await ApplyAsync(doc, request, ct);
+        if (source is { } s) doc.SetSource(s.Module, s.Id);
         await EnsureStockAsync(doc, [], ct);
         db.Add(doc);
         await db.SaveChangesAsync(ct);
@@ -153,11 +161,18 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
         return doc.Id;
     }
 
-    public async Task UpdateAsync(long id, SaveStockDocRequest request, CancellationToken ct)
+    public async Task UpdateAsync(long id, SaveStockDocRequest request, CancellationToken ct) => await UpdateCoreAsync(id, request, false, ct);
+
+    /// <param name="fromSource">از ماژول سازنده (بدون کنترل مجوز و مالکیت).</param>
+    internal async Task UpdateCoreAsync(long id, SaveStockDocRequest request, bool fromSource, CancellationToken ct)
     {
         await using var tx = await uow.BeginAsync(ct);
-        var doc = await LoadAsync(id, tracking: true, ct);
-        access.Demand(doc.IsReceipt ? InventoryPermissions.ReceiptEdit : InventoryPermissions.IssueEdit);
+        var doc = await LoadAsync(id, tracking: true, ct, checkOwner: !fromSource);
+        if (!fromSource)
+        {
+            access.Demand(doc.IsReceipt ? InventoryPermissions.ReceiptEdit : InventoryPermissions.IssueEdit);
+            EnsureNotSourced(doc);
+        }
         if (doc.DocType != request.Type) throw new DomainException("نوع سند انبار عوض نمی‌شود.");
         await EnsureUnlockedAsync(doc, "اصلاح", ct);
 
@@ -172,11 +187,17 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
         await tx.CommitAsync(ct);
     }
 
-    public async Task DeleteAsync(long id, CancellationToken ct)
+    public async Task DeleteAsync(long id, CancellationToken ct) => await DeleteCoreAsync(id, false, ct);
+
+    internal async Task DeleteCoreAsync(long id, bool fromSource, CancellationToken ct)
     {
         await using var tx = await uow.BeginAsync(ct);
-        var doc = await LoadAsync(id, tracking: true, ct);
-        access.Demand(doc.IsReceipt ? InventoryPermissions.ReceiptDelete : InventoryPermissions.IssueDelete);
+        var doc = await LoadAsync(id, tracking: true, ct, checkOwner: !fromSource);
+        if (!fromSource)
+        {
+            access.Demand(doc.IsReceipt ? InventoryPermissions.ReceiptDelete : InventoryPermissions.IssueDelete);
+            EnsureNotSourced(doc);
+        }
         await EnsureUnlockedAsync(doc, "حذف", ct);
         if (doc.IsReceipt)
             await EnsureBalancesAsync(doc.Id, doc.Lines.Select(l => (l.ItemId, doc.WarehouseId)), [], ct);
@@ -228,6 +249,8 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
                     StockDocType.PurchaseReceipt when !c.CanPurchase => "خریدنی نیست (فقط تولید می‌شود)",
                     StockDocType.SalesIssue when !c.CanSell => "فروختنی نیست",
                     StockDocType.Consumption when !c.CanConsume => "در حواله مصرف نمی‌آید",
+                    StockDocType.ProductionIssue when !c.CanProductionInput => "در تولید مصرف نمی‌شود",
+                    StockDocType.ProductionReceipt when !c.CanProductionOutput && !c.IsScrap => "محصول یا ضایعات تولید نیست",
                     _ => null
                 };
                 if (problem is not null) throw new DomainException($"ردیف {row}: «{item.Title}» از نوع «{c.Title}» است و {problem}.");
@@ -425,14 +448,43 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
             }).ToList());
     }
 
-    private async Task<StockDoc> LoadAsync(long id, bool tracking, CancellationToken ct)
+    private async Task<StockDoc> LoadAsync(long id, bool tracking, CancellationToken ct, bool checkOwner = true)
     {
         var query = db.StockDocs.Include(d => d.Lines).AsQueryable();
         if (!tracking) query = query.AsNoTracking();
         var doc = await query.FirstOrDefaultAsync(d => d.Id == id, ct) ?? throw new NotFoundException($"سند انبار با شناسه {id} پیدا نشد.");
-        access.DemandOwner(doc.CreatedBy);
+        if (checkOwner) access.DemandOwner(doc.CreatedBy);
         return doc;
     }
+
+    private static void EnsureNotSourced(StockDoc doc)
+    {
+        if (doc.SourceModule is not null)
+            throw new DomainException($"«{doc.DocType.Title()}» {doc.DocNo:000000} از گزارش تولید ساخته شده است؛ از همان گزارش اصلاح یا حذف کنید.");
+    }
+}
+
+/// <summary>سندهای انبار تولید برای ماژول تولید (بدون کنترل مجوز؛ مجوز در خود گزارش تولید کنترل می‌شود).</summary>
+public class ProductionStock(StockDocService stock, IInventoryDbContext db) : IProductionStock
+{
+    public async Task<long> SaveAsync(long? existingId, StockDocType type, DateOnly date, int warehouseId, string sourceModule, long sourceId,
+        string? description, IReadOnlyList<ProductionStockLine> lines, CancellationToken ct)
+    {
+        if (!type.IsProduction()) throw new DomainException("فقط سند انبار تولید.");
+        var request = new SaveStockDocRequest(type, PersianDate.ToPersian(date), warehouseId, null, description,
+            lines.Select(l => new StockLineRequest(l.ItemId, l.Quantity, Description: l.Description)).ToList());
+        if (existingId is long id)
+        {
+            await stock.UpdateCoreAsync(id, request, true, ct);
+            return id;
+        }
+        return await stock.CreateCoreAsync(request, (sourceModule, sourceId), ct);
+    }
+
+    public Task DeleteAsync(long docId, CancellationToken ct) => stock.DeleteCoreAsync(docId, true, ct);
+
+    public async Task<IReadOnlyDictionary<long, int>> NumbersAsync(IReadOnlyCollection<long> docIds, CancellationToken ct) =>
+        await db.StockDocs.Where(d => docIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => d.DocNo, ct);
 }
 
 /// <summary>کاردکس تعدادی کالا و موجودی انبارها.</summary>

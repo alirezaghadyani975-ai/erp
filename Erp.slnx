@@ -33,6 +33,11 @@
     <Project Path="src/Modules/Personnel/Erp.Personnel.Domain/Erp.Personnel.Domain.csproj" />
     <Project Path="src/Modules/Personnel/Erp.Personnel.Infrastructure/Erp.Personnel.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Production/">
+    <Project Path="src/Modules/Production/Erp.Production.Application/Erp.Production.Application.csproj" />
+    <Project Path="src/Modules/Production/Erp.Production.Domain/Erp.Production.Domain.csproj" />
+    <Project Path="src/Modules/Production/Erp.Production.Infrastructure/Erp.Production.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Purchases/">
     <Project Path="src/Modules/Purchases/Erp.Purchases.Application/Erp.Purchases.Application.csproj" />
     <Project Path="src/Modules/Purchases/Erp.Purchases.Domain/Erp.Purchases.Domain.csproj" />
