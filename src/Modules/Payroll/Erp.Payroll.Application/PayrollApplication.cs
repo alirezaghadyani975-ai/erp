@@ -14,6 +14,8 @@ public interface IPayrollDbContext
     IQueryable<Decree> Decrees { get; }
     IQueryable<PayRun> Runs { get; }
     IQueryable<Loan> Loans { get; }
+    IQueryable<SalaryPayment> Payments { get; }
+    IQueryable<BankAccountRef> BankAccounts { get; }
 
     /// <summary>فقط‌خواندنی از کارگزینی.</summary>
     IQueryable<EmployeeRef> Employees { get; }
@@ -64,13 +66,17 @@ public static class PayrollPermissions
     public const string LoanCreate = "pay.loan.create";
     public const string LoanEdit = "pay.loan.edit";
     public const string LoanDelete = "pay.loan.delete";
+    public const string PaymentView = "pay.payment.view";
+    public const string PaymentCreate = "pay.payment.create";
+    public const string PaymentDelete = "pay.payment.delete";
 
     public static IPermissionSource List { get; } = new PermissionList("حقوق و دستمزد")
         .Add("pay.setup", "اقلام، پارامترهای سال و تنظیمات حقوق", ("edit", "تعریف و اصلاح"))
         .Crud("pay.decree", "حکم حقوقی")
         .Crud("pay.run", "اجرای حقوق (کارکرد، محاسبه، مالیات)")
         .Add("pay.run", "اجرای حقوق (کارکرد، محاسبه، مالیات)", ("final", "قطعی کردن و صدور سند"))
-        .Crud("pay.loan", "وام و مساعده کارکنان");
+        .Crud("pay.loan", "وام و مساعده کارکنان")
+        .Add("pay.payment", "پرداخت حقوق", ("view", "مشاهده"), ("create", "ایجاد"), ("delete", "حذف"));
 }
 
 public sealed record PayItemDto(int Id, string Code, string Title, PayItemKind Kind, PayItemSource Source, string? Formula,
@@ -117,6 +123,7 @@ public static class DependencyInjection
         services.AddScoped<DecreeService>();
         services.AddScoped<PayRunService>();
         services.AddScoped<LoanService>();
+        services.AddScoped<SalaryPaymentService>();
         services.AddScoped<Files.PayrollFilesService>();
         return services;
     }
@@ -187,3 +194,27 @@ public sealed record SaveLoanRequest(int EmployeeId, LoanKind Kind, string LoanD
     short StartYear, byte StartMonth, string? Description = null);
 
 public sealed record RunVoucherDto(long VoucherId, int TempNo, int? VoucherNo, bool IsPermanent);
+
+/// <summary>حساب بانکی خزانه‌داری (فقط‌خواندنی).</summary>
+public sealed class BankAccountRef
+{
+    public int Id { get; init; }
+    public string Title { get; init; } = "";
+    public string? Iban { get; init; }
+    public bool IsActive { get; init; }
+}
+
+public sealed record BankAccountOptionDto(int Id, string Title);
+
+/// <summary>یک کارمند در فرم پرداخت: خالص حقوق، پرداخت‌شده قبلی و مانده.</summary>
+public sealed record PaymentCandidateDto(int EmployeeId, string PersonnelNo, string Name, string? Iban, decimal Net, decimal Paid, decimal Remaining);
+
+public sealed record SalaryPaymentListItemDto(int Id, int DocNo, string PayDate, string BankAccount, int Count, decimal Total, string? Description,
+    long? VoucherId, int? VoucherTempNo);
+
+public sealed record SalaryPaymentLineInput(int EmployeeId, decimal Amount);
+
+public sealed record SaveSalaryPaymentRequest(int RunId, string PayDate, int BankAccountId, string? Description, List<SalaryPaymentLineInput> Lines);
+
+/// <summary>سطر فهرست بانک (پرداخت گروهی شبا).</summary>
+public sealed record BankListRowDto(int Row, string PersonnelNo, string Name, string? NationalId, string? Iban, decimal Amount, string Description);

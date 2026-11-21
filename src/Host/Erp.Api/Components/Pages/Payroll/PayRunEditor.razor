@@ -232,10 +232,101 @@ else
                 <NoRecordsContent><MudText Class="pa-4">نتیجه‌ای نیست؛ «محاسبه» بزنید.</MudText></NoRecordsContent>
             </MudTable>
         </MudTabPanel>
+
+        <MudTabPanel Text="@($"پرداخت‌ها ({_payments.Count})")">
+            <MudStack Row="true" Class="mb-2" AlignItems="AlignItems.Center">
+                @if (_run.Status != PayRunStatus.Final)
+                {
+                    <MudText Color="Color.Secondary">پرداخت حقوق بعد از «قطعی و صدور سند» ممکن است.</MudText>
+                }
+                <MudSpacer />
+                @if (_run.Status == PayRunStatus.Final)
+                {
+                    <IfAllowed Permission="@PayrollPermissions.PaymentCreate">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Payments" OnClick="NewPaymentAsync">پرداخت حقوق</MudButton>
+                    </IfAllowed>
+                }
+            </MudStack>
+            <MudTable T="SalaryPaymentListItemDto" Items="_payments" Dense="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>شماره</MudTh>
+                    <MudTh>تاریخ</MudTh>
+                    <MudTh>حساب بانکی</MudTh>
+                    <MudTh Style="text-align:left">نفر</MudTh>
+                    <MudTh Style="text-align:left">مبلغ</MudTh>
+                    <MudTh>سند</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+                    <MudTd><span class="code">@context.PayDate</span></MudTd>
+                    <MudTd>@context.BankAccount</MudTd>
+                    <MudTd Class="num">@context.Count</MudTd>
+                    <MudTd Class="num">@Format.Amount(context.Total)</MudTd>
+                    <MudTd>
+                        @if (context.VoucherId is long vid)
+                        {
+                            <MudLink OnClick="@(() => Nav.NavigateTo($"/vouchers/{vid}"))">موقت @context.VoucherTempNo</MudLink>
+                        }
+                    </MudTd>
+                    <MudTd Style="text-align:left; white-space:nowrap">
+                        <MudIconButton Icon="@Icons.Material.Outlined.Download" Size="Size.Small" aria-label="فهرست بانک (اکسل)" OnClick="() => BankListAsync(context)" />
+                        <IfAllowed Permission="@PayrollPermissions.PaymentDelete">
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="حذف پرداخت"
+                                           OnClick="() => DeletePaymentAsync(context)" />
+                        </IfAllowed>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Class="pa-4">پرداختی ثبت نشده است.</MudText></NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
     </MudTabs>
 
     <AuditHistoryDialog @bind-Visible="_historyOpen" Entity="PayRun" Id="Id" Title="@($"حقوق {_run.Title}")" />
 }
+
+<MudDialog @bind-Visible="_payOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">پرداخت حقوق @_run?.Title</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="4"><PersianDateField @bind-Value="_payDate" Label="تاریخ پرداخت" Required="true" /></MudItem>
+            <MudItem xs="12" sm="8">
+                <MudSelect T="int?" @bind-Value="_bankId" Label="حساب بانکی" Required="true" RequiredError="حساب بانکی الزامی است."
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var b in _banks)
+                    {
+                        <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <table class="voucher-grid">
+                    <thead><tr><th></th><th>کارمند</th><th>شبا</th><th style="text-align:left">خالص</th><th style="text-align:left">پرداخت‌شده</th><th style="text-align:left">این پرداخت</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in _candidates)
+                        {
+                            <tr>
+                                <td><MudCheckBox T="bool" @bind-Value="c.Selected" Dense="true" Disabled="c.Remaining <= 0" /></td>
+                                <td><span class="code">@c.PersonnelNo</span> @c.Name</td>
+                                <td>@if (string.IsNullOrEmpty(c.Iban)) { <MudText Typo="Typo.caption" Color="Color.Warning">ندارد</MudText> } else { <span class="code">@c.Iban</span> }</td>
+                                <td class="num">@Format.Amount(c.Net)</td>
+                                <td class="num">@Format.Amount(c.Paid)</td>
+                                <td><NumCell @bind-Value="c.Amount" Amount="true" Disabled="!c.Selected" Label="@c.Name" /></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <MudText Typo="Typo.subtitle2" Class="mt-2">جمع این پرداخت: @Format.Amount(_candidates.Where(c => c.Selected).Sum(c => c.Amount)) ریال</MudText>
+            </MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_payDescription" Label="شرح" MaxLength="300" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _payOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePaymentAsync"
+                   Disabled="@(_bankId is null || string.IsNullOrWhiteSpace(_payDate) || !_candidates.Any(c => c.Selected && c.Amount > 0) || _busy)">ثبت پرداخت و سند</MudButton>
+    </DialogActions>
+</MudDialog>
 
 <MudDialog @bind-Visible="_centersOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
     <TitleContent><MudText Typo="Typo.h6">تقسیم هزینه @_centersRow?.Name بین مراکز</MudText></TitleContent>
@@ -342,6 +433,25 @@ else
     private bool _busy, _historyOpen, _centersOpen, _slipOpen;
     private List<string>? _fileWarnings;
     private RunVoucherDto? _voucher;
+    private List<SalaryPaymentListItemDto> _payments = [];
+    private List<BankAccountOptionDto> _banks = [];
+    private List<PayCandidate> _candidates = [];
+    private bool _payOpen;
+    private int? _bankId;
+    private string? _payDate, _payDescription;
+
+    private sealed class PayCandidate
+    {
+        public int EmployeeId { get; init; }
+        public string PersonnelNo { get; init; } = "";
+        public string Name { get; init; } = "";
+        public string? Iban { get; init; }
+        public decimal Net { get; init; }
+        public decimal Paid { get; init; }
+        public decimal Remaining { get; init; }
+        public decimal Amount { get; set; }
+        public bool Selected { get; set; }
+    }
     private int _tab;
     private EditRow? _centersRow;
     private List<ShareEdit> _centerEdit = [];
@@ -368,6 +478,7 @@ else
         _dirty.Clear();
         _summary = (await Backend.Run<PayRunService, List<RunSummaryRowDto>>(s => s.SummaryAsync(Id, default))).Value ?? [];
         _voucher = _run.Status == PayRunStatus.Final ? (await Backend.Run<PayRunService, RunVoucherDto?>(s => s.VoucherAsync(Id, default))).Value : null;
+        _payments = (await Backend.Run<SalaryPaymentService, List<SalaryPaymentListItemDto>>(s => s.ListAsync(Id, default))).Value ?? [];
     }
 
     private void Dirty(EditRow row) => _dirty.Add(row.Id);
@@ -483,6 +594,67 @@ else
             Snackbar.Add(insurance ? "فایل لیست بیمه (DSKKAR00 و DSKWOR00) ساخته شد." : "فایل مالیات حقوق (WP و WH) ساخته شد.", Severity.Success);
         }
         finally { _busy = false; }
+    }
+
+    private async Task NewPaymentAsync()
+    {
+        _banks = (await Backend.Run<SalaryPaymentService, List<BankAccountOptionDto>>(s => s.BankAccountsAsync(default))).Value ?? [];
+        var r = await Backend.Run<SalaryPaymentService, List<PaymentCandidateDto>>(s => s.CandidatesAsync(Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _candidates = r.Value!.Select(c => new PayCandidate
+        {
+            EmployeeId = c.EmployeeId, PersonnelNo = c.PersonnelNo, Name = c.Name, Iban = c.Iban, Net = c.Net, Paid = c.Paid,
+            Remaining = c.Remaining, Amount = c.Remaining, Selected = c.Remaining > 0
+        }).ToList();
+        if (_candidates.All(c => c.Remaining <= 0)) { Snackbar.Add("حقوق همه کارکنان این ماه پرداخت شده است.", Severity.Info); return; }
+        (_payDate, _payDescription) = (PersianDate.ToPersian(DateOnly.FromDateTime(DateTime.Now)), null);
+        _bankId = _banks.Count == 1 ? _banks[0].Id : _bankId;
+        if (_banks.Count == 0) Snackbar.Add("حساب بانکی فعالی در خزانه‌داری تعریف نشده است.", Severity.Warning);
+        _payOpen = true;
+    }
+
+    private async Task SavePaymentAsync()
+    {
+        _busy = true;
+        try
+        {
+            var request = new SaveSalaryPaymentRequest(Id, _payDate!, _bankId!.Value, _payDescription,
+                _candidates.Where(c => c.Selected && c.Amount > 0).Select(c => new SalaryPaymentLineInput(c.EmployeeId, c.Amount)).ToList());
+            var r = await Backend.Run<SalaryPaymentService, int>(s => s.CreateAsync(request, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            _payOpen = false;
+            Snackbar.Add("پرداخت حقوق و سند آن ثبت شد؛ فهرست بانک را از ستون آخر دانلود کنید.", Severity.Success);
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeletePaymentAsync(SalaryPaymentListItemDto p)
+    {
+        if (!await Dialogs.DeleteAsync($"پرداخت {Format.No(p.DocNo)}", "سند حسابداری پرداخت هم حذف می‌شود.")) return;
+        var r = await Backend.Run<SalaryPaymentService>(s => s.DeleteAsync(p.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        await LoadAsync();
+    }
+
+    private async Task BankListAsync(SalaryPaymentListItemDto p)
+    {
+        var r = await Backend.Run<SalaryPaymentService, List<BankListRowDto>>(s => s.BankListAsync(p.Id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        var file = ExcelExport.Build($"فهرست پرداخت حقوق {_run!.Title}", [p.BankAccount, $"پرداخت {Format.No(p.DocNo)} — {p.PayDate}"],
+        [
+            new ExcelColumn<BankListRowDto>("ردیف", x => x.Row, ExcelKind.Number),
+            new("شماره شبا", x => x.Iban, ExcelKind.Code),
+            new("مبلغ", x => x.Amount, ExcelKind.Amount),
+            new("نام", x => x.Name),
+            new("کد ملی", x => x.NationalId, ExcelKind.Code),
+            new("شماره پرسنلی", x => x.PersonnelNo, ExcelKind.Code),
+            new("شرح", x => x.Description),
+        ], r.Value!);
+        using var stream = new MemoryStream(file.Content);
+        using var streamRef = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("erpDownload", file.FileName, streamRef);
+        if (r.Value!.Any(x => string.IsNullOrEmpty(x.Iban))) Snackbar.Add("برای بعضی کارکنان شبا ثبت نشده است (پرونده پرسنلی).", Severity.Warning);
     }
 
     private async Task FinalizeAsync()

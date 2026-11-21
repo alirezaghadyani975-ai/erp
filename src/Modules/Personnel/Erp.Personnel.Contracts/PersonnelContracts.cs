@@ -36,7 +36,7 @@ public sealed class EmployeeRef
                e.ChildrenCount, CAST(CASE WHEN p.MaritalStatus = 2 THEN 1 ELSE 0 END AS BIT) AS IsMarried,
                e.InsuranceStatus, e.[Status], e.HireDate, e.LeaveDate,
                w.EmployeeRate, w.EmployerRate, w.UnemploymentRate, e.InsuranceNo, j.Title AS JobTitle, j.InsuranceJobCode,
-               e.Education, e.JobCategory, e.EmploymentType, e.TaxExemption, e.ServiceLocation
+               e.Education, e.JobCategory, e.EmploymentType, e.TaxExemption, e.ServiceLocation, e.Iban
         FROM hr.Employees e JOIN base.Persons p ON p.Id = e.PersonId JOIN hr.Workshops w ON w.Id = e.WorkshopId
         LEFT JOIN hr.Jobs j ON j.Id = e.JobId
         """;
@@ -66,6 +66,7 @@ public sealed class EmployeeRef
     public byte EmploymentType { get; init; }
     public byte TaxExemption { get; init; }
     public byte ServiceLocation { get; init; }
+    public string? Iban { get; init; }
 }
 
 /// <summary>کارگاه بیمه برای سربرگ لیست (ToSqlQuery روی hr.Workshops).</summary>

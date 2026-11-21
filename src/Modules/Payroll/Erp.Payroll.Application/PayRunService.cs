@@ -335,6 +335,8 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
     {
         access.Demand(PayrollPermissions.RunFinal);
         var run = await LoadAsync(runId, ct);
+        if (await db.Payments.AnyAsync(p => p.RunId == runId, ct))
+            throw new DomainException($"برای حقوق {run.Title} پرداخت ثبت شده است؛ اول پرداخت‌ها را حذف کنید.");
         run.Reopen();
         await using var tx = await uow.BeginAsync(ct);
         await posting.UnpostAsync(SourceModule, DocType, run.Id, ct);

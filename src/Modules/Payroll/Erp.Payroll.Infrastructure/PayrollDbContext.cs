@@ -19,6 +19,8 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
     public IQueryable<Decree> Decrees => Set<Decree>();
     public IQueryable<PayRun> Runs => Set<PayRun>();
     public IQueryable<Loan> Loans => Set<Loan>();
+    public IQueryable<SalaryPayment> Payments => Set<SalaryPayment>();
+    public IQueryable<BankAccountRef> BankAccounts => Set<BankAccountRef>().AsNoTracking();
     public IQueryable<CenterRef> Centers => Set<CenterRef>().AsNoTracking();
     public IQueryable<WorkshopRef> Workshops => Set<WorkshopRef>().AsNoTracking();
     public IQueryable<PersonInfoRef> PersonInfos => Set<PersonInfoRef>().AsNoTracking();
@@ -71,7 +73,7 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
         });
         b.Entity<PayRun>(e =>
         {
-            e.ToTable("Runs", "pay");
+            e.ToTable("Runs", "pay", t => t.HasTrigger("trg_Runs_Paid"));
             e.HasKey(x => x.Id);
             e.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
             e.Property(x => x.CalculatedAt).HasColumnType("datetime2(0)");
@@ -135,6 +137,28 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
             e.ToTable("RunLoanDeductions", "pay", t => t.HasTrigger("trg_RunLoanDeductions"));
             e.HasKey(x => new { x.RunId, x.LoanId });
             e.Property(x => x.Amount).HasPrecision(24, 0);
+        });
+        b.Entity<SalaryPayment>(e =>
+        {
+            e.ToTable("SalaryPayments", "pay");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
+            e.Ignore(x => x.Total);
+            e.HasMany(x => x.Lines).WithOne().HasForeignKey(l => l.PaymentId).OnDelete(DeleteBehavior.Cascade);
+            e.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            e.Ignore(x => x.DomainEvents);
+        });
+        b.Entity<SalaryPaymentLine>(e =>
+        {
+            e.ToTable("SalaryPaymentLines", "pay", t => t.HasTrigger("trg_SalaryPaymentLines"));
+            e.HasKey(x => new { x.PaymentId, x.EmployeeId });
+            e.Property(x => x.Amount).HasPrecision(24, 0);
+            e.Property(x => x.Iban).HasMaxLength(26).IsUnicode(false);
+        });
+        b.Entity<BankAccountRef>(e =>
+        {
+            e.ToTable("BankAccounts", "trs", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
         });
         b.Entity<CenterRef>(e =>
         {

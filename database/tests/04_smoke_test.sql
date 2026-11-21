@@ -284,6 +284,20 @@ BEGIN TRY
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد حذف وامی که قسطش کسر شده', N'547', CAST(@err AS NVARCHAR(50)));
 
+-- 21) پرداخت حقوق فقط بعد از قطعی (اسکریپت ۲۴)
+DECLARE @BankAcc INT, @Pay INT;
+INSERT trs.BankAccounts (Title) VALUES (N'بانک تست حقوق');
+SET @BankAcc = SCOPE_IDENTITY();
+INSERT pay.SalaryPayments (RunId, DocNo, PayDate, BankAccountId, CreatedBy) VALUES (@Run, -1, @D1, @BankAcc, 1);
+SET @Pay = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT pay.SalaryPaymentLines (PaymentId, EmployeeId, Amount) VALUES (@Pay, @Emp, 1);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد پرداخت حقوق پیش از قطعی', N'50440', CAST(@err AS NVARCHAR(50)));
+DELETE pay.SalaryPayments WHERE Id = @Pay;
+DELETE trs.BankAccounts WHERE Id = @BankAcc;
+
 UPDATE pay.Runs SET [Status] = 3 WHERE Id = @Run;
 BEGIN TRY
     UPDATE pay.Attendance SET WorkDays = 10 WHERE Id = @Att;

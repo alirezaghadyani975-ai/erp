@@ -264,6 +264,29 @@ public class PayrollTests(SqlFixture db)
             [new SaveAttendanceRequest(row.Id, 10, 10, 0, 0, 0, 0, [new CenterShareInput(s.Center, 100)], new Dictionary<int, decimal>())], default)));
         Assert.Contains("قطعی", locked.Message);
 
+        // پرداخت گروهی: بیش از خالص رد؛ پرداخت کامل با سند؛ اجرای پرداخت‌شده از قطعی برنمی‌گردد
+        var bank = await db.Run<Erp.Treasury.Application.TreasurySetupService, int>(x => x.SaveBankAccountAsync(null,
+            new Erp.Treasury.Application.SaveTreasuryBankAccountRequest("بانک حقوق تست", null, "مرکزی", "778899", null,
+                Erp.Treasury.Domain.BankAccountKind.Current, true, null), default));
+        var candidate = Assert.Single(await db.Run<SalaryPaymentService, List<PaymentCandidateDto>>(x => x.CandidatesAsync(runId, default)));
+        Assert.Equal(slip.Net, candidate.Remaining);
+        var tooMuch = await Assert.ThrowsAsync<DomainException>(() => db.Run<SalaryPaymentService, int>(x => x.CreateAsync(
+            new SaveSalaryPaymentRequest(runId, "1405/04/05", bank, null, [new SalaryPaymentLineInput(employee, slip.Net + 1)]), default)));
+        Assert.Contains("بیشتر", tooMuch.Message);
+        var paymentId = await db.Run<SalaryPaymentService, int>(x => x.CreateAsync(
+            new SaveSalaryPaymentRequest(runId, "1405/04/05", bank, null, [new SalaryPaymentLineInput(employee, slip.Net)]), default));
+        var payment = Assert.Single(await db.Run<SalaryPaymentService, List<SalaryPaymentListItemDto>>(x => x.ListAsync(runId, default)));
+        Assert.Equal(slip.Net, payment.Total);
+        var pv = await db.Run<Erp.Accounting.Application.Vouchers.VoucherService, Erp.Accounting.Application.Vouchers.VoucherDto>(x =>
+            x.GetAsync(payment.VoucherId!.Value, default));
+        Assert.True(pv.IsBalanced);
+        Assert.Contains(pv.Lines, l => l.AccountCode == "5125" && l.Debit == slip.Net);
+        Assert.Contains(pv.Lines, l => l.AccountCode == "2811" && l.Credit == slip.Net);
+        Assert.Single(await db.Run<SalaryPaymentService, List<BankListRowDto>>(x => x.BankListAsync(paymentId, default)));
+        var paid = await Assert.ThrowsAsync<DomainException>(() => db.Run<PayRunService>(x => x.ReopenAsync(runId, default)));
+        Assert.Contains("پرداخت", paid.Message);
+        await db.Run<SalaryPaymentService>(x => x.DeleteAsync(paymentId, default));
+
         // برگشت از قطعی: سند حذف می‌شود
         await db.Run<PayRunService>(x => x.ReopenAsync(runId, default));
         Assert.Null(await db.Run<PayRunService, RunVoucherDto?>(x => x.VoucherAsync(runId, default)));
