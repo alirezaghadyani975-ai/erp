@@ -151,7 +151,8 @@ public class EmployeeService(IPersonnelDbContext db, IAccessControl access, Time
         var person = await db.Persons.FirstAsync(p => p.Id == e.PersonId, ct);
         return new EmployeeDto(e.Id, e.PersonId, person.DisplayName, person.NationalId, e.PersonnelNo, e.WorkshopId, e.JobId, e.ContractType,
             PersianDate.ToPersian(e.HireDate), e.LeaveDate is { } l ? PersianDate.ToPersian(l) : null, e.LeaveReason, e.InsuranceNo,
-            e.InsuranceStatus, e.ChildrenCount, e.CostCenterId, e.Iban, e.TaxExemptPercent, e.Status, e.Notes);
+            e.InsuranceStatus, e.ChildrenCount, e.CostCenterId, e.Iban, e.TaxExemptPercent, e.Status, e.Notes,
+            e.Education, e.JobCategory, e.EmploymentType, e.TaxExemption, e.ServiceLocation);
     }
 
     public async Task<int> CreateAsync(SaveEmployeeRequest request, CancellationToken ct)
@@ -235,6 +236,7 @@ public class EmployeeService(IPersonnelDbContext db, IAccessControl access, Time
 
         e.Update(number, workshop.Id, r.JobId, r.ContractType, PersianDate.Parse(r.HireDate), r.InsuranceNo, r.InsuranceStatus, r.ChildrenCount,
             center.Id, r.Iban, r.TaxExemptPercent, r.Notes);
+        e.SetTaxInfo(r.Education, r.JobCategory, r.EmploymentType, r.TaxExemption, r.ServiceLocation);
     }
 
     private async Task<Employee> LoadAsync(int id, CancellationToken ct) =>

@@ -134,6 +134,8 @@
             {
                 <MudItem xs="6" sm="3"><MudSwitch T="bool" @bind-Value="_ins" Color="Color.Primary" Label="مشمول بیمه" /></MudItem>
                 <MudItem xs="6" sm="3"><MudSwitch T="bool" @bind-Value="_tax" Color="Color.Primary" Label="مشمول مالیات" /></MudItem>
+                <MudItem xs="12" sm="6"><MudSwitch T="bool" @bind-Value="_insWage" Color="Color.Primary" Disabled="!_ins"
+                    Label="دستمزد لیست بیمه (مزد و سنوات × روز بیمه)" /></MudItem>
             }
             @if (_kind is PayItemKind.Earning or PayItemKind.EmployerShare or PayItemKind.Provision)
             {
@@ -149,6 +151,15 @@
                     <MudAutocomplete T="int?" @bind-Value="_accountId" SearchFunc="SearchAccounts" ToStringFunc="AccountTitle" Label="حساب معین بستانکار"
                                      Required="true" RequiredError="حساب الزامی است." Clearable="true" ResetValueOnEmptyText="true"
                                      Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" />
+                </MudItem>
+            }
+            @if (_kind is PayItemKind.Earning or PayItemKind.Deduction)
+            {
+                <MudItem xs="12">
+                    <CodeSelect @bind-Value="_taxField" Label="ستون در فایل مالیات حقوق (WH)"
+                                Items="@(_kind == PayItemKind.Earning
+                                    ? TaxFileFields.Titles.Where(t => t.Key is not (33 or 34)).ToDictionary()
+                                    : TaxFileFields.Titles.Where(t => t.Key is 33 or 34).ToDictionary())" />
                 </MudItem>
             }
             <MudItem xs="6" sm="3">
@@ -179,6 +190,8 @@
     private PayItemSource? _source;
     private int _sort = 100;
     private FormulaCheckDto? _check;
+    private bool _insWage;
+    private byte? _taxField;
 
     private IEnumerable<PayItemDto> Visible =>
         _rows.Where(r => (_showInactive || r.IsActive) && (_kindFilter is null || r.Kind == _kindFilter));
@@ -203,6 +216,7 @@
     {
         (_editId, _isSystem, _code, _title, _formula, _kind, _source, _ins, _tax, _factorId, _accountId, _slip, _sort, _active, _check) =
             (null, false, null, null, null, PayItemKind.Earning, PayItemSource.Formula, true, true, null, null, true, 100, true, null);
+        (_insWage, _taxField) = (false, 7);
         _editOpen = true;
     }
 
@@ -211,6 +225,7 @@
         (_editId, _isSystem, _code, _title, _formula, _kind, _source, _ins, _tax, _factorId, _accountId, _slip, _sort, _active, _check) =
             (i.Id, i.IsSystem, i.Code, i.Title, i.Formula, i.Kind, i.Source, i.InsuranceSubject, i.TaxSubject, i.CostFactorId, i.AccountId,
              i.OnPayslip, i.SortOrder, i.IsActive, null);
+        (_insWage, _taxField) = (i.InsuranceWage, i.TaxField);
         _editOpen = true;
     }
 
@@ -218,6 +233,8 @@
     {
         _kind = kind;
         if (kind != PayItemKind.Earning) (_ins, _tax) = (false, false);
+        if (kind != PayItemKind.Earning) _insWage = false;
+        if (kind is not (PayItemKind.Earning or PayItemKind.Deduction)) _taxField = null;
         if (kind is PayItemKind.Deduction or PayItemKind.Info) _factorId = null;
         if (kind is PayItemKind.Earning or PayItemKind.Info) _accountId = null;
         if (kind == PayItemKind.Info) _slip = false;
@@ -231,7 +248,7 @@
 
     private SavePayItemRequest Request() => new(_code ?? "", _title ?? "", _kind ?? PayItemKind.Earning, _source ?? PayItemSource.Formula,
         _source == PayItemSource.Formula ? _formula : null, _kind == PayItemKind.Earning && _ins, _kind == PayItemKind.Earning && _tax,
-        _factorId, _accountId, _slip, _sort, _active);
+        _factorId, _accountId, _slip, _sort, _active, _kind == PayItemKind.Earning && _ins && _insWage, _taxField);
 
     private async Task CheckAsync()
     {

@@ -100,6 +100,24 @@ public class Employee : AggregateRoot<int>
     public string? Notes { get; private set; }
     public DateTime CreatedAt { get; private set; }
 
+    // اقلام فایل مالیات حقوق (جدول‌های راهنمای سازمان امور مالیاتی)
+    public byte? Education { get; private set; }
+    public byte? JobCategory { get; private set; }
+    public byte EmploymentType { get; private set; } = 1;
+    public byte TaxExemption { get; private set; } = 1;
+    public byte ServiceLocation { get; private set; } = 1;
+
+    /// <summary>کدهای فایل مالیات: مدرک (۱ تا ۷)، رسته (۱ تا ۱۹)، نوع استخدام (۱ تا ۱۲)، معافیت (۱ تا ۱۱)، محل خدمت (۱ تا ۴).</summary>
+    public void SetTaxInfo(byte? education, byte? jobCategory, byte employmentType, byte taxExemption, byte serviceLocation)
+    {
+        if (education is not null and not (>= 1 and <= 7)) throw new DomainException("مدرک تحصیلی معتبر نیست.");
+        if (jobCategory is not null and not (>= 1 and <= 19)) throw new DomainException("رسته شغلی معتبر نیست.");
+        if (employmentType is < 1 or > 12) throw new DomainException("نوع استخدام معتبر نیست.");
+        if (taxExemption is < 1 or > 11) throw new DomainException("نوع معافیت مالیاتی معتبر نیست.");
+        if (serviceLocation is < 1 or > 4) throw new DomainException("وضعیت محل خدمت معتبر نیست.");
+        (Education, JobCategory, EmploymentType, TaxExemption, ServiceLocation) = (education, jobCategory, employmentType, taxExemption, serviceLocation);
+    }
+
     public void Update(string personnelNo, int workshopId, int? jobId, ContractType contractType, DateOnly hireDate, string? insuranceNo,
         InsuranceStatus insuranceStatus, byte childrenCount, int costCenterId, string? iban, decimal? taxExemptPercent, string? notes)
     {

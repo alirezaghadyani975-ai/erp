@@ -22,7 +22,7 @@ public class PayItemService(IPayrollDbContext db, IAccessControl access)
             .Select(i => new PayItemDto(i.Id, i.Code, i.Title, i.Kind, i.Source, i.Formula, i.InsuranceSubject, i.TaxSubject,
                 i.CostFactorId, i.CostFactorId is int f ? factors.GetValueOrDefault(f) : null,
                 i.AccountId, i.AccountId is int a ? accounts.GetValueOrDefault(a) : null,
-                i.OnPayslip, i.SortOrder, i.IsSystem, i.IsActive)).ToList();
+                i.OnPayslip, i.SortOrder, i.IsSystem, i.IsActive, i.InsuranceWage, i.TaxField)).ToList();
     }
 
     /// <summary>معین‌های قابل انتخاب برای کسور، سهم کارفرما و ذخیره.</summary>
@@ -106,7 +106,8 @@ public class PayItemService(IPayrollDbContext db, IAccessControl access)
     private static void Apply(PayItem item, SavePayItemRequest r)
     {
         item.Redefine(r.Code, r.Kind, r.Source);
-        item.Update(r.Title, r.Formula, r.InsuranceSubject, r.TaxSubject, r.CostFactorId, r.AccountId, r.OnPayslip, r.SortOrder);
+        item.Update(r.Title, r.Formula, r.InsuranceSubject, r.TaxSubject, r.CostFactorId, r.AccountId, r.OnPayslip, r.SortOrder,
+            r.InsuranceWage, r.TaxField);
         item.SetActive(r.IsActive);
     }
 

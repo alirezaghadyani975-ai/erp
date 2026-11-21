@@ -150,11 +150,12 @@ public class PayrollTests(SqlFixture db)
         Assert.Contains(calc.Warnings, w => w.Message.Contains("مالیات"));
         var sum = Assert.Single(await db.Run<PayRunService, List<RunSummaryRowDto>>(x => x.SummaryAsync(runId, default)));
         const decimal child = 5_541_850m * 3 * 2;          // حق اولاد دو فرزند (مشمول بیمه نیست)
-        const decimal insSubject = 180_000_000m + 30_000_000 + 22_000_000;
-        Assert.Equal(insSubject + child, sum.Earnings);
+        const decimal paid = 180_000_000m + 30_000_000 + 22_000_000;   // مزد ۳۰ روز + مسکن + بن
+        const decimal insSubject = 6_000_000m * 31 + 30_000_000 + 22_000_000; // بیمه: مزد × ۳۱ روز بیمه + مزایا
+        Assert.Equal(paid + child, sum.Earnings);
         Assert.Equal(insSubject, sum.InsuranceSubject);
-        Assert.Equal(16_240_000, sum.InsuranceWorker);      // ۷٪
-        Assert.Equal(46_400_000 + 6_960_000, sum.EmployerShare); // ۲۰٪ + بیکاری ۳٪
+        Assert.Equal(16_660_000, sum.InsuranceWorker);      // ۷٪ سهم کارگر (کسور)
+        Assert.Equal(47_600_000 + 7_140_000, sum.EmployerShare); // ۲۰٪ کارفرما + ۳٪ بیکاری (هزینه)
         Assert.Equal(0, sum.Tax);
 
         // نتیجه سامانه مالیاتی با کد ملی؛ اجرا خودکار دوباره محاسبه می‌شود
@@ -164,7 +165,32 @@ public class PayrollTests(SqlFixture db)
         Assert.Equal(["0000000000"], tax.Unmatched);
         sum = Assert.Single(await db.Run<PayRunService, List<RunSummaryRowDto>>(x => x.SummaryAsync(runId, default)));
         Assert.Equal(5_000_000, sum.Tax);
-        Assert.Equal(insSubject + child - 16_240_000 - 5_000_000, sum.Net);
+        Assert.Equal(paid + child - 16_660_000 - 5_000_000, sum.Net);
+
+        // فایل‌های قانونی
+        var insurance = await db.Run<Erp.Payroll.Application.Files.PayrollFilesService, Erp.Payroll.Application.Files.PayrollFileDto>(x =>
+            x.InsuranceListAsync(runId, default));
+        var files = Unzip(insurance.Content);
+        var wor = files["DSKWOR00.DBF"];
+        Assert.Equal(400, BitConverter.ToUInt16(wor, 10));
+        Assert.Equal(1, BitConverter.ToInt32(wor, 4));
+        var record = System.Text.Encoding.Latin1.GetString(wor, BitConverter.ToUInt16(wor, 8), 400);
+        Assert.Contains("   238000000", record);                 // DSW_MASH
+        Assert.Contains("    16660000", record);                 // DSW_BIME
+        Assert.Contains(nationalId, record);
+        Assert.Equal(300, BitConverter.ToUInt16(files["DSKKAR00.DBF"], 10));
+        Assert.Contains(insurance.Warnings, w => w.Contains("کد شغل"));
+
+        var taxFile = await db.Run<Erp.Payroll.Application.Files.PayrollFilesService, Erp.Payroll.Application.Files.PayrollFileDto>(x =>
+            x.TaxFilesAsync(runId, default));
+        var taxFiles = Unzip(taxFile.Content);
+        var wh = System.Text.Encoding.UTF8.GetString(taxFiles["WH140502.TXT"]).TrimEnd().Split(',');
+        Assert.Equal(39, wh.Length);
+        Assert.Equal(nationalId, wh[0]);
+        Assert.Equal((paid + child).ToString("0"), wh[6]);           // ستون ۷: مستمر نقدی
+        Assert.Equal("16660000", wh[32]);                          // ستون ۳۳: حق بیمه سهم کارگر
+        Assert.Equal((paid + child - 16_660_000).ToString("0"), wh[34]); // ستون ۳۵: خالص پیش از مالیات
+        Assert.Equal(23, System.Text.Encoding.UTF8.GetString(taxFiles["WP140502.TXT"]).TrimEnd().Split(',').Length);
 
         // تغییر کارکرد: اجرا نیازمند محاسبه، و با ۱۵ روز نصف می‌شود
         await db.Run<PayRunService>(x => x.SaveAttendanceAsync(runId, [new SaveAttendanceRequest(row.Id, 15, 15, 0, 0, 0, 0,
@@ -178,6 +204,18 @@ public class PayrollTests(SqlFixture db)
         var badSplit = await Assert.ThrowsAsync<DomainException>(() => db.Run<PayRunService>(x => x.SaveAttendanceAsync(runId,
             [new SaveAttendanceRequest(row.Id, 15, 15, 0, 0, 0, 0, [new CenterShareInput(s.Center, 60)], new Dictionary<int, decimal>())], default)));
         Assert.Contains("۱۰۰", badSplit.Message);
+    }
+
+    private static Dictionary<string, byte[]> Unzip(byte[] zip)
+    {
+        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(zip));
+        return archive.Entries.ToDictionary(e => e.Name, e =>
+        {
+            using var s = e.Open();
+            using var ms = new MemoryStream();
+            s.CopyTo(ms);
+            return ms.ToArray();
+        });
     }
 
     [Fact]

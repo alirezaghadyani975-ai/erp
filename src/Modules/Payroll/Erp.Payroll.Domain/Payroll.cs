@@ -61,11 +61,13 @@ public static class PayVariables
         ["TAX_SUBJECT"] = "جمع مزایای مشمول مالیات",
         ["INS_EMPLOYEE_RATE"] = "نرخ سهم کارگر کارگاه (درصد)",
         ["INS_EMPLOYER_RATE"] = "نرخ سهم کارفرما کارگاه (درصد)",
+        ["INS_WAGE"] = "دستمزد ماه برای بیمه: (مزد روزانه + پایه سنوات) × روز بیمه",
+        ["INS_BENEFITS"] = "مزایای مشمول بیمه (غیر از دستمزد)",
         ["INS_UNEMPLOYMENT_RATE"] = "نرخ بیمه بیکاری کارگاه (درصد)"
     };
 
     /// <summary>متغیرهایی که به جمع اقلام وابسته‌اند؛ فرمول قلمِ مشمول بیمه/مالیات نباید از آن‌ها استفاده کند.</summary>
-    public static readonly IReadOnlySet<string> Aggregates = new HashSet<string> { "INS_SUBJECT", "TAX_SUBJECT" };
+    public static readonly IReadOnlySet<string> Aggregates = new HashSet<string> { "INS_SUBJECT", "TAX_SUBJECT", "INS_BENEFITS" };
 
     public static bool IsValidCode(string code) =>
         code.Length is > 0 and <= 30 && char.IsAsciiLetterUpper(code[0]) && code.All(c => char.IsAsciiLetterUpper(c) || char.IsAsciiDigit(c) || c == '_');
@@ -91,6 +93,8 @@ public class PayItem : AggregateRoot<int>
     public string? Formula { get; private set; }
     public bool InsuranceSubject { get; private set; }
     public bool TaxSubject { get; private set; }
+    public bool InsuranceWage { get; private set; }
+    public byte? TaxField { get; private set; }
     public int? CostFactorId { get; private set; }
     public int? AccountId { get; private set; }
     public bool OnPayslip { get; private set; } = true;
@@ -109,8 +113,10 @@ public class PayItem : AggregateRoot<int>
         if (Source != PayItemSource.Formula) Formula = null;
     }
 
+    /// <param name="insuranceWage">جزء «دستمزد» لیست بیمه (مزد و پایه سنوات)؛ در بیمه با مزد روزانه × روز بیمه جایگزین می‌شود.</param>
+    /// <param name="taxField">شماره ستون قلم در فایل مالیات حقوق (WH ریالی).</param>
     public void Update(string title, string? formula, bool insuranceSubject, bool taxSubject, int? costFactorId, int? accountId,
-        bool onPayslip, int sortOrder)
+        bool onPayslip, int sortOrder, bool insuranceWage = false, byte? taxField = null)
     {
         var t = PersianText.NormalizeOrNull(title) ?? throw new DomainException("عنوان قلم الزامی است.");
         if (t.Length > 100) throw new DomainException("عنوان قلم حداکثر ۱۰۰ نویسه است.");
@@ -133,6 +139,18 @@ public class PayItem : AggregateRoot<int>
         if (Kind == PayItemKind.Earning && accountId is not null)
             throw new DomainException("مزایا حساب جدا ندارد؛ هزینه‌اش با عامل هزینه و مرکز کارکرد ثبت و به حقوق پرداختنی می‌رود.");
 
+        if (insuranceWage && !(Kind == PayItemKind.Earning && insuranceSubject))
+            throw new DomainException("فقط مزایای مشمول بیمه جزء «دستمزد» لیست بیمه می‌شوند.");
+        if (taxField is { } tf)
+        {
+            if (!TaxFileFields.Titles.ContainsKey(tf)) throw new DomainException("ستون فایل مالیات معتبر نیست.");
+            var deductionField = tf is 33 or 34;
+            if (Kind == PayItemKind.Earning && deductionField) throw new DomainException("ستون‌های ۳۳ و ۳۴ فایل مالیات برای کسور بیمه است، نه مزایا.");
+            if (Kind == PayItemKind.Deduction && !deductionField) throw new DomainException("کسور فقط در ستون‌های ۳۳ و ۳۴ فایل مالیات (حق بیمه ماده ۱۳۷) می‌آید.");
+            if (Kind is not (PayItemKind.Earning or PayItemKind.Deduction)) throw new DomainException("فقط مزایا و کسور در فایل مالیات می‌آیند.");
+        }
+        InsuranceWage = insuranceWage;
+        TaxField = taxField;
         InsuranceSubject = insuranceSubject;
         TaxSubject = taxSubject;
         CostFactorId = costFactorId is > 0 ? costFactorId : null;

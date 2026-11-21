@@ -16,7 +16,7 @@ public sealed record PayCalcResult(IReadOnlyDictionary<int, decimal> Amounts, IR
 /// <summary>
 /// محاسبه حقوق یک کارمند در یک ماه، بدون دسترسی به دیتابیس.
 /// ۱) اقلام حکمی از حکم، اقلام ورودی (ورود ماهانه، وام و مساعده، مالیات سامانه) از کارکرد؛
-/// ۲) فرمول‌هایی که به جمع مشمول وابسته نیستند به ترتیب وابستگی؛ ۳) INS_SUBJECT و TAX_SUBJECT = جمع مزایای مشمول؛
+/// ۲) فرمول‌هایی که به جمع مشمول وابسته نیستند به ترتیب وابستگی؛ ۳) INS_SUBJECT = دستمزد بیمه (مزد و سنوات روزانه × روز بیمه) + مزایای مشمول، TAX_SUBJECT = جمع مزایای مشمول مالیات؛
 /// ۴) بقیه فرمول‌ها (بیمه، ...). اقلام غیر اطلاعاتی به ریال گرد می‌شوند.
 /// متغیر تعریف‌نشده یا خطای فرمول: صفر لحاظ و هشدار (اطلاعات ناقص بعد از محاسبه گزارش می‌شود).
 /// </summary>
@@ -111,8 +111,12 @@ public sealed class PayCalculator
             }
         }
 
+        // دستمزد بیمه به مزد حکم بستگی دارد، نه به مزایا؛ پیش از فرمول‌ها معلوم است
+        builtin["INS_WAGE"] = InsuranceBase.Compute(_items, i => values.GetValueOrDefault(i.Code), ctx.InsuranceDays, 0).Wage;
         Run(_phase1);
-        builtin["INS_SUBJECT"] = _items.Where(i => i.Kind == PayItemKind.Earning && i.InsuranceSubject).Sum(i => values.GetValueOrDefault(i.Code));
+        var insurance = InsuranceBase.Compute(_items, i => values.GetValueOrDefault(i.Code), ctx.InsuranceDays, 0);
+        builtin["INS_BENEFITS"] = insurance.Benefits;
+        builtin["INS_SUBJECT"] = insurance.Wage + insurance.Benefits;
         builtin["TAX_SUBJECT"] = _items.Where(i => i.Kind == PayItemKind.Earning && i.TaxSubject).Sum(i => values.GetValueOrDefault(i.Code));
         Run(_phase2);
 

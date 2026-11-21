@@ -241,7 +241,7 @@ END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد قلم فرمولی در ردیف حکم', N'50410', CAST(@err AS NVARCHAR(50)));
 
 -- 17) اقلام قانونی حقوق با عامل هزینه و حساب درست
-INSERT @R VALUES (N'۱۸ قلم قانونی حقوق با عامل هزینه و حساب', N'18', (SELECT CAST(COUNT(*) AS NVARCHAR(50)) FROM pay.PayItems
+INSERT @R VALUES (N'۱۹ قلم قانونی حقوق با عامل هزینه و حساب', N'19', (SELECT CAST(COUNT(*) AS NVARCHAR(50)) FROM pay.PayItems
     WHERE IsSystem = 1 AND ((Kind = 2 AND AccountId IS NOT NULL) OR (Kind = 1 AND CostFactorId IS NOT NULL)
         OR (Kind IN (3, 4) AND CostFactorId IS NOT NULL AND AccountId IS NOT NULL) OR Kind = 5)));
 
@@ -278,6 +278,16 @@ BEGIN TRY
     SET @err = 0;
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد تغییر نتیجه اجرای قطعی', N'50422', CAST(@err AS NVARCHAR(50)));
+
+-- 19) لیست بیمه و فایل مالیات (اسکریپت ۲۲): بیمه بیکاری عامل هزینه جدا از سهم کارفرما؛ «دستمزد بیمه» فقط مزایای مشمول
+INSERT @R VALUES (N'عامل هزینه بیمه بیکاری جدا از سهم کارفرما', N'1',
+    (SELECT CAST(CASE WHEN u.CostFactorId IS NOT NULL AND u.CostFactorId <> e.CostFactorId THEN 1 ELSE 0 END AS NVARCHAR(50))
+     FROM pay.PayItems u CROSS JOIN pay.PayItems e WHERE u.Code = 'INS_UNEMP' AND e.Code = 'INS_EMPLOYER'));
+BEGIN TRY
+    UPDATE pay.PayItems SET InsuranceWage = 1 WHERE Code = 'CHILD_PAY';   -- مشمول بیمه نیست
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد دستمزد بیمه برای قلم غیرمشمول', N'547', CAST(@err AS NVARCHAR(50)));
 
 UPDATE pay.Runs SET [Status] = 1 WHERE Id = @Run;
 DELETE pay.Runs WHERE Id IN (@Run, @Run2);

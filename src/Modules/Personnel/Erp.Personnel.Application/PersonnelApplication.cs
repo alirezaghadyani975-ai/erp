@@ -70,12 +70,14 @@ public sealed record EmployeeListItemDto(int Id, string PersonnelNo, int PersonI
 
 public sealed record EmployeeDto(int Id, int PersonId, string PersonName, string? NationalId, string PersonnelNo, int WorkshopId, int? JobId,
     ContractType ContractType, string HireDate, string? LeaveDate, string? LeaveReason, string? InsuranceNo, InsuranceStatus InsuranceStatus,
-    byte ChildrenCount, int CostCenterId, string? Iban, decimal? TaxExemptPercent, EmployeeStatus Status, string? Notes);
+    byte ChildrenCount, int CostCenterId, string? Iban, decimal? TaxExemptPercent, EmployeeStatus Status, string? Notes,
+    byte? Education, byte? JobCategory, byte EmploymentType, byte TaxExemption, byte ServiceLocation);
 
 /// <param name="PersonnelNo">خالی = شماره بعدی خودکار.</param>
 public sealed record SaveEmployeeRequest(int PersonId, string? PersonnelNo, int WorkshopId, int? JobId, ContractType ContractType, string HireDate,
     string? InsuranceNo, InsuranceStatus InsuranceStatus, byte ChildrenCount, int CostCenterId, string? Iban = null,
-    decimal? TaxExemptPercent = null, string? Notes = null);
+    decimal? TaxExemptPercent = null, string? Notes = null, byte? Education = null, byte? JobCategory = null, byte EmploymentType = 1,
+    byte TaxExemption = 1, byte ServiceLocation = 1);
 
 public static class DependencyInjection
 {

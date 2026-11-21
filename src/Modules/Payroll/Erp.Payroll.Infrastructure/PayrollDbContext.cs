@@ -19,6 +19,8 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
     public IQueryable<Decree> Decrees => Set<Decree>();
     public IQueryable<PayRun> Runs => Set<PayRun>();
     public IQueryable<CenterRef> Centers => Set<CenterRef>().AsNoTracking();
+    public IQueryable<WorkshopRef> Workshops => Set<WorkshopRef>().AsNoTracking();
+    public IQueryable<PersonInfoRef> PersonInfos => Set<PersonInfoRef>().AsNoTracking();
     public IQueryable<EmployeeRef> Employees => Set<EmployeeRef>().AsNoTracking();
     public IQueryable<FactorRef> Factors => Set<FactorRef>().AsNoTracking();
     public IQueryable<AccountRef> Accounts => Set<AccountRef>().AsNoTracking();
@@ -119,6 +121,16 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
         {
             e.ToTable("CostCenters", "cost", t => t.ExcludeFromMigrations());
             e.HasKey(x => x.Id);
+        });
+        b.Entity<WorkshopRef>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToSqlQuery(WorkshopRef.Sql);
+        });
+        b.Entity<PersonInfoRef>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToSqlQuery(PersonInfoRef.Sql);
         });
         b.Entity<EmployeeRef>(e =>
         {

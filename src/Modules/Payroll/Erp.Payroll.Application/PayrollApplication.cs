@@ -20,6 +20,8 @@ public interface IPayrollDbContext
     IQueryable<FactorRef> Factors { get; }
     IQueryable<AccountRef> Accounts { get; }
     IQueryable<CenterRef> Centers { get; }
+    IQueryable<WorkshopRef> Workshops { get; }
+    IQueryable<PersonInfoRef> PersonInfos { get; }
 
     void Add<T>(T entity) where T : class;
     void Remove<T>(T entity) where T : class;
@@ -63,11 +65,11 @@ public static class PayrollPermissions
 
 public sealed record PayItemDto(int Id, string Code, string Title, PayItemKind Kind, PayItemSource Source, string? Formula,
     bool InsuranceSubject, bool TaxSubject, int? CostFactorId, string? CostFactor, int? AccountId, string? Account,
-    bool OnPayslip, int SortOrder, bool IsSystem, bool IsActive);
+    bool OnPayslip, int SortOrder, bool IsSystem, bool IsActive, bool InsuranceWage, byte? TaxField);
 
 public sealed record SavePayItemRequest(string Code, string Title, PayItemKind Kind, PayItemSource Source, string? Formula,
     bool InsuranceSubject, bool TaxSubject, int? CostFactorId, int? AccountId, bool OnPayslip = true, int SortOrder = 100,
-    bool IsActive = true);
+    bool IsActive = true, bool InsuranceWage = false, byte? TaxField = null);
 
 /// <summary>یک متغیر قابل استفاده در فرمول (برای راهنمای فرم).</summary>
 public sealed record FormulaVariableDto(string Code, string Title, string Group);
@@ -104,6 +106,7 @@ public static class DependencyInjection
         services.AddScoped<PaySettingsService>();
         services.AddScoped<DecreeService>();
         services.AddScoped<PayRunService>();
+        services.AddScoped<Files.PayrollFilesService>();
         return services;
     }
 }

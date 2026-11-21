@@ -295,17 +295,20 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
         var items = await db.PayItems.AsNoTracking().ToDictionaryAsync(i => i.Id, ct);
         var ids = run.Attendances.Select(a => a.EmployeeId).ToList();
         var employees = await db.Employees.Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
+        var cap = await DailyCapAsync(run.Year, ct);
         return run.Attendances.Select(a =>
             {
                 var e = employees[a.EmployeeId];
                 var mine = run.Lines.Where(l => l.EmployeeId == a.EmployeeId).Select(l => (Item: items[l.PayItemId], l.Amount)).ToList();
                 decimal Sum(Func<PayItem, bool> f) => mine.Where(x => f(x.Item)).Sum(x => x.Amount);
+                var amounts = mine.ToDictionary(x => x.Item.Id, x => x.Amount);
+                var insurance = InsuranceBase.Compute(items.Values, i => amounts.GetValueOrDefault(i.Id), a.InsuranceDays, cap);
                 var earnings = Sum(i => i.Kind == PayItemKind.Earning);
                 var deductions = Sum(i => i.Kind == PayItemKind.Deduction);
                 var ins = Sum(i => i.Code == InsuranceWorkerCode);
                 var tax = Sum(i => i.Source == PayItemSource.TaxOffice);
                 return new RunSummaryRowDto(e.Id, e.PersonnelNo, e.DisplayName, e.NationalId, a.WorkDays, a.InsuranceDays, earnings,
-                    Sum(i => i.Kind == PayItemKind.Earning && i.InsuranceSubject), Sum(i => i.Kind == PayItemKind.Earning && i.TaxSubject),
+                    e.InsuranceStatus == InsuranceStatus.NotInsured ? 0 : insurance.Subject, Sum(i => i.Kind == PayItemKind.Earning && i.TaxSubject),
                     ins, tax, deductions - ins - tax, earnings - deductions, Sum(i => i.Kind == PayItemKind.EmployerShare),
                     Sum(i => i.Kind == PayItemKind.Provision));
             })
@@ -326,11 +329,21 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
             .Select(x => new PayslipLineDto(x.Item.Code, x.Item.Title, x.Amount)).ToList();
         var earnings = mine.Where(x => x.Item.Kind == PayItemKind.Earning).Sum(x => x.Amount);
         var deductions = mine.Where(x => x.Item.Kind == PayItemKind.Deduction).Sum(x => x.Amount);
+        var amounts = mine.ToDictionary(x => x.Item.Id, x => x.Amount);
+        var insurance = e.InsuranceStatus == InsuranceStatus.NotInsured ? 0
+            : InsuranceBase.Compute(items.Values, i => amounts.GetValueOrDefault(i.Id), a.InsuranceDays, await DailyCapAsync(run.Year, ct)).Subject;
         return new PayslipDto(run.Title, e.WorkshopTitle, e.PersonnelNo, e.DisplayName, e.NationalId, a.WorkDays, a.InsuranceDays, a.OtHours,
             a.NightHours, a.HolidayHours, a.AbsentDays, Of(PayItemKind.Earning), Of(PayItemKind.Deduction),
             mine.Where(x => x.Item.Kind == PayItemKind.EmployerShare).Select(x => new PayslipLineDto(x.Item.Code, x.Item.Title, x.Amount)).ToList(),
-            earnings, deductions, earnings - deductions,
-            mine.Where(x => x.Item.Kind == PayItemKind.Earning && x.Item.InsuranceSubject).Sum(x => x.Amount));
+            earnings, deductions, earnings - deductions, insurance);
+    }
+
+    /// <summary>سقف روزانه مشمول بیمه سال: حداقل مزد روزانه × ضریب سقف.</summary>
+    private async Task<decimal> DailyCapAsync(short year, CancellationToken ct)
+    {
+        var p = await db.YearParams.AsNoTracking().Where(x => x.Year == year && (x.Code == "MIN_WAGE" || x.Code == "INS_CAP_FACTOR"))
+            .ToDictionaryAsync(x => x.Code, x => x.Value, ct);
+        return p.GetValueOrDefault("MIN_WAGE") * p.GetValueOrDefault("INS_CAP_FACTOR");
     }
 
     // ---------------- کمکی ----------------

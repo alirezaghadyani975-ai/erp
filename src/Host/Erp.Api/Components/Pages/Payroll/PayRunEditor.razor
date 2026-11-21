@@ -3,6 +3,7 @@
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
 @inject TabService Tabs
+@inject IJSRuntime JS
 
 <TabTitle Text="@(_run is null ? "محاسبه حقوق" : $"حقوق {_run.Title}")" />
 
@@ -38,7 +39,21 @@ else
                 </MudMenu>
             </IfAllowed>
         }
+        @if (_run.Status != PayRunStatus.Draft)
+        {
+            <MudButtonGroup Variant="Variant.Outlined" Color="Color.Primary">
+                <MudButton StartIcon="@Icons.Material.Outlined.Download" OnClick="() => DownloadAsync(true)" Disabled="_busy">لیست بیمه (DBF)</MudButton>
+                <MudButton StartIcon="@Icons.Material.Outlined.Download" OnClick="() => DownloadAsync(false)" Disabled="_busy">فایل مالیات حقوق</MudButton>
+            </MudButtonGroup>
+        }
     </MudStack>
+    @if (_fileWarnings is { Count: > 0 } fw)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-2" Dense="true" ShowCloseIcon="true" CloseIconClicked="() => _fileWarnings = null">
+            فایل ساخته شد، ولی این اطلاعات ناقص است (پیش از ارسال تکمیل و دوباره دانلود کنید):
+            <ul class="mt-1 mb-0">@foreach (var w in fw) { <li>@w</li> }</ul>
+        </MudAlert>
+    }
     <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
         روزهای ماه در فرمول‌ها (MONTH_DAYS): @_run.MonthDays — روزهای تقویمی ماه (سقف روز بیمه): @_run.CalendarDays.
         @if (_run.CalculatedAt is { } at) { <span>آخرین محاسبه: <span class="code">@at</span>.</span> }
@@ -302,6 +317,7 @@ else
     private CalcResultDto? _calc;
     private TaxImportResultDto? _taxResult;
     private bool _busy, _historyOpen, _centersOpen, _slipOpen;
+    private List<string>? _fileWarnings;
     private int _tab;
     private EditRow? _centersRow;
     private List<ShareEdit> _centerEdit = [];
@@ -390,8 +406,7 @@ else
             List<TaxRowInput> rows;
             try
             {
-                rows = ExcelImport.Read(ms, ["مالیات"])
-                    .Select(x => (Key: x.Code("کد ملی") ?? x.Code("شماره پرسنلی"), Amount: x.Number("مالیات")))
+                rows = ReadTaxRows(ms)
                     .Where(x => x.Key is not null && x.Amount is not null)
                     .Select(x => new TaxRowInput(x.Key!, x.Amount!.Value)).ToList();
             }
@@ -402,6 +417,45 @@ else
             (_taxResult, _calc) = (r.Value, r.Value!.Calculation);
             await LoadAsync();
             _tab = 1;
+        }
+        finally { _busy = false; }
+    }
+
+    private static readonly string[] TaxHeaders = ["مالیات متعلقه ماه جاری", "مالیات متعلقه", "مالیات ماه جاری", "مالیات"];
+    private static readonly string[] KeyHeaders = ["کد ملی", "شماره ملی", "کدملی", "شماره پرسنلی"];
+
+    /// <summary>
+    /// سطرهای نتیجه سامانه مالیات: ستون مالیات و یکی از ستون‌های کد ملی/شماره پرسنلی با چند نام رایج پیدا می‌شود
+    /// (قالب دقیق اکسل نتیجه سامانه پس از دیدن نمونه واقعی تطبیق داده شود).
+    /// </summary>
+    private static IEnumerable<(string? Key, decimal? Amount)> ReadTaxRows(MemoryStream ms)
+    {
+        foreach (var taxHeader in TaxHeaders)
+        {
+            ms.Position = 0;
+            List<ExcelRow> rows;
+            try { rows = ExcelImport.Read(ms, [taxHeader]); }
+            catch (FormatException) { continue; }
+            return rows.Select(x => (KeyHeaders.Select(h => x.Code(h)).FirstOrDefault(v => v is not null), x.Number(taxHeader))).ToList();
+        }
+        throw new FormatException("در فایل ستون «مالیات» (یا «مالیات متعلقه ماه جاری») پیدا نشد.");
+    }
+
+    private async Task DownloadAsync(bool insurance)
+    {
+        _busy = true;
+        try
+        {
+            var r = insurance
+                ? await Backend.Run<Erp.Payroll.Application.Files.PayrollFilesService, Erp.Payroll.Application.Files.PayrollFileDto>(s => s.InsuranceListAsync(Id, default))
+                : await Backend.Run<Erp.Payroll.Application.Files.PayrollFilesService, Erp.Payroll.Application.Files.PayrollFileDto>(s => s.TaxFilesAsync(Id, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            var file = r.Value!;
+            _fileWarnings = file.Warnings.Count > 0 ? file.Warnings : null;
+            using var stream = new MemoryStream(file.Content);
+            using var streamRef = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("erpDownload", file.FileName, streamRef);
+            Snackbar.Add(insurance ? "فایل لیست بیمه (DSKKAR00 و DSKWOR00) ساخته شد." : "فایل مالیات حقوق (WP و WH) ساخته شد.", Severity.Success);
         }
         finally { _busy = false; }
     }

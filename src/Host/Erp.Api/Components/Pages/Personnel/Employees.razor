@@ -148,10 +148,12 @@
             <MudItem xs="12" sm="8">
                 <IdField Kind="IdKind.Iban" @bind-Value="_iban" Label="شبای حقوق" HelperText="برای فایل پرداخت گروهی بانک" />
             </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudNumericField T="decimal?" @bind-Value="_taxExempt" Label="معافیت مالیاتی ٪" Min="0" Max="100" HideSpinButtons="true" Class="num"
-                                 HelperText="مثلاً مناطق محروم؛ خالی = ندارد" Variant="Variant.Outlined" Margin="Margin.Dense" />
-            </MudItem>
+            <MudItem xs="12"><MudText Typo="Typo.subtitle2" Class="mt-1">اطلاعات فایل مالیات حقوق</MudText></MudItem>
+            <MudItem xs="12" sm="4"><CodeSelect @bind-Value="_education" Items="TaxFileFields.Education" Label="مدرک تحصیلی" /></MudItem>
+            <MudItem xs="12" sm="4"><CodeSelect @bind-Value="_jobCategory" Items="TaxFileFields.JobCategories" Label="رسته شغلی" /></MudItem>
+            <MudItem xs="12" sm="4"><CodeSelect @bind-Value="_employmentType" Items="TaxFileFields.EmploymentTypes" Label="نوع استخدام" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><CodeSelect @bind-Value="_taxExemption" Items="TaxFileFields.Exemptions" Label="نوع معافیت مالیاتی" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><CodeSelect @bind-Value="_serviceLocation" Items="TaxFileFields.ServiceLocations" Label="وضعیت محل خدمت" Required="true" /></MudItem>
             <MudItem xs="12">
                 <MudTextField @bind-Value="_notes" Label="توضیحات" MaxLength="500" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" />
             </MudItem>
@@ -222,6 +224,7 @@
     private EmployeeStatus _status;
     private byte _children;
     private decimal? _taxExempt;
+    private byte? _education, _jobCategory, _employmentType = 1, _taxExemption = 1, _serviceLocation = 1;
 
     private IEnumerable<EmployeeListItemDto> Visible
     {
@@ -258,6 +261,7 @@
         _workshopId = _workshops.Count(w => w.IsActive) == 1 ? _workshops.First(w => w.IsActive).Id : null;
         _centerId = null;
         (_contractType, _insuranceStatus, _children, _status, _leaveOpen) = (ContractType.Temporary, InsuranceStatus.Insured, 0, EmployeeStatus.Active, false);
+        (_education, _jobCategory, _employmentType, _taxExemption, _serviceLocation) = (null, null, 1, 1, 1);
         if (_workshops.Count == 0) Snackbar.Add("اول در «کارگاه‌های بیمه» یک کارگاه تعریف کنید.", Severity.Warning);
         _editOpen = true;
         return Task.CompletedTask;
@@ -272,6 +276,7 @@
             (e.Id, e.PersonId, e.PersonName, e.NationalId, e.PersonnelNo, e.WorkshopId, e.JobId, e.ContractType, e.HireDate);
         (_insuranceNo, _insuranceStatus, _children, _centerId, _iban, _taxExempt, _status, _notes, _leaveDate) =
             (e.InsuranceNo, e.InsuranceStatus, e.ChildrenCount, e.CostCenterId, e.Iban, e.TaxExemptPercent, e.Status, e.Notes, e.LeaveDate);
+        (_education, _jobCategory, _employmentType, _taxExemption, _serviceLocation) = (e.Education, e.JobCategory, e.EmploymentType, e.TaxExemption, e.ServiceLocation);
         (_leaveOpen, _leaveDateInput, _leaveReason) = (false, null, null);
         _editOpen = true;
     }
@@ -279,7 +284,8 @@
     private async Task SaveAsync()
     {
         var request = new SaveEmployeeRequest(_personId!.Value, _personnelNo, _workshopId!.Value, _jobId, _contractType ?? ContractType.Temporary,
-            _hireDate!, _insuranceNo, _insuranceStatus ?? InsuranceStatus.Insured, _children, _centerId!.Value, _iban, _taxExempt, _notes);
+            _hireDate!, _insuranceNo, _insuranceStatus ?? InsuranceStatus.Insured, _children, _centerId!.Value, _iban, _taxExempt, _notes,
+            _education, _jobCategory, _employmentType ?? 1, _taxExemption ?? 1, _serviceLocation ?? 1);
         var error = _editId is int id
             ? (await Backend.Run<EmployeeService>(s => s.UpdateAsync(id, request, default))).Error
             : (await Backend.Run<EmployeeService, int>(s => s.CreateAsync(request, default))).Error;
