@@ -1,0 +1,134 @@
+@* نمایش، چاپ و اکسل یک گزارش جدولی حقوق (ReportTable) با سرستون گروهی و ردیف جمع. *@
+@using Erp.Payroll.Application.Reports
+@inject IJSRuntime JS
+
+@if (Report is { } r)
+{
+    @if (r.Landscape)
+    {
+        <style>@@media print { @@page { size: A4 landscape; margin: 8mm; } }</style>
+    }
+    <div class="report-sheet">
+        <div class="report-sheet-head">
+            <div>
+                <div class="report-sheet-title">@r.Title</div>
+                @foreach (var s in r.Subtitle) { <div class="report-sheet-sub">@s</div> }
+            </div>
+            <div class="no-print d-flex gap-2">
+                <ExcelButton Build="BuildExcel" Disabled="r.Rows.Count == 0" />
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" Disabled="r.Rows.Count == 0"
+                           OnClick="@(() => JS.InvokeVoidAsync("print").AsTask())">چاپ</MudButton>
+            </div>
+        </div>
+        @if (r.Rows.Count == 0)
+        {
+            <MudText Class="pa-4" Color="Color.Secondary">داده‌ای برای این گزارش نیست.</MudText>
+        }
+        else
+        {
+            var grouped = r.Columns.Any(c => c.Group is not null);
+            <div class="report-scroll">
+                <table class="report-grid">
+                    <thead>
+                        @if (grouped)
+                        {
+                            <tr>
+                                @foreach (var block in Blocks(r.Columns))
+                                {
+                                    if (block.Group is null)
+                                    {
+                                        foreach (var c in block.Columns) { <th rowspan="2" class="@Css(c)">@c.Title</th> }
+                                    }
+                                    else
+                                    {
+                                        <th colspan="@block.Columns.Count" class="group">@block.Group</th>
+                                    }
+                                }
+                            </tr>
+                            <tr>
+                                @foreach (var c in r.Columns.Where(c => c.Group is not null)) { <th class="@Css(c)">@c.Title</th> }
+                            </tr>
+                        }
+                        else
+                        {
+                            <tr>@foreach (var c in r.Columns) { <th class="@Css(c)">@c.Title</th> }</tr>
+                        }
+                    </thead>
+                    <tbody>
+                        @foreach (var row in r.Rows)
+                        {
+                            <tr>@foreach (var c in r.Columns) { <td class="@Css(c)">@Text(c, row[c.Key])</td> }</tr>
+                        }
+                    </tbody>
+                    @if (r.Columns.Any(c => c.Sum && c.Kind is ReportColumnKind.Amount or ReportColumnKind.Number))
+                    {
+                        <tfoot>
+                            <tr>
+                                @for (var i = 0; i < r.Columns.Count; i++)
+                                {
+                                    var c = r.Columns[i];
+                                    <td class="@Css(c)">
+                                        @if (i == 0) { <span>جمع (@r.Rows.Count)</span> }
+                                        else if (c.Sum && c.Kind is ReportColumnKind.Amount or ReportColumnKind.Number) { @Text(c, r.Total(c.Key)) }
+                                    </td>
+                                }
+                            </tr>
+                        </tfoot>
+                    }
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public ReportTable? Report { get; set; }
+
+    private sealed record Block(string? Group, List<ReportColumn> Columns);
+
+    /// <summary>ستون‌های پشت‌سرهم با یک گروه، یک بلوک سرستون.</summary>
+    private static IEnumerable<Block> Blocks(List<ReportColumn> columns)
+    {
+        Block? current = null;
+        foreach (var c in columns)
+        {
+            if (current is null || current.Group != c.Group || c.Group is null)
+            {
+                if (current is not null) yield return current;
+                current = new Block(c.Group, [c]);
+            }
+            else current.Columns.Add(c);
+        }
+        if (current is not null) yield return current;
+    }
+
+    private static string Css(ReportColumn c) => c.Kind switch
+    {
+        ReportColumnKind.Amount or ReportColumnKind.Number => "num",
+        ReportColumnKind.Code => "code",
+        _ => ""
+    };
+
+    private static string Text(ReportColumn c, object? v) => v switch
+    {
+        null => "",
+        decimal d when c.Kind == ReportColumnKind.Amount => d == 0 ? "" : Format.Amount(d),
+        decimal d => d == 0 ? "" : d.ToString("#,0.##"),
+        _ => v.ToString() ?? ""
+    };
+
+    private ExcelFile? BuildExcel()
+    {
+        if (Report is not { } r) return null;
+        var columns = r.Columns.Select(c => new ExcelColumn<ReportRow>(
+            c.Group is null ? c.Title : $"{c.Group} - {c.Title}", row => row[c.Key],
+            c.Kind switch
+            {
+                ReportColumnKind.Amount => ExcelKind.Amount,
+                ReportColumnKind.Number => ExcelKind.Number,
+                ReportColumnKind.Code => ExcelKind.Code,
+                _ => ExcelKind.Text
+            })).ToList();
+        return ExcelExport.Build(r.Title, r.Subtitle, columns, r.Rows);
+    }
+}

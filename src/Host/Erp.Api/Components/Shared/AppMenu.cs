@@ -85,6 +85,16 @@ public static class AppMenu
             new("احکام حقوقی", Icons.Material.Outlined.HistoryEdu, "/payroll/decrees", P(PY.DecreeView)),
             new("وام و مساعده", Icons.Material.Outlined.Savings, "/payroll/loans", P(PY.LoanView)),
             new("تسویه حساب", Icons.Material.Outlined.Logout, "/payroll/settlement", P(PY.RunEdit)),
+            new("گزارش‌های حقوق", Icons.Material.Outlined.Assessment, Expanded: false, Children:
+            [
+                new("لیست حقوق و دستمزد", Icons.Material.Outlined.TableChart, "/payroll/reports?type=register", P(PY.ReportView)),
+                new("کارکرد ماهانه", Icons.Material.Outlined.EventNote, "/payroll/reports?type=attendance", P(PY.ReportView)),
+                new("کاردکس مرخصی", Icons.Material.Outlined.BeachAccess, "/payroll/reports?type=leave", P(PY.ReportView)),
+                new("خلاصه سالانه اقلام", Icons.Material.Outlined.CalendarViewMonth, "/payroll/reports?type=summary", P(PY.ReportView)),
+                new("سوابق حقوق کارمند", Icons.Material.Outlined.PersonSearch, "/payroll/reports?type=history", P(PY.ReportView)),
+                new("هزینه حقوق به تفکیک مرکز", Icons.Material.Outlined.Hub, "/payroll/reports?type=cost", P(PY.ReportView)),
+                new("مانده ذخیره عیدی و سنوات", Icons.Material.Outlined.Savings, "/payroll/reports?type=provisions", P(PY.ReportView)),
+            ]),
             new("تعاریف کارگزینی و حقوق", Icons.Material.Outlined.Tune, Expanded: false, Children:
             [
                 new("اقلام حقوق", Icons.Material.Outlined.Functions, "/payroll/items", P(PY.Setup)),
@@ -225,6 +235,7 @@ public static class AppMenu
         ("/payroll/runs", P(PY.RunView)),
         ("/payroll/loans", P(PY.LoanView)),
         ("/payroll/settlement", P(PY.RunEdit)),
+        ("/payroll/reports", P(PY.ReportView)),
         ("/payroll/items", P(PY.Setup)),
         ("/payroll/params", P(PY.Setup)),
         ("/persons/new", P(B.PersonCreate)),

@@ -69,6 +69,7 @@ public static class PayrollPermissions
     public const string PaymentView = "pay.payment.view";
     public const string PaymentCreate = "pay.payment.create";
     public const string PaymentDelete = "pay.payment.delete";
+    public const string ReportView = "pay.report.view";
 
     public static IPermissionSource List { get; } = new PermissionList("حقوق و دستمزد")
         .Add("pay.setup", "اقلام، پارامترهای سال و تنظیمات حقوق", ("edit", "تعریف و اصلاح"))
@@ -76,7 +77,8 @@ public static class PayrollPermissions
         .Crud("pay.run", "اجرای حقوق (کارکرد، محاسبه، مالیات)")
         .Add("pay.run", "اجرای حقوق (کارکرد، محاسبه، مالیات)", ("final", "قطعی کردن و صدور سند"))
         .Crud("pay.loan", "وام و مساعده کارکنان")
-        .Add("pay.payment", "پرداخت حقوق", ("view", "مشاهده"), ("create", "ایجاد"), ("delete", "حذف"));
+        .Add("pay.payment", "پرداخت حقوق", ("view", "مشاهده"), ("create", "ایجاد"), ("delete", "حذف"))
+        .Add("pay.report", "گزارش‌های حقوق و دستمزد", ("view", "مشاهده"));
 }
 
 public sealed record PayItemDto(int Id, string Code, string Title, PayItemKind Kind, PayItemSource Source, string? Formula,
@@ -124,6 +126,7 @@ public static class DependencyInjection
         services.AddScoped<PayRunService>();
         services.AddScoped<LoanService>();
         services.AddScoped<SalaryPaymentService>();
+        services.AddScoped<Reports.PayrollReportService>();
         services.AddScoped<Files.PayrollFilesService>();
         return services;
     }

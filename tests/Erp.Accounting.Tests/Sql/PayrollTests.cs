@@ -346,6 +346,36 @@ public class PayrollTests(SqlFixture db)
         Assert.Contains(v.Lines, l => l.AccountCode == "5126" && l.Debit == 75_000_000);   // ۳۰ + ۳۰ + ۱۵ م
         Assert.Contains(v.Lines, l => l.AccountCode == "4201" && l.Debit == 37_500_000);   // ۱۵ + ۱۵ + ۷٫۵ م
         Assert.Contains(v.Lines, l => l.AccountCode == "2522" && l.Credit == 8_000_000);
+
+        // گزارش‌ها روی همین داده
+        var reports = (Func<Erp.Payroll.Application.Reports.PayrollReportService, Task<Erp.Payroll.Application.Reports.ReportTable>> q) =>
+            db.Run<Erp.Payroll.Application.Reports.PayrollReportService, Erp.Payroll.Application.Reports.ReportTable>(q);
+        var f = new Erp.Payroll.Application.Reports.PayrollReportFilter(1405, 3, workshop);
+
+        var register = await reports(x => x.RegisterAsync(f, default));
+        var row = Assert.Single(register.Rows);
+        Assert.Contains(register.Columns, c => c.Title == "عیدی و پاداش" && (decimal)row[c.Key]! == 75_000_000);
+        Assert.Equal(st.Net, (decimal)row["net"]!);
+
+        var attendance = await reports(x => x.AttendanceAsync(f, default));
+        Assert.Equal("تسویه حساب", Assert.Single(attendance.Rows)["note"]);
+
+        var kardex = await reports(x => x.LeaveKardexAsync(f with { Month = null, EmployeeId = employee }, default));
+        Assert.Equal(5.42m, kardex.Rows.Sum(r => r["bought"] is decimal d ? d : 0));
+        Assert.Equal(0m, kardex.Rows[^1]["balance"]);
+
+        var history = await reports(x => x.EmployeeHistoryAsync(f with { Month = null, EmployeeId = employee }, default));
+        Assert.Equal(3, history.Rows.Count);
+        Assert.Equal(10_000_000m, history.Total("loan"));
+
+        var summary = await reports(x => x.YearSummaryAsync(f with { Month = null }, default));
+        Assert.Contains(summary.Rows, r => (string?)r["item"] == "بازخرید سنوات" && (decimal)r["m3"]! == 37_972_603);
+
+        var cost = await reports(x => x.CostByCenterAsync(f with { Month = 1, MonthTo = 3 }, default));
+        Assert.Equal(75m, Assert.Single(cost.Rows)["days"]);
+
+        var provisions = await reports(x => x.ProvisionBalancesAsync(f, default));
+        Assert.Equal(0m, Assert.Single(provisions.Rows)["total"]);   // تسویه کل ذخیره را آزاد کرده است
     }
 
     private static Dictionary<string, byte[]> Unzip(byte[] zip)

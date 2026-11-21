@@ -45,6 +45,27 @@ html, body {
 }
 @media (max-width: 600px) { .payslip-cols { grid-template-columns: 1fr; } }
 
+/* گزارش‌های جدولی حقوق (نمایش و چاپ) */
+.report-sheet { background: var(--mud-palette-surface); border: 1px solid var(--mud-palette-lines-default); border-radius: 6px; padding: 12px; }
+.report-sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.report-sheet-title { font-size: 1.1rem; font-weight: 700; }
+.report-sheet-sub { font-size: .8rem; color: var(--mud-palette-text-secondary); }
+.report-scroll { overflow-x: auto; }
+.report-grid { border-collapse: collapse; width: 100%; font-size: .82rem; }
+.report-grid th, .report-grid td { border: 1px solid var(--mud-palette-lines-default); padding: 3px 6px; white-space: nowrap; text-align: right; }
+.report-grid th { background: var(--mud-palette-background-gray); font-weight: 600; }
+.report-grid th.group { text-align: center; }
+.report-grid .num { text-align: left; font-variant-numeric: tabular-nums; }
+.report-grid tbody tr:nth-child(even) td { background: var(--mud-palette-background-gray); }
+.report-grid tfoot td { font-weight: 700; background: var(--mud-palette-background-gray); }
+@media print {
+    .report-sheet { border: none; padding: 0; background: #fff; }
+    .report-scroll { overflow: visible; }
+    .report-grid { font-size: 7.5pt; }
+    .report-grid th, .report-grid td { padding: 1px 3px; border-color: #888; }
+    .report-grid thead { display: table-header-group; }
+}
+
 /* جدول کارکرد ماه */
 .attendance-grid td { vertical-align: middle; }
 .attendance-grid .num-cell { margin: 0; }

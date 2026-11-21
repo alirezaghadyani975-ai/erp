@@ -1,0 +1,164 @@
+@page "/payroll/reports"
+@using Erp.Payroll.Application.Reports
+@inject Backend Backend
+@inject ISnackbar Snackbar
+
+<TabTitle Text="گزارش‌های حقوق" />
+
+<div class="no-print">
+    <MudText Typo="Typo.h5" Class="mb-2">گزارش‌های حقوق و دستمزد</MudText>
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <MudGrid Spacing="2" Class="align-center">
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="string" Value="_type" ValueChanged="OnTypeChanged" Label="گزارش" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var (key, title) in Types)
+                    {
+                        <MudSelectItem T="string" Value="key">@title</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6" sm="3" md="1">
+                <MudNumericField T="short" @bind-Value="_year" Label="سال" Min="1300" Max="1500" HideSpinButtons="true" Class="num"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            @if (NeedsMonth)
+            {
+                <MudItem xs="6" sm="3" md="2">
+                    <MudSelect T="byte?" @bind-Value="_month" Label="@(_type == "cost" ? "از ماه" : "ماه")" Clearable="@(_type is "cost" or "provisions")"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                        @for (byte m = 1; m <= 12; m++)
+                        {
+                            var month = m;
+                            <MudSelectItem T="byte?" Value="month">@PayRuns.MonthNames[month - 1]</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
+            @if (_type == "cost")
+            {
+                <MudItem xs="6" sm="3" md="2">
+                    <MudSelect T="byte?" @bind-Value="_monthTo" Label="تا ماه" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                        @for (byte m = 1; m <= 12; m++)
+                        {
+                            var month = m;
+                            <MudSelectItem T="byte?" Value="month">@PayRuns.MonthNames[month - 1]</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
+            @if (_type != "history")
+            {
+                <MudItem xs="12" sm="6" md="2">
+                    <MudSelect T="int?" @bind-Value="_workshopId" Label="کارگاه" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                        @foreach (var w in _workshops)
+                        {
+                            <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
+            @if (_type is "history" or "leave")
+            {
+                <MudItem xs="12" sm="6" md="3">
+                    <MudAutocomplete T="int?" @bind-Value="_employeeId" SearchFunc="Search" ToStringFunc="EmployeeTitle"
+                                     Label="@(_type == "leave" ? "کارمند (خالی = خلاصه همه)" : "کارمند")" Clearable="true" ResetValueOnEmptyText="true"
+                                     Dense="true" MaxItems="null" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+            }
+            @if (_type is not ("attendance" or "leave" or "provisions"))
+            {
+                <MudItem xs="6" sm="3" md="1"><MudCheckBox T="bool" @bind-Value="_finalOnly" Label="فقط قطعی" Dense="true" /></MudItem>
+            }
+            <MudItem xs="6" sm="3" md="1">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync" Disabled="_busy">نمایش</MudButton>
+            </MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">@Help</MudText>
+    </MudPaper>
+</div>
+
+@if (_busy) { <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="no-print" /> }
+<ReportTableView Report="_report" />
+
+@code {
+    [SupplyParameterFromQuery(Name = "type")] public string? TypeQuery { get; set; }
+
+    private static readonly (string Key, string Title)[] Types =
+    [
+        ("register", "لیست حقوق و دستمزد"), ("attendance", "کارکرد ماهانه"), ("leave", "کاردکس مرخصی"),
+        ("summary", "خلاصه سالانه اقلام"), ("history", "سوابق حقوق کارمند"), ("cost", "هزینه حقوق به تفکیک مرکز"),
+        ("provisions", "مانده ذخیره عیدی و سنوات")
+    ];
+
+    private string _type = "register";
+    private short _year;
+    private byte? _month, _monthTo;
+    private int? _workshopId, _employeeId;
+    private bool _finalOnly, _busy;
+    private ReportTable? _report;
+    private List<WorkshopDto> _workshops = [];
+    private List<EmployeeOptionDto> _employees = [];
+
+    private bool NeedsMonth => _type is "register" or "attendance" or "cost" or "provisions";
+
+    private string Help => _type switch
+    {
+        "register" => "هر قلم حقوق یک ستون؛ مزایا، کسور، خالص، سهم کارفرما و ذخیره‌ها. چاپ افقی A4.",
+        "attendance" => "کارکرد، روز بیمه، ساعت‌ها، غیبت، مرخصی و مرکز هزینه هر کارمند در ماه.",
+        "leave" => "با انتخاب کارمند گردش ماه‌به‌ماه؛ بدون کارمند خلاصه مانده مرخصی همه. استحقاق = مرخصی سالانه × کارکرد ÷ روزهای سال.",
+        "summary" => "جمع هر قلم در ۱۲ ماه سال و خالص پرداختی هر ماه.",
+        "history" => "حقوق ماه‌به‌ماه یک کارمند در سال: مزایا، بیمه، مالیات، وام، خالص و سهم کارفرما.",
+        "cost" => "هزینه حقوق به نسبت تقسیم کارکرد بین مراکز (ورودی جذب دستمزد در بهای تمام‌شده). بدون ماه = کل سال.",
+        _ => "مانده ذخیره عیدی و سنوات هر کارمند تا پایان ماه (فقط حقوق‌های قطعی). بدون ماه = پایان سال."
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var today = PersianDate.ToPersian(DateOnly.FromDateTime(DateTime.Now));
+        (_year, _month) = (short.Parse(today[..4]), byte.Parse(today.Substring(5, 2)));
+        if (TypeQuery is { } t && Types.Any(x => x.Key == t)) _type = t;
+        _workshops = (await Backend.Run<WorkshopService, List<WorkshopDto>>(s => s.GetAllAsync(true, default))).Value ?? [];
+        _employees = (await Backend.Run<PayRunService, List<EmployeeOptionDto>>(s => s.EmployeesAsync(default))).Value ?? [];
+    }
+
+    private void OnTypeChanged(string type)
+    {
+        (_type, _report) = (type, null);
+    }
+
+    private async Task RunAsync()
+    {
+        if (_type == "history" && _employeeId is null) { Snackbar.Add("کارمند را انتخاب کنید.", Severity.Warning); return; }
+        if (_type is "register" or "attendance" && _month is null) { Snackbar.Add("ماه را انتخاب کنید.", Severity.Warning); return; }
+        _busy = true;
+        try
+        {
+            var f = new PayrollReportFilter(_year, NeedsMonth ? _month : null, _type == "history" ? null : _workshopId,
+                _type is "history" or "leave" ? _employeeId : null, _finalOnly, _type == "cost" ? _monthTo : null);
+            var type = _type;
+            var r = await Backend.Run<PayrollReportService, ReportTable>(s => type switch
+            {
+                "register" => s.RegisterAsync(f, default),
+                "attendance" => s.AttendanceAsync(f, default),
+                "leave" => s.LeaveKardexAsync(f, default),
+                "summary" => s.YearSummaryAsync(f, default),
+                "history" => s.EmployeeHistoryAsync(f, default),
+                "cost" => s.CostByCenterAsync(f, default),
+                _ => s.ProvisionBalancesAsync(f, default)
+            });
+            if (r.Success) _report = r.Value; else Snackbar.Add(r.Error!, Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+
+    private string? EmployeeTitle(int? id) =>
+        id is int i ? _employees.FirstOrDefault(e => e.Id == i) is { } e ? $"{e.PersonnelNo} — {e.Name}" : "؟" : null;
+
+    private Task<IEnumerable<int?>> Search(string? term, CancellationToken ct)
+    {
+        var t = PersianText.NormalizeOrNull(term);
+        IEnumerable<EmployeeOptionDto> q = _employees;
+        if (t is not null && t != EmployeeTitle(_employeeId)) q = q.Where(e => e.Name.Contains(t) || e.PersonnelNo.StartsWith(t));
+        return Task.FromResult(q.Select(e => (int?)e.Id));
+    }
+}
