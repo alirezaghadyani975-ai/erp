@@ -1,0 +1,173 @@
+@page "/payroll/settlement"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject NavigationManager Nav
+
+<TabTitle Text="تسویه حساب" />
+
+<MudText Typo="Typo.h5" Class="mb-1">تسویه حساب کارمند</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    اختیاری است: می‌توانید در جدول کارکرد ماه هم علامت تسویه بزنید. این فرم ترک کار را در پرونده ثبت می‌کند، حقوق ماه ترک کار را (اگر نیست)
+    می‌سازد و با علامت تسویه محاسبه می‌کند: عیدی سال (از محل ذخیره)، بازخرید سنوات (از محل ذخیره)، بازخرید مرخصی مانده (هزینه همین ماه)
+    و کسر کامل مانده وام و مساعده. پرداخت و سند مثل هر ماه از صفحه حقوق همان ماه (قطعی، پرداخت) انجام می‌شود.
+</MudText>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="6">
+            <MudAutocomplete T="int?" Value="_employeeId" ValueChanged="OnEmployeeChanged" SearchFunc="Search" ToStringFunc="EmployeeTitle"
+                             Label="کارمند" Clearable="true" ResetValueOnEmptyText="true" Dense="true" MaxItems="null"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        @if (_employee is { } e)
+        {
+            @if (e.LeaveDate is null)
+            {
+                <MudItem xs="12" sm="3"><PersianDateField @bind-Value="_leaveDate" Label="تاریخ ترک کار" Required="true" /></MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_reason" Label="علت ترک کار" MaxLength="200" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="LeaveAndSettleAsync"
+                               Disabled="@(string.IsNullOrWhiteSpace(_leaveDate) || _busy)">ثبت ترک کار و محاسبه تسویه</MudButton>
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12" sm="6" Class="d-flex align-center gap-2">
+                    <MudText>ترک کار: <span class="code">@e.LeaveDate</span> @e.LeaveReason</MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="SettleAsync" Disabled="_busy">
+                        @(_statement is null ? "محاسبه تسویه" : "محاسبه دوباره")
+                    </MudButton>
+                </MudItem>
+            }
+        }
+    </MudGrid>
+</MudPaper>
+
+@if (_statement is { } s)
+{
+    <MudPaper Class="pa-3" Elevation="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudText Typo="Typo.h6">صورت تسویه حساب @s.PersonnelNo @s.Name</MudText>
+            <RunStatusChip Status="s.RunStatus" />
+            <MudSpacer />
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.OpenInNew" OnClick="@(() => Nav.NavigateTo($"/payroll/runs/{s.RunId}"))">
+                حقوق @s.RunTitle
+            </MudButton>
+            @if (s.IsSettlement && s.RunStatus != PayRunStatus.Final)
+            {
+                <MudButton Color="Color.Error" OnClick="UnsettleAsync" Disabled="_busy">لغو تسویه</MudButton>
+            }
+        </MudStack>
+        @if (s.Warnings.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2"><ul class="mb-0">@foreach (var w in s.Warnings) { <li>@w</li> }</ul></MudAlert>
+        }
+        <table class="voucher-grid" style="max-width:640px">
+            <tr><td>تاریخ ترک کار</td><td class="code">@s.LeaveDate</td></tr>
+            <tr><td>شروع دوره خدمت (استخدام یا آخرین تسویه)</td><td class="code">@s.ServiceStart</td></tr>
+            <tr><td>روزهای خدمت</td><td class="num">@s.ServiceDays.ToString("#,0")</td></tr>
+            <tr><td>کارکرد امسال (روز)</td><td class="num">@s.YearWorkDays.ToString("#,0.##")</td></tr>
+            <tr><td>مانده مرخصی (روز)</td><td class="num">@s.LeaveBalance.ToString("#,0.##")</td></tr>
+            <tr><td>عیدی و پاداش</td><td class="num">@Format.Amount(s.Bonus)</td></tr>
+            <tr><td>بازخرید سنوات</td><td class="num">@Format.Amount(s.Severance)</td></tr>
+            <tr><td>بازخرید مرخصی استفاده‌نشده</td><td class="num">@Format.Amount(s.LeaveBuyout)</td></tr>
+            <tr><td>جمع مزایای ماه آخر (با حقوق روزهای کارکرد)</td><td class="num">@Format.Amount(s.TotalEarnings)</td></tr>
+            <tr><td>تسویه وام و مساعده (کسر)</td><td class="num">@Format.Amount(s.LoansSettled)</td></tr>
+            <tr><td>جمع کسور (بیمه، مالیات، وام، ...)</td><td class="num">@Format.Amount(s.TotalDeductions)</td></tr>
+            <tr><td><b>خالص قابل پرداخت</b></td><td class="num"><b>@Format.Amount(s.Net)</b></td></tr>
+        </table>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-2">
+            مالیات ماه تسویه را مثل هر ماه از نتیجه سامانه مالیاتی در صفحه حقوق همان ماه وارد کنید؛ بعد «قطعی و صدور سند» و «پرداخت حقوق».
+        </MudText>
+    </MudPaper>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "employee")] public int? EmployeeQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "run")] public int? RunQuery { get; set; }
+
+    private List<EmployeeOptionDto> _employees = [];
+    private int? _employeeId;
+    private EmployeeDto? _employee;
+    private SettlementDto? _statement;
+    private string? _leaveDate, _reason;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _employees = (await Backend.Run<PayRunService, List<EmployeeOptionDto>>(s => s.EmployeesAsync(default))).Value ?? [];
+        if (EmployeeQuery is int e) await OnEmployeeChanged(e);
+    }
+
+    private async Task OnEmployeeChanged(int? id)
+    {
+        (_employeeId, _employee, _statement) = (id, null, null);
+        if (id is not int e) return;
+        var r = await Backend.Run<EmployeeService, EmployeeDto>(s => s.GetAsync(e, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _employee = r.Value;
+        _leaveDate = PersianDate.ToPersian(DateOnly.FromDateTime(DateTime.Now));
+        var runId = RunQuery ?? (await Backend.Run<PayRunService, int?>(s => s.SettlementRunAsync(e, default))).Value;
+        if (runId is int rid)
+        {
+            var st = await Backend.Run<PayRunService, SettlementDto>(s => s.SettlementAsync(rid, e, default));
+            if (st.Success && st.Value!.IsSettlement) _statement = st.Value;
+        }
+    }
+
+    private async Task LeaveAndSettleAsync()
+    {
+        var id = _employeeId!.Value;
+        if (!await Dialogs.AskAsync("ثبت ترک کار و تسویه", $"ترک کار {_employee!.PersonName} از {_leaveDate} در پرونده ثبت و تسویه حساب محاسبه می‌شود.", "ثبت و محاسبه")) return;
+        _busy = true;
+        try
+        {
+            var (date, reason) = (_leaveDate!, _reason);
+            var r = await Backend.Run<EmployeeService>(s => s.LeaveAsync(id, date, reason, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            await OnEmployeeChanged(id);
+            await SettleCoreAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SettleAsync()
+    {
+        _busy = true;
+        try { await SettleCoreAsync(); }
+        finally { _busy = false; }
+    }
+
+    private async Task SettleCoreAsync()
+    {
+        var id = _employeeId!.Value;
+        var r = await Backend.Run<PayRunService, SettlementDto>(s => s.SettleAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _statement = r.Value;
+        Snackbar.Add("تسویه حساب محاسبه شد.", Severity.Success);
+    }
+
+    private async Task UnsettleAsync()
+    {
+        var (runId, id) = (_statement!.RunId, _statement.EmployeeId);
+        if (!await Dialogs.AskAsync("لغو تسویه", "علامت تسویه برداشته و حقوق آن ماه دوباره محاسبه می‌شود (ترک کار در پرونده می‌ماند).", "لغو تسویه")) return;
+        var r = await Backend.Run<PayRunService>(s => s.UnsettleAsync(runId, id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _statement = null;
+        Snackbar.Add("تسویه لغو شد.", Severity.Success);
+    }
+
+    private string? EmployeeTitle(int? id) =>
+        id is int i ? _employees.FirstOrDefault(e => e.Id == i) is { } e ? $"{e.PersonnelNo} — {e.Name}{(e.Status == EmployeeStatus.Left ? " (ترک کار)" : "")}" : "؟" : null;
+
+    private Task<IEnumerable<int?>> Search(string? term, CancellationToken ct)
+    {
+        var t = PersianText.NormalizeOrNull(term);
+        IEnumerable<EmployeeOptionDto> q = _employees;
+        if (t is not null && t != EmployeeTitle(_employeeId)) q = q.Where(e => e.Name.Contains(t) || e.PersonnelNo.StartsWith(t));
+        return Task.FromResult(q.Select(e => (int?)e.Id));
+    }
+}

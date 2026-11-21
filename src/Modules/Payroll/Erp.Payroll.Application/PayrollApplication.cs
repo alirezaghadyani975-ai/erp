@@ -148,7 +148,7 @@ public sealed record CenterShareDto(int CostCenterId, string Title, decimal Perc
 
 public sealed record AttendanceRowDto(int Id, int EmployeeId, string PersonnelNo, string Name, string? NationalId, decimal WorkDays,
     int InsuranceDays, decimal OtHours, decimal NightHours, decimal HolidayHours, decimal AbsentDays, List<CenterShareDto> Centers,
-    Dictionary<int, decimal> Inputs);
+    Dictionary<int, decimal> Inputs, decimal LeaveDays = 0, bool IsSettlement = false);
 
 public sealed record PayRunDto(int Id, short Year, byte Month, string Title, int WorkshopId, string Workshop, PayRunStatus Status,
     int MonthDays, int CalendarDays, string? Description, string? CalculatedAt, List<InputColumnDto> InputColumns, List<AttendanceRowDto> Rows);
@@ -156,7 +156,7 @@ public sealed record PayRunDto(int Id, short Year, byte Month, string Title, int
 public sealed record CenterShareInput(int CostCenterId, decimal Percent);
 
 public sealed record SaveAttendanceRequest(int AttendanceId, decimal WorkDays, int InsuranceDays, decimal OtHours, decimal NightHours,
-    decimal HolidayHours, decimal AbsentDays, List<CenterShareInput> Centers, Dictionary<int, decimal> Inputs);
+    decimal HolidayHours, decimal AbsentDays, List<CenterShareInput> Centers, Dictionary<int, decimal> Inputs, decimal LeaveDays = 0, bool? IsSettlement = null);
 
 public sealed record CalcWarningDto(string PersonnelNo, string Employee, string Message);
 
@@ -218,3 +218,8 @@ public sealed record SaveSalaryPaymentRequest(int RunId, string PayDate, int Ban
 
 /// <summary>سطر فهرست بانک (پرداخت گروهی شبا).</summary>
 public sealed record BankListRowDto(int Row, string PersonnelNo, string Name, string? NationalId, string? Iban, decimal Amount, string Description);
+
+/// <summary>صورت تسویه حساب کارمند.</summary>
+public sealed record SettlementDto(int RunId, string RunTitle, PayRunStatus RunStatus, int EmployeeId, string PersonnelNo, string Name, string? LeaveDate,
+    bool IsSettlement, string ServiceStart, decimal ServiceDays, decimal LeaveBalance, decimal YearWorkDays, decimal Bonus, decimal Severance,
+    decimal LeaveBuyout, decimal LoansSettled, decimal TotalEarnings, decimal TotalDeductions, decimal Net, List<string> Warnings);

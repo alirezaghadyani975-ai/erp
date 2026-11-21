@@ -63,6 +63,12 @@ public static class PayVariables
         ["INS_EMPLOYER_RATE"] = "نرخ سهم کارفرما کارگاه (درصد)",
         ["INS_WAGE"] = "دستمزد ماه برای بیمه: (مزد روزانه + پایه سنوات) × روز بیمه",
         ["INS_BENEFITS"] = "مزایای مشمول بیمه (غیر از دستمزد)",
+        ["MONTH"] = "ماه اجرای حقوق (۱ تا ۱۲)",
+        ["SETTLEMENT"] = "تسویه حساب در این ماه (۱) یا نه (۰)",
+        ["YEAR_DAYS"] = "روزهای سال (۳۶۰ در حالت ۳۰ روزه، وگرنه روز واقعی سال)",
+        ["YEAR_WORK_DAYS"] = "جمع روز کارکرد امسال تا این ماه",
+        ["SERVICE_DAYS"] = "روزهای خدمت از استخدام (یا آخرین تسویه) تا ترک کار / پایان ماه",
+        ["LEAVE_BALANCE"] = "مانده مرخصی استحقاقی (روز)",
         ["INS_UNEMPLOYMENT_RATE"] = "نرخ بیمه بیکاری کارگاه (درصد)"
     };
 
@@ -136,8 +142,6 @@ public class PayItem : AggregateRoot<int>
             throw new DomainException("قلم اطلاعاتی عامل هزینه یا حساب ندارد.");
         if (Kind == PayItemKind.Deduction && costFactorId is not null)
             throw new DomainException("کسور عامل هزینه ندارد؛ فقط حساب بستانکار.");
-        if (Kind == PayItemKind.Earning && accountId is not null)
-            throw new DomainException("مزایا حساب جدا ندارد؛ هزینه‌اش با عامل هزینه و مرکز کارکرد ثبت و به حقوق پرداختنی می‌رود.");
 
         if (insuranceWage && !(Kind == PayItemKind.Earning && insuranceSubject))
             throw new DomainException("فقط مزایای مشمول بیمه جزء «دستمزد» لیست بیمه می‌شوند.");

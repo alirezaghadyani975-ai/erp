@@ -135,13 +135,17 @@ public class Attendance
     public decimal NightHours { get; private set; }
     public decimal HolidayHours { get; private set; }
     public decimal AbsentDays { get; private set; }
+    /// <summary>مرخصی استحقاقی استفاده‌شده در این ماه (روز).</summary>
+    public decimal LeaveDays { get; private set; }
+    /// <summary>این ماه تسویه حساب کارمند است (عیدی، بازخرید سنوات و مرخصی، کسر کامل مانده وام‌ها).</summary>
+    public bool IsSettlement { get; private set; }
     public IReadOnlyList<AttendanceCenter> Centers => _centers.AsReadOnly();
     public IReadOnlyList<AttendanceInput> Inputs => _inputs.AsReadOnly();
 
     /// <param name="monthDays">سقف روز کارکرد (MONTH_DAYS)</param>
     /// <param name="calendarDays">روزهای واقعی ماه؛ سقف روز بیمه</param>
     public void Update(decimal workDays, int insuranceDays, decimal otHours, decimal nightHours, decimal holidayHours, decimal absentDays,
-        int monthDays, int calendarDays)
+        int monthDays, int calendarDays, decimal leaveDays = 0)
     {
         if (workDays < 0 || workDays > monthDays) throw new DomainException($"روز کارکرد باید بین ۰ و {monthDays} باشد.");
         if (insuranceDays < 0 || insuranceDays > calendarDays) throw new DomainException($"روز بیمه باید بین ۰ و {calendarDays} باشد.");
@@ -154,7 +158,11 @@ public class Attendance
         NightHours = Math.Round(nightHours, 2);
         HolidayHours = Math.Round(holidayHours, 2);
         AbsentDays = Math.Round(absentDays, 2);
+        if (leaveDays < 0 || leaveDays > calendarDays) throw new DomainException("روز مرخصی معتبر نیست.");
+        LeaveDays = Math.Round(leaveDays, 2);
     }
+
+    public void SetSettlement(bool settlement) => IsSettlement = settlement;
 
     /// <summary>تقسیم هزینه بین مراکز به درصد؛ جمع باید ۱۰۰ باشد.</summary>
     public void SetCenters(IReadOnlyCollection<(int CenterId, decimal Percent)> centers)

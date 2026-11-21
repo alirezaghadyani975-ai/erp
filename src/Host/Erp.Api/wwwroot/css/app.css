@@ -25,6 +25,26 @@ html, body {
 .formula { direction: ltr; unicode-bidi: isolate; font-family: Consolas, "Courier New", monospace; font-size: .8rem; }
 .formula-input textarea { direction: ltr; text-align: left; font-family: Consolas, "Courier New", monospace; }
 
+/* فیش حقوقی چاپی: هر فیش یک صفحه */
+.payslip { border: 1px solid var(--mud-palette-lines-default); border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;
+    background: var(--mud-palette-surface); }
+.payslip-head { display: flex; justify-content: space-between; border-bottom: 1px solid var(--mud-palette-lines-default);
+    padding-bottom: 6px; margin-bottom: 8px; }
+.payslip-info { width: 100%; margin-bottom: 8px; font-size: .9rem; }
+.payslip-info td { padding: 2px 4px; }
+.payslip-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.payslip-lines { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.payslip-lines th, .payslip-lines td { border-bottom: 1px solid var(--mud-palette-lines-default); padding: 3px 6px; text-align: right; }
+.payslip-lines th.num, .payslip-lines td.num { text-align: left; }
+.payslip-lines tfoot td { font-weight: 700; }
+.payslip-net { margin-top: 10px; padding: 6px 8px; border: 1px solid var(--mud-palette-lines-default); border-radius: 4px; }
+.payslip-foot { margin-top: 4px; font-size: .8rem; color: var(--mud-palette-text-secondary); }
+@media print {
+    .payslip { break-after: page; border-color: #999; background: #fff; }
+    .payslip:last-child { break-after: auto; }
+}
+@media (max-width: 600px) { .payslip-cols { grid-template-columns: 1fr; } }
+
 /* جدول کارکرد ماه */
 .attendance-grid td { vertical-align: middle; }
 .attendance-grid .num-cell { margin: 0; }

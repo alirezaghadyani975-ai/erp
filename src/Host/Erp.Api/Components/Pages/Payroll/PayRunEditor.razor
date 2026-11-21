@@ -123,6 +123,7 @@ else
                             <th>شب‌کاری</th>
                             <th>تعطیل‌کاری</th>
                             <th>غیبت (روز)</th>
+                            <th>مرخصی (روز)</th>
                             @foreach (var col in _run.InputColumns)
                             {
                                 <th title="@col.Code">@col.Title</th>
@@ -136,13 +137,14 @@ else
                         {
                             <tr class="@(_dirty.Contains(row.Id) ? "row-dirty" : null)">
                                 <td><span class="code">@row.PersonnelNo</span></td>
-                                <td style="white-space:nowrap">@row.Name</td>
+                                <td style="white-space:nowrap">@row.Name @if (row.IsSettlement) { <MudChip T="string" Size="Size.Small" Color="Color.Warning" OnClick="@(() => Nav.NavigateTo($"/payroll/settlement?run={Id}&employee={row.EmployeeId}"))">تسویه</MudChip> }</td>
                                 <td><NumCell @bind-Value="row.WorkDays" Disabled="!editable" OnChange="() => Dirty(row)" Label="کارکرد" /></td>
                                 <td><NumCell @bind-Value="row.InsuranceDays" Disabled="!editable" OnChange="() => Dirty(row)" Label="روز بیمه" /></td>
                                 <td><NumCell @bind-Value="row.OtHours" Disabled="!editable" OnChange="() => Dirty(row)" Label="اضافه‌کار" /></td>
                                 <td><NumCell @bind-Value="row.NightHours" Disabled="!editable" OnChange="() => Dirty(row)" Label="شب‌کاری" /></td>
                                 <td><NumCell @bind-Value="row.HolidayHours" Disabled="!editable" OnChange="() => Dirty(row)" Label="تعطیل‌کاری" /></td>
                                 <td><NumCell @bind-Value="row.AbsentDays" Disabled="!editable" OnChange="() => Dirty(row)" Label="غیبت" /></td>
+                                <td><NumCell @bind-Value="row.LeaveDays" Disabled="!editable" OnChange="() => Dirty(row)" Label="مرخصی" /></td>
                                 @foreach (var col in _run.InputColumns)
                                 {
                                     var itemId = col.PayItemId;
@@ -188,6 +190,8 @@ else
             <MudStack Row="true" Class="mb-2" AlignItems="AlignItems.Center">
                 @if (_run.CalculatedAt is null) { <MudText Color="Color.Secondary">هنوز محاسبه نشده است.</MudText> }
                 <MudSpacer />
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" Disabled="@(_summary.Count == 0)"
+                           OnClick="@(() => Nav.NavigateTo($"/payroll/runs/{Id}/payslips"))">چاپ فیش‌ها</MudButton>
                 <ExcelButton Build="BuildExcel" />
             </MudStack>
             <MudTable T="RunSummaryRowDto" Items="_summary" Dense="true" Hover="true" Elevation="0" OnRowClick="@(a => OpenSlipAsync(a.Item!))"
@@ -396,7 +400,10 @@ else
             </MudText>
         }
     </DialogContent>
-    <DialogActions><MudButton OnClick="() => _slipOpen = false">بستن</MudButton></DialogActions>
+    <DialogActions>
+        <MudButton StartIcon="@Icons.Material.Outlined.Print" OnClick="@(() => Nav.NavigateTo($"/payroll/runs/{Id}/payslips?employee={_slipEmployee}"))">چاپ این فیش</MudButton>
+        <MudButton OnClick="() => _slipOpen = false">بستن</MudButton>
+    </DialogActions>
 </MudDialog>
 
 @code {
@@ -405,6 +412,7 @@ else
     private sealed class EditRow
     {
         public int Id { get; init; }
+        public int EmployeeId { get; init; }
         public string PersonnelNo { get; init; } = "";
         public string Name { get; init; } = "";
         public decimal WorkDays { get; set; }
@@ -413,6 +421,8 @@ else
         public decimal NightHours { get; set; }
         public decimal HolidayHours { get; set; }
         public decimal AbsentDays { get; set; }
+        public decimal LeaveDays { get; set; }
+        public bool IsSettlement { get; init; }
         public Dictionary<int, decimal> Inputs { get; init; } = [];
         public List<CenterShareDto> Centers { get; set; } = [];
     }
@@ -456,6 +466,7 @@ else
     private EditRow? _centersRow;
     private List<ShareEdit> _centerEdit = [];
     private PayslipDto? _slip;
+    private int _slipEmployee;
 
     protected override async Task OnInitializedAsync()
     {
@@ -471,8 +482,8 @@ else
         _run = r.Value!;
         _edit = _run.Rows.Select(x => new EditRow
         {
-            Id = x.Id, PersonnelNo = x.PersonnelNo, Name = x.Name, WorkDays = x.WorkDays, InsuranceDays = x.InsuranceDays,
-            OtHours = x.OtHours, NightHours = x.NightHours, HolidayHours = x.HolidayHours, AbsentDays = x.AbsentDays,
+            Id = x.Id, EmployeeId = x.EmployeeId, PersonnelNo = x.PersonnelNo, Name = x.Name, WorkDays = x.WorkDays, InsuranceDays = x.InsuranceDays,
+            OtHours = x.OtHours, NightHours = x.NightHours, HolidayHours = x.HolidayHours, AbsentDays = x.AbsentDays, LeaveDays = x.LeaveDays, IsSettlement = x.IsSettlement,
             Inputs = new Dictionary<int, decimal>(x.Inputs), Centers = x.Centers
         }).ToList();
         _dirty.Clear();
@@ -486,7 +497,7 @@ else
     private List<SaveAttendanceRequest> DirtyRequests() => _edit.Where(r => _dirty.Contains(r.Id)).Select(r => new SaveAttendanceRequest(
         r.Id, r.WorkDays, (int)r.InsuranceDays, r.OtHours, r.NightHours, r.HolidayHours, r.AbsentDays,
         r.Centers.Select(c => new CenterShareInput(c.CostCenterId, c.Percent)).ToList(),
-        _run!.InputColumns.ToDictionary(c => c.PayItemId, c => r.Inputs.GetValueOrDefault(c.PayItemId)))).ToList();
+        _run!.InputColumns.ToDictionary(c => c.PayItemId, c => r.Inputs.GetValueOrDefault(c.PayItemId)), r.LeaveDays)).ToList();
 
     private async Task<bool> SaveCoreAsync()
     {
@@ -741,6 +752,7 @@ else
         var r = await Backend.Run<PayRunService, PayslipDto>(s => s.PayslipAsync(Id, row.EmployeeId, default));
         if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
         _slip = r.Value;
+        _slipEmployee = row.EmployeeId;
         _slipOpen = true;
     }
 

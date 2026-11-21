@@ -1,0 +1,88 @@
+@page "/payroll/runs/{Id:int}/payslips"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<TabTitle Text="چاپ فیش حقوقی" />
+
+<div class="no-print">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Spacing="2">
+        <MudText Typo="Typo.h5">فیش‌های حقوقی @(_slips.FirstOrDefault()?.RunTitle)</MudText>
+        <MudSpacer />
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@Visible.Count() فیش</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Print"
+                   OnClick="@(() => JS.InvokeVoidAsync("print").AsTask())" Disabled="!_slips.Any()">چاپ</MudButton>
+    </MudStack>
+</div>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+@foreach (var s in Visible)
+{
+    <div class="payslip">
+        <div class="payslip-head">
+            <div><b>فیش حقوقی @s.RunTitle</b></div>
+            <div>@s.Workshop</div>
+        </div>
+        <table class="payslip-info">
+            <tr>
+                <td>نام: <b>@s.Name</b></td>
+                <td>شماره پرسنلی: <span class="code">@s.PersonnelNo</span></td>
+                <td>کد ملی: <span class="code">@s.NationalId</span></td>
+            </tr>
+            <tr>
+                <td>کارکرد: @s.WorkDays.ToString("0.##") روز</td>
+                <td>روز بیمه: @s.InsuranceDays</td>
+                <td>
+                    @if (s.OtHours > 0) { <span>اضافه‌کار: @s.OtHours.ToString("0.##") ساعت </span> }
+                    @if (s.AbsentDays > 0) { <span>غیبت: @s.AbsentDays.ToString("0.##") روز</span> }
+                </td>
+            </tr>
+        </table>
+        <div class="payslip-cols">
+            <table class="payslip-lines">
+                <thead><tr><th>مزایا</th><th class="num">مبلغ (ریال)</th></tr></thead>
+                <tbody>
+                    @foreach (var l in s.Earnings) { <tr><td>@l.Title</td><td class="num">@Format.Amount(l.Amount)</td></tr> }
+                </tbody>
+                <tfoot><tr><td>جمع مزایا</td><td class="num">@Format.Amount(s.TotalEarnings)</td></tr></tfoot>
+            </table>
+            <table class="payslip-lines">
+                <thead><tr><th>کسور</th><th class="num">مبلغ (ریال)</th></tr></thead>
+                <tbody>
+                    @foreach (var l in s.Deductions) { <tr><td>@l.Title</td><td class="num">@Format.Amount(l.Amount)</td></tr> }
+                </tbody>
+                <tfoot><tr><td>جمع کسور</td><td class="num">@Format.Amount(s.TotalDeductions)</td></tr></tfoot>
+            </table>
+        </div>
+        <div class="payslip-net">
+            خالص پرداختی: <b>@Format.Amount(s.Net) ریال</b> — @PersianWords.Rial(s.Net)
+        </div>
+        <div class="payslip-foot">مزایای مشمول بیمه: @Format.Amount(s.InsuranceSubject) ریال</div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [SupplyParameterFromQuery(Name = "employee")] public int? EmployeeQuery { get; set; }
+
+    private List<PayslipDto> _slips = [];
+    private bool _loading = true;
+    private string? _employeeNo;
+
+    private IEnumerable<PayslipDto> Visible => _employeeNo is null ? _slips : _slips.Where(s => s.PersonnelNo == _employeeNo);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Backend.Run<PayRunService, List<PayslipDto>>(s => s.PayslipsAsync(Id, default));
+        if (r.Success) _slips = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        if (EmployeeQuery is int e)
+        {
+            var one = await Backend.Run<PayRunService, PayslipDto>(s => s.PayslipAsync(Id, e, default));
+            _employeeNo = one.Value?.PersonnelNo;
+        }
+        _loading = false;
+    }
+}

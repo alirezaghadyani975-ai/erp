@@ -5,7 +5,8 @@ namespace Erp.Payroll.Domain;
 /// <summary>داده‌های یک کارمند برای محاسبه ماه.</summary>
 public sealed record PayCalcContext(
     decimal Days, int InsuranceDays, int MonthDays, decimal OtHours, decimal NightHours, decimal HolidayHours, decimal AbsentDays,
-    int Children, bool Married, decimal EmployeeRate, decimal EmployerRate, decimal UnemploymentRate);
+    int Children, bool Married, decimal EmployeeRate, decimal EmployerRate, decimal UnemploymentRate,
+    int Month = 1, bool Settlement = false, decimal YearDays = 360, decimal YearWorkDays = 0, decimal ServiceDays = 0, decimal LeaveBalance = 0);
 
 public sealed record PayCalcResult(IReadOnlyDictionary<int, decimal> Amounts, IReadOnlyList<string> Warnings)
 {
@@ -76,7 +77,9 @@ public sealed class PayCalculator
             ["OT_HOURS"] = ctx.OtHours, ["NIGHT_HOURS"] = ctx.NightHours, ["HOLIDAY_HOURS"] = ctx.HolidayHours,
             ["ABSENT_DAYS"] = ctx.AbsentDays, ["CHILDREN"] = ctx.Children, ["MARRIED"] = ctx.Married ? 1 : 0,
             ["INS_EMPLOYEE_RATE"] = ctx.EmployeeRate, ["INS_EMPLOYER_RATE"] = ctx.EmployerRate,
-            ["INS_UNEMPLOYMENT_RATE"] = ctx.UnemploymentRate
+            ["INS_UNEMPLOYMENT_RATE"] = ctx.UnemploymentRate,
+            ["MONTH"] = ctx.Month, ["SETTLEMENT"] = ctx.Settlement ? 1 : 0, ["YEAR_DAYS"] = ctx.YearDays,
+            ["YEAR_WORK_DAYS"] = ctx.YearWorkDays, ["SERVICE_DAYS"] = ctx.ServiceDays, ["LEAVE_BALANCE"] = ctx.LeaveBalance
         };
         var missing = new HashSet<string>();
 

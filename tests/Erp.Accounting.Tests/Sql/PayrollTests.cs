@@ -292,6 +292,62 @@ public class PayrollTests(SqlFixture db)
         Assert.Null(await db.Run<PayRunService, RunVoucherDto?>(x => x.VoucherAsync(runId, default)));
     }
 
+    [Fact]
+    public async Task Settlement_pays_bonus_severance_leave_and_clears_loans_from_provisions()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var years = await db.Run<Erp.Accounting.Application.FiscalYears.FiscalYearService, List<Erp.Accounting.Application.FiscalYears.FiscalYearDto>>(
+            x => x.GetAllAsync(default));
+        if (!years.Any(y => string.CompareOrdinal(y.StartDate, "1405/03/31") <= 0 && string.CompareOrdinal(y.EndDate, "1405/03/31") >= 0))
+            await db.Run<Erp.Accounting.Application.FiscalYears.FiscalYearService, short>(x => x.CreateAsync(1405, 1, default));
+
+        var roles = await db.Run<PersonService, List<PersonRoleTypeDto>>(x => x.GetRoleTypesAsync(false, default));
+        var person = await db.Run<PersonService, int>(x => x.CreateAsync(new SavePersonRequest
+        {
+            Kind = PersonKind.Natural, FirstName = "کارمند", LastName = "تسویه", NationalId = PersonTests.NewNationalCode(),
+            RoleIds = [roles.Single(r => r.Code == RoleCodes.Employee).Id]
+        }, default));
+        var workshop = await db.Run<WorkshopService, int>(x => x.CreateAsync(new SaveWorkshopRequest("9900665544", "کارگاه تسویه"), default));
+        var employee = await db.Run<EmployeeService, int>(x => x.CreateAsync(new SaveEmployeeRequest(person, null, workshop, null,
+            ContractType.Temporary, "1405/01/01", "1234567893", InsuranceStatus.Insured, 0, s.Center), default));
+        var draft = await db.Run<DecreeService, DecreeDto>(x => x.DraftAsync(employee, default));
+        var wage = draft.Items.Single(i => i.Code == DecreeService.DailyWageCode).PayItemId;
+        await db.Run<DecreeService, int>(x => x.CreateAsync(
+            new SaveDecreeRequest(employee, "1405/01/01", DecreeType.Hire, null, [new DecreeItemInput(wage, 6_000_000)]), default));
+        await db.Run<LoanService, int>(x => x.CreateAsync(
+            new SaveLoanRequest(employee, LoanKind.Loan, "1405/01/01", 10_000_000, 10, null, 1405, 1), default));
+
+        // فروردین و اردیبهشت قطعی: ذخیره عیدی ۳۰ م و سنوات ۱۵ م در هر ماه
+        foreach (byte month in new byte[] { 1, 2 })
+        {
+            var id = await db.Run<PayRunService, int>(x => x.CreateAsync(new CreatePayRunRequest(1405, month, workshop), default));
+            await db.Run<PayRunService, CalcResultDto>(x => x.CalculateAsync(id, default));
+            await db.Run<PayRunService, RunVoucherDto>(x => x.FinalizeAsync(id, default));
+        }
+
+        // ترک کار ۱۴۰۵/۰۳/۱۵ و تسویه
+        await db.Run<EmployeeService>(x => x.LeaveAsync(employee, "1405/03/15", "استعفا", default));
+        var st = await db.Run<PayRunService, SettlementDto>(x => x.SettleAsync(employee, default));
+        Assert.True(st.IsSettlement);
+        Assert.Equal(75, st.YearWorkDays);                       // ۳۰ + ۳۰ + ۱۵
+        Assert.Equal(77, st.ServiceDays);                        // ۳۱ + ۳۱ + ۱۵ روز تقویمی
+        Assert.Equal(5.42m, st.LeaveBalance);                    // ۲۶ × ۷۵ ÷ ۳۶۰
+        Assert.Equal(75_000_000, st.Bonus);                      // ۳۶۰ م × ۷۵ ÷ ۳۶۰
+        Assert.Equal(37_972_603, st.Severance);                  // ۶ م × ۳۰ × ۷۷ ÷ ۳۶۵
+        Assert.Equal(32_520_000, st.LeaveBuyout);                // ۶ م × ۵٫۴۲
+        Assert.Equal(8_000_000, st.LoansSettled);                // مانده وام یک‌جا
+
+        // سند: ذخیره عیدی و سنوات آزاد می‌شود (بدهکار 5126 و 4201)، اختلاف سنوات هزینه
+        var voucher = await db.Run<PayRunService, RunVoucherDto>(x => x.FinalizeAsync(st.RunId, default));
+        var v = await db.Run<Erp.Accounting.Application.Vouchers.VoucherService, Erp.Accounting.Application.Vouchers.VoucherDto>(x =>
+            x.GetAsync(voucher.VoucherId, default));
+        Assert.True(v.IsBalanced);
+        Assert.Contains(v.Lines, l => l.AccountCode == "5126" && l.Debit == 75_000_000);   // ۳۰ + ۳۰ + ۱۵ م
+        Assert.Contains(v.Lines, l => l.AccountCode == "4201" && l.Debit == 37_500_000);   // ۱۵ + ۱۵ + ۷٫۵ م
+        Assert.Contains(v.Lines, l => l.AccountCode == "2522" && l.Credit == 8_000_000);
+    }
+
     private static Dictionary<string, byte[]> Unzip(byte[] zip)
     {
         using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(zip));

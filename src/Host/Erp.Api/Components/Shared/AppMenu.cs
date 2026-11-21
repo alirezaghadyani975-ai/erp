@@ -84,6 +84,7 @@ public static class AppMenu
             new("محاسبه حقوق", Icons.Material.Outlined.Calculate, "/payroll/runs", P(PY.RunView)),
             new("احکام حقوقی", Icons.Material.Outlined.HistoryEdu, "/payroll/decrees", P(PY.DecreeView)),
             new("وام و مساعده", Icons.Material.Outlined.Savings, "/payroll/loans", P(PY.LoanView)),
+            new("تسویه حساب", Icons.Material.Outlined.Logout, "/payroll/settlement", P(PY.RunEdit)),
             new("تعاریف کارگزینی و حقوق", Icons.Material.Outlined.Tune, Expanded: false, Children:
             [
                 new("اقلام حقوق", Icons.Material.Outlined.Functions, "/payroll/items", P(PY.Setup)),
@@ -223,6 +224,7 @@ public static class AppMenu
         ("/payroll/decrees", P(PY.DecreeView)),
         ("/payroll/runs", P(PY.RunView)),
         ("/payroll/loans", P(PY.LoanView)),
+        ("/payroll/settlement", P(PY.RunEdit)),
         ("/payroll/items", P(PY.Setup)),
         ("/payroll/params", P(PY.Setup)),
         ("/persons/new", P(B.PersonCreate)),

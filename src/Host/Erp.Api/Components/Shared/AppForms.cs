@@ -34,6 +34,7 @@ public static class AppForms
         new("محاسبه بهای تمام‌شده", "بهای تمام‌شده", "/inventory/costing", Icons.Material.Outlined.Calculate, "بهای تمام شده کالای فروش رفته میانگین موزون سند ماه"),
         new("پرونده‌های پرسنلی", "منابع انسانی", "/hr/employees", Icons.Material.Outlined.Badge, "کارمند پرسنل استخدام کارگزینی ترک کار"),
         new("محاسبه حقوق", "منابع انسانی", "/payroll/runs", Icons.Material.Outlined.Calculate, "حقوق ماه کارکرد لیست حقوق فیش بیمه مالیات"),
+        new("تسویه حساب", "منابع انسانی", "/payroll/settlement", Icons.Material.Outlined.Logout, "ترک کار تسویه بازخرید سنوات مرخصی عیدی"),
         new("وام و مساعده", "منابع انسانی", "/payroll/loans", Icons.Material.Outlined.Savings, "وام کارکنان مساعده قسط کسر از حقوق مانده"),
         new("احکام حقوقی", "منابع انسانی", "/payroll/decrees", Icons.Material.Outlined.HistoryEdu, "حکم حقوق مزد روزانه افزایش سالانه"),
         new("اقلام حقوق", "منابع انسانی", "/payroll/items", Icons.Material.Outlined.Functions, "فرمول مزایا کسور بیمه مالیات"),

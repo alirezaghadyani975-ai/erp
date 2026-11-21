@@ -241,7 +241,7 @@ END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد قلم فرمولی در ردیف حکم', N'50410', CAST(@err AS NVARCHAR(50)));
 
 -- 17) اقلام قانونی حقوق با عامل هزینه و حساب درست
-INSERT @R VALUES (N'۱۹ قلم قانونی حقوق با عامل هزینه و حساب', N'19', (SELECT CAST(COUNT(*) AS NVARCHAR(50)) FROM pay.PayItems
+INSERT @R VALUES (N'۲۲ قلم قانونی حقوق با عامل هزینه و حساب', N'22', (SELECT CAST(COUNT(*) AS NVARCHAR(50)) FROM pay.PayItems
     WHERE IsSystem = 1 AND ((Kind = 2 AND AccountId IS NOT NULL) OR (Kind = 1 AND CostFactorId IS NOT NULL)
         OR (Kind IN (3, 4) AND CostFactorId IS NOT NULL AND AccountId IS NOT NULL) OR Kind = 5)));
 
@@ -297,6 +297,15 @@ END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد پرداخت حقوق پیش از قطعی', N'50440', CAST(@err AS NVARCHAR(50)));
 DELETE pay.SalaryPayments WHERE Id = @Pay;
 DELETE trs.BankAccounts WHERE Id = @BankAcc;
+
+-- 22) تسویه (اسکریپت ۲۵): روز مرخصی بیش از ماه رد؛ اقلام قانونی عیدی و سنوات از محل ذخیره
+BEGIN TRY
+    UPDATE pay.Attendance SET LeaveDays = 40 WHERE Id = @Att;
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد روز مرخصی بیش از ماه', N'547', CAST(@err AS NVARCHAR(50)));
+INSERT @R VALUES (N'عیدی و سنوات از محل ذخیره (حساب روی قلم)', N'2',
+    (SELECT CAST(COUNT(*) AS NVARCHAR(50)) FROM pay.PayItems WHERE Code IN ('BONUS_PAY', 'SEVERANCE_PAY') AND AccountId IS NOT NULL));
 
 UPDATE pay.Runs SET [Status] = 3 WHERE Id = @Run;
 BEGIN TRY
