@@ -166,13 +166,13 @@ DECLARE @GoodsGroup INT = (SELECT TOP (1) Id FROM inv.ItemGroups WHERE Kind = 1 
 DECLARE @ServiceGroup INT = (SELECT TOP (1) Id FROM inv.ItemGroups WHERE Kind = 2 ORDER BY Id);
 DECLARE @Item INT, @PInv BIGINT, @PLine BIGINT, @PRet BIGINT;
 BEGIN TRY
-    INSERT inv.Items (Code, Title, Kind, GroupId, UnitId) VALUES (N'SMOKE-X', N'تست نوع', 1, @ServiceGroup, @Unit);
+    INSERT inv.Items (Code, Title, Kind, GroupId, UnitId, CategoryId) VALUES (N'SMOKE-X', N'تست نوع', 1, @ServiceGroup, @Unit, 5);
     SET @err = 0;
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد کالا با نوع متفاوت از گروه', N'50201', CAST(@err AS NVARCHAR(50)));
 
 -- 12) برگشت از خرید بیش از مقدار فاکتور (اسکریپت ۱۷)؛ فاکتور از روی رسید خرید (اسکریپت ۱۸)
-INSERT inv.Items (Code, Title, Kind, GroupId, UnitId) VALUES (N'SMOKE-1', N'کالای تست', 1, @GoodsGroup, @Unit);
+INSERT inv.Items (Code, Title, Kind, GroupId, UnitId, CategoryId) VALUES (N'SMOKE-1', N'کالای تست', 1, @GoodsGroup, @Unit, 5);
 SET @Item = SCOPE_IDENTITY();
 DECLARE @Wh INT = (SELECT TOP (1) Id FROM inv.Warehouses ORDER BY Id), @SRec BIGINT, @SRecLine BIGINT, @SIss BIGINT;
 INSERT inv.StockDocs (DocType, DocNo, DocDate, WarehouseId, PartyId, CreatedBy) VALUES (2, -1, @D1, @Wh, @PersonId, 1);
@@ -339,6 +339,20 @@ DELETE hr.Employees WHERE Id = @Emp;
 DELETE base.PersonRoles WHERE PersonId = @PersonId;
 DELETE hr.Workshops WHERE Id = @Ws;
 DELETE cost.CostCenters WHERE Id = @Ctr;
+
+-- 23) نوع کالا (اسکریپت ۲۶): محصول خریدنی نیست
+DECLARE @Prod INT, @PDoc BIGINT;
+INSERT inv.Items (Code, Title, Kind, GroupId, UnitId, CategoryId) VALUES (N'SMOKE-P', N'محصول تست', 1, @GoodsGroup, @Unit, 3);
+SET @Prod = SCOPE_IDENTITY();
+INSERT inv.StockDocs (DocType, DocNo, DocDate, WarehouseId, PartyId, CreatedBy) VALUES (2, -2, @D1, @Wh, @PersonId, 1);
+SET @PDoc = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT inv.StockDocLines (DocId, RowNo, ItemId, Quantity) VALUES (@PDoc, 1, @Prod, 1);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد رسید خرید برای محصول (فقط تولید)', N'50320', CAST(@err AS NVARCHAR(50)));
+DELETE inv.StockDocs WHERE Id = @PDoc;
+DELETE inv.Items WHERE Id = @Prod;
 
 DELETE pur.PurchaseReturns WHERE Id = @PRet;
 DELETE pur.PurchaseInvoices WHERE Id = @PInv;

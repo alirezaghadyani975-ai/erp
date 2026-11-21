@@ -40,7 +40,7 @@ public class TradeTests(SqlFixture db)
             var groups = await db.Run<ItemGroupService, List<ItemGroupDto>>(s => s.GetAllAsync(false, default));
             var unit = (await db.Run<ItemService, List<ItemUnitDto>>(s => s.GetUnitsAsync(default)))[0].Id;
             async Task<int> Item(string title, string group, bool exempt = false) => await db.Run<ItemService, int>(s => s.CreateAsync(
-                new SaveItemRequest(null, title, groups.Single(g => g.Title == group).Id, unit, VatExempt: exempt), default));
+                new SaveItemRequest(null, title, groups.Single(g => g.Title == group).Id, unit, VatExempt: exempt, CategoryId: group == "خدمات" ? null : (byte)5), default));
             return _seed = new Seed(supplier, customer, await Item("کالای تست تجاری", "کالای بازرگانی"),
                 await Item("خدمت تست", "خدمات"), await Item("کالای معاف تست", "کالای بازرگانی", exempt: true));
         }
@@ -74,6 +74,37 @@ public class TradeTests(SqlFixture db)
         });
 
     [Fact]
+    public async Task Item_category_is_required_and_controls_purchase_and_sale()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var groups = await db.Run<ItemGroupService, List<ItemGroupDto>>(x => x.GetAllAsync(false, default));
+        var goodsGroup = groups.Single(g => g.Title == "کالای بازرگانی").Id;
+        var unit = (await db.Run<ItemService, List<ItemUnitDto>>(x => x.GetUnitsAsync(default)))[0].Id;
+
+        var missing = await Assert.ThrowsAsync<DomainException>(() => db.Run<ItemService, int>(x => x.CreateAsync(
+            new SaveItemRequest(null, "کالای بی‌نوع", goodsGroup, unit), default)));
+        Assert.Contains("نوع کالا", missing.Message);
+
+        var product = await db.Run<ItemService, int>(x => x.CreateAsync(
+            new SaveItemRequest(null, "محصول تست نوع", goodsGroup, unit, CategoryId: Erp.Inventory.Domain.ItemCategory.Product), default));
+        var notBuyable = await Assert.ThrowsAsync<DomainException>(() =>
+            StockAsync(StockDocType.PurchaseReceipt, "1417/02/10", s.Supplier, new StockLineRequest(product, 1)));
+        Assert.Contains("خریدنی نیست", notBuyable.Message);
+
+        var consumable = await db.Run<ItemService, int>(x => x.CreateAsync(
+            new SaveItemRequest(null, "اقلام مصرفی تست", goodsGroup, unit, CategoryId: Erp.Inventory.Domain.ItemCategory.Consumable), default));
+        await StockAsync(StockDocType.PurchaseReceipt, "1417/02/10", s.Supplier, new StockLineRequest(consumable, 5));
+        var notSellable = await Assert.ThrowsAsync<DomainException>(() =>
+            StockAsync(StockDocType.SalesIssue, "1417/02/11", s.Customer, new StockLineRequest(consumable, 1)));
+        Assert.Contains("فروختنی نیست", notSellable.Message);
+
+        var categories = await db.Run<ItemCategoryService, List<ItemCategoryDto>>(x => x.GetAllAsync(default));
+        Assert.Equal(6, categories.Count);
+        Assert.All(categories, c => Assert.NotNull(c.InventoryAccountId));
+    }
+
+    [Fact]
     public async Task Item_code_is_generated_and_kind_follows_group()
     {
         if (!db.Enabled) return;
@@ -84,7 +115,7 @@ public class TradeTests(SqlFixture db)
         Assert.Equal((ItemKind.Goods, ItemKind.Service), (goods.Kind, service.Kind));
 
         var bad = await Assert.ThrowsAsync<DomainException>(() => db.Run<ItemService>(x => x.UpdateAsync(s.Goods,
-            new SaveItemRequest(goods.Code, goods.Title, goods.GroupId, goods.UnitId, TaxItemId: "12345"), default)));
+            new SaveItemRequest(goods.Code, goods.Title, goods.GroupId, goods.UnitId, TaxItemId: "12345", CategoryId: goods.CategoryId), default)));
         Assert.Contains("۱۳ رقم", bad.Message);
     }
 
@@ -390,6 +421,6 @@ public class TradeTests(SqlFixture db)
         var groups = await db.Run<ItemGroupService, List<ItemGroupDto>>(x => x.GetAllAsync(false, default));
         var unit = (await db.Run<ItemService, List<ItemUnitDto>>(x => x.GetUnitsAsync(default)))[0].Id;
         return await db.Run<ItemService, int>(x => x.CreateAsync(
-            new SaveItemRequest(null, title, groups.Single(g => g.Title == "کالای بازرگانی").Id, unit), default));
+            new SaveItemRequest(null, title, groups.Single(g => g.Title == "کالای بازرگانی").Id, unit, CategoryId: 5), default));
     }
 }

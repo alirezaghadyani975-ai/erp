@@ -1,0 +1,98 @@
+@page "/inventory/categories"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+
+<TabTitle Text="انواع کالا" />
+
+<MudText Typo="Typo.h5" Class="mb-1">انواع کالا</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    نوع هر کالا اجباری است و معین موجودی سندهای خرید، بهای تمام‌شده و تولید از آن می‌آید (نه از گروه کالا).
+    ستون‌ها مشخص می‌کنند هر نوع کجا مجاز است؛ مثلاً نیم‌ساخته، محصول و ضایعات خریدنی نیستند و فقط تولید می‌شوند،
+    و اقلام مصرفی در تولید مصرف نمی‌شوند. معین نوعی که کالاهایش سند انبار دارند عوض نمی‌شود.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="ItemCategoryDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>نوع</MudTh>
+            <MudTh>معین موجودی</MudTh>
+            <MudTh>خرید</MudTh>
+            <MudTh>فروش</MudTh>
+            <MudTh>حواله مصرف</MudTh>
+            <MudTh>مصرف در تولید</MudTh>
+            <MudTh>محصول تولید</MudTh>
+            <MudTh Style="text-align:left">کالاها</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Title @if (context.IsScrap) { <span class="select-hint">(ردیف ضایعات تولید)</span> }</MudTd>
+            <MudTd>@context.InventoryAccount</MudTd>
+            <MudTd>@Mark(context.CanPurchase)</MudTd>
+            <MudTd>@Mark(context.CanSell)</MudTd>
+            <MudTd>@Mark(context.CanConsume)</MudTd>
+            <MudTd>@Mark(context.CanProductionInput)</MudTd>
+            <MudTd>@Mark(context.CanProductionOutput)</MudTd>
+            <MudTd Class="num">@context.ItemCount</MudTd>
+        </RowTemplate>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">نوع کالا: @_edit?.Title</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12"><AccountPicker @bind-Value="_account" Label="معین موجودی" /></MudItem>
+            <MudItem xs="6"><MudSwitch T="bool" @bind-Value="_purchase" Color="Color.Primary" Label="خریدنی" /></MudItem>
+            <MudItem xs="6"><MudSwitch T="bool" @bind-Value="_sell" Color="Color.Primary" Label="فروختنی" /></MudItem>
+            <MudItem xs="6"><MudSwitch T="bool" @bind-Value="_consume" Color="Color.Primary" Label="در حواله مصرف" /></MudItem>
+            <MudItem xs="6"><MudSwitch T="bool" @bind-Value="_input" Color="Color.Primary" Label="مصرف در تولید" /></MudItem>
+            <MudItem xs="6"><MudSwitch T="bool" @bind-Value="_output" Color="Color.Primary" Label="محصول تولید" Disabled="@(_edit?.IsScrap == true)" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <IfAllowed Permission="@InventoryPermissions.Groups">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">ذخیره</MudButton>
+        </IfAllowed>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<ItemCategoryDto> _rows = [];
+    private bool _loading = true, _editOpen, _purchase, _sell, _consume, _input, _output;
+    private ItemCategoryDto? _edit;
+    private AccountDto? _account;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<ItemCategoryService, List<ItemCategoryDto>>(s => s.GetAllAsync(default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private static string Mark(bool v) => v ? "✓" : "—";
+
+    private void Edit(ItemCategoryDto c)
+    {
+        _edit = c;
+        _account = c.InventoryAccountId is int id && c.InventoryAccount is { } text
+            ? new AccountDto(id, text.Split(" - ", 2)[0], text.Split(" - ", 2).ElementAtOrDefault(1) ?? "", AccountLevel.Subsidiary, null, null, null, false, true, [])
+            : null;
+        (_purchase, _sell, _consume, _input, _output) = (c.CanPurchase, c.CanSell, c.CanConsume, c.CanProductionInput, c.CanProductionOutput);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveItemCategoryRequest(_account?.Id, _purchase, _sell, _consume, _input, _output);
+        var id = _edit!.Id;
+        var r = await Backend.Run<ItemCategoryService>(s => s.UpdateAsync(id, request, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add("نوع کالا ذخیره شد.", Severity.Success);
+        await LoadAsync();
+    }
+}

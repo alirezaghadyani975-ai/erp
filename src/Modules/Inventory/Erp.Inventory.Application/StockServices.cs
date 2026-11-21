@@ -211,7 +211,8 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
         // کالاها
         var requestItemIds = request.Lines.Select(l => l.ItemId).Distinct().ToList();
         var items = await db.Items.Where(i => requestItemIds.Contains(i.Id))
-            .Select(i => new { i.Id, i.Title, i.Kind, i.IsActive }).ToDictionaryAsync(i => i.Id, ct);
+            .Select(i => new { i.Id, i.Title, i.Kind, i.IsActive, i.CategoryId }).ToDictionaryAsync(i => i.Id, ct);
+        var categories = await db.ItemCategories.AsNoTracking().ToDictionaryAsync(c => c.Id, ct);
         var row = 0;
         foreach (var l in request.Lines)
         {
@@ -219,6 +220,18 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
             var item = items.GetValueOrDefault(l.ItemId) ?? throw new DomainException($"ردیف {row}: کالا انتخاب نشده یا پیدا نشد.");
             if (item.Kind != ItemKind.Goods) throw new DomainException($"ردیف {row}: «{item.Title}» خدمت است و در انبار نمی‌آید.");
             if (!item.IsActive && previousItems?.Contains(item.Id) != true) throw new DomainException($"ردیف {row}: «{item.Title}» غیرفعال است.");
+            // قاعده‌های نوع کالا (پشتیبان: تریگر trg_StockDocLines_Category)
+            if (item.CategoryId is byte cid && categories.TryGetValue(cid, out var c))
+            {
+                var problem = type switch
+                {
+                    StockDocType.PurchaseReceipt when !c.CanPurchase => "خریدنی نیست (فقط تولید می‌شود)",
+                    StockDocType.SalesIssue when !c.CanSell => "فروختنی نیست",
+                    StockDocType.Consumption when !c.CanConsume => "در حواله مصرف نمی‌آید",
+                    _ => null
+                };
+                if (problem is not null) throw new DomainException($"ردیف {row}: «{item.Title}» از نوع «{c.Title}» است و {problem}.");
+            }
         }
 
         if (type == StockDocType.Consumption) await CheckConsumptionAsync(request.Lines, ct);

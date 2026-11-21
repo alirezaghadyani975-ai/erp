@@ -23,7 +23,7 @@
             <MudTh>نوع</MudTh>
             <MudTh>معین فروش</MudTh>
             <MudTh>معین برگشت از فروش</MudTh>
-            <MudTh>معین خرید (موجودی)</MudTh>
+            <MudTh>معین خرید (قدیمی)</MudTh>
             <MudTh>معین بهای تمام‌شده</MudTh>
             <MudTh Style="text-align:left">تعداد کالا</MudTh>
             <MudTh></MudTh>
@@ -76,7 +76,7 @@
             <MudItem xs="12"><AccountPicker @bind-Value="_return" Label="معین برگشت از فروش" /></MudItem>
             @if (_kind == ItemKind.Goods)
             {
-                <MudItem xs="12"><AccountPicker @bind-Value="_purchase" Label="معین خرید (موجودی کالا)" /></MudItem>
+                <MudItem xs="12"><AccountPicker @bind-Value="_purchase" Label="معین خرید (قدیمی؛ معین موجودی اکنون از «نوع کالا» می‌آید)" /></MudItem>
                 <MudItem xs="12"><AccountPicker @bind-Value="_cost" Label="معین بهای تمام‌شده کالای فروش‌رفته" /></MudItem>
             }
             <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>

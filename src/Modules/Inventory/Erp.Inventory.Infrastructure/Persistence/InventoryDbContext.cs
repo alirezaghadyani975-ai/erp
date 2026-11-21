@@ -15,6 +15,7 @@ public class InventoryDbContext : DbContext, IInventoryDbContext
 
     public IQueryable<ItemGroup> ItemGroups => Set<ItemGroup>();
     public IQueryable<Item> Items => Set<Item>();
+    public IQueryable<ItemCategory> ItemCategories => Set<ItemCategory>();
     public IQueryable<UnitRef> Units => Set<UnitRef>().AsNoTracking();
     public IQueryable<AccountRef> Accounts => Set<AccountRef>().AsNoTracking();
     public IQueryable<Warehouse> Warehouses => Set<Warehouse>();
@@ -119,6 +120,17 @@ internal class ItemGroupConfiguration : IEntityTypeConfiguration<ItemGroup>
     }
 }
 
+internal class ItemCategoryConfiguration : IEntityTypeConfiguration<ItemCategory>
+{
+    public void Configure(EntityTypeBuilder<ItemCategory> b)
+    {
+        b.ToTable("ItemCategories", "inv");
+        b.HasKey(c => c.Id);
+        b.Property(c => c.Id).ValueGeneratedNever();
+        b.Property(c => c.Title).HasMaxLength(50);
+    }
+}
+
 internal class ItemConfiguration : IEntityTypeConfiguration<Item>
 {
     public void Configure(EntityTypeBuilder<Item> b)
@@ -192,6 +204,7 @@ internal class StockDocLineConfiguration : IEntityTypeConfiguration<StockDocLine
         {
             t.HasTrigger("trg_StockDocLines_Check");
             t.HasTrigger("trg_StockDocLines_CostRuns");
+            t.HasTrigger("trg_StockDocLines_Category");
         });
         b.HasKey(l => l.Id);
         b.Property(l => l.Quantity).HasPrecision(24, 6);

@@ -207,7 +207,13 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
     {
         var itemIds = lines.Select(l => l.ItemId).Distinct().ToList();
         var accounts = await db.Items.Where(i => itemIds.Contains(i.Id))
-            .Join(db.ItemGroups, i => i.GroupId, g => g.Id, (i, g) => new { i.Id, i.Title, g.PurchaseAccountId, g.CostAccountId })
+            .Join(db.ItemGroups, i => i.GroupId, g => g.Id, (i, g) => new { i.Id, i.Title, i.CategoryId, g.CostAccountId })
+            .Select(x => new
+            {
+                x.Id, x.Title, x.CostAccountId,
+                // معین موجودی از نوع کالا (تصمیم مالک)
+                PurchaseAccountId = db.ItemCategories.Where(c => c.Id == x.CategoryId).Select(c => c.InventoryAccountId).FirstOrDefault()
+            })
             .ToDictionaryAsync(x => x.Id, ct);
 
         var sums = new Dictionary<(string Key, int? Account, int? Factor, int? Center), decimal>();
@@ -221,7 +227,7 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
         {
             var amount = costs[l.Id].Amount;
             var a = accounts[l.ItemId];
-            var inventory = a.PurchaseAccountId ?? throw new DomainException($"گروه کالای «{a.Title}» معین موجودی ندارد.");
+            var inventory = a.PurchaseAccountId ?? throw new DomainException($"نوع کالای «{a.Title}» معین موجودی ندارد.");
             switch (l.Type)
             {
                 case StockDocType.SalesIssue:

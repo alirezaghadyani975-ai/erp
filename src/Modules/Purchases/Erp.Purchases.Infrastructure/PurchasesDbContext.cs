@@ -107,8 +107,9 @@ public class PurchasesDbContext : DbContext, IPurchasesDbContext
         {
             e.HasKey(i => i.Id);
             e.ToSqlQuery("""
-                SELECT i.Id, i.Code, i.Title, i.Kind, i.IsActive, i.VatExempt, u.Title AS UnitTitle, g.PurchaseAccountId
-                FROM inv.Items i JOIN inv.ItemGroups g ON g.Id = i.GroupId JOIN base.Units u ON u.Id = i.UnitId
+                SELECT i.Id, i.Code, i.Title, i.Kind, i.IsActive, i.VatExempt, u.Title AS UnitTitle, c.InventoryAccountId AS PurchaseAccountId
+                FROM inv.Items i JOIN base.Units u ON u.Id = i.UnitId
+                LEFT JOIN inv.ItemCategories c ON c.Id = i.CategoryId   -- معین موجودی از نوع کالا
                 """);
         });
     }

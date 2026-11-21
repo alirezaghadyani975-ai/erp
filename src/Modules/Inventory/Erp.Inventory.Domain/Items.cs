@@ -60,16 +60,18 @@ public class Item : AggregateRoot<int>
     private Item() { } // EF
 
     public Item(string code, string title, ItemGroup group, short unitId, string? taxItemId, bool vatExempt, string? barcode,
-        decimal? salesPrice, string? notes, DateTime nowUtc)
+        decimal? salesPrice, string? notes, DateTime nowUtc, byte? categoryId = null)
     {
         CreatedAt = nowUtc;
-        Update(code, title, group, unitId, taxItemId, vatExempt, barcode, salesPrice, notes);
+        Update(code, title, group, unitId, taxItemId, vatExempt, barcode, salesPrice, notes, categoryId);
     }
 
     public string Code { get; private set; } = null!;
     public string Title { get; private set; } = null!;
     public ItemKind Kind { get; private set; }
     public int GroupId { get; private set; }
+    /// <summary>نوع کالا (inv.ItemCategories): برای کالا اجباری، برای خدمت خالی؛ معین موجودی و قاعده‌های خرید/فروش/تولید از آن.</summary>
+    public byte? CategoryId { get; private set; }
     public short UnitId { get; private set; }
     public string? TaxItemId { get; private set; }
     public bool VatExempt { get; private set; }
@@ -80,8 +82,9 @@ public class Item : AggregateRoot<int>
     public DateTime CreatedAt { get; private set; }
 
     public void Update(string code, string title, ItemGroup group, short unitId, string? taxItemId, bool vatExempt, string? barcode,
-        decimal? salesPrice, string? notes)
+        decimal? salesPrice, string? notes, byte? categoryId = null)
     {
+        if (group.Kind == ItemKind.Goods && categoryId is null) throw new DomainException("نوع کالا (مواد، نیم‌ساخته، محصول، ...) الزامی است.");
         Code = Texts.Required(code, "کد کالا", 30);
         Title = Texts.Required(title, "عنوان کالا", 200);
         if (unitId <= 0) throw new DomainException("واحد سنجش الزامی است.");
@@ -93,6 +96,7 @@ public class Item : AggregateRoot<int>
 
         GroupId = group.Id;
         Kind = group.Kind;
+        CategoryId = group.Kind == ItemKind.Goods ? categoryId : null;
         UnitId = unitId;
         TaxItemId = tax;
         VatExempt = vatExempt;
@@ -119,5 +123,36 @@ internal static class Texts
     {
         var v = PersianText.NormalizeOrNull(value);
         return v is null || v.Length <= max ? v : throw new DomainException($"{label} حداکثر {max} نویسه است.");
+    }
+}
+
+/// <summary>
+/// نوع کالا (inv.ItemCategories، شش نوع ثابت): معین موجودی و قاعده‌های مجاز خرید، فروش، مصرف و تولید.
+/// </summary>
+public class ItemCategory
+{
+    public const byte Material = 1, SemiFinished = 2, Product = 3, Scrap = 4, Trading = 5, Consumable = 6;
+
+    private ItemCategory() { } // EF
+
+    public byte Id { get; private set; }
+    public string Title { get; private set; } = null!;
+    public int? InventoryAccountId { get; private set; }
+    public bool CanPurchase { get; private set; }
+    public bool CanSell { get; private set; }
+    public bool CanConsume { get; private set; }
+    public bool CanProductionInput { get; private set; }
+    public bool CanProductionOutput { get; private set; }
+    public bool IsScrap { get; private set; }
+    public byte SortOrder { get; private set; }
+
+    public void Update(int? inventoryAccountId, bool canPurchase, bool canSell, bool canConsume, bool canProductionInput, bool canProductionOutput)
+    {
+        if (inventoryAccountId is null) throw new DomainException($"معین موجودی نوع «{Title}» الزامی است.");
+        if (IsScrap && canProductionOutput) throw new DomainException("ضایعات به‌عنوان ردیف ضایعات تولید می‌شود، نه محصول.");
+        if (canProductionInput && canProductionOutput && Id != SemiFinished)
+            throw new DomainException("فقط نیم‌ساخته هم ورودی و هم خروجی تولید است.");
+        (InventoryAccountId, CanPurchase, CanSell, CanConsume, CanProductionInput, CanProductionOutput) =
+            (inventoryAccountId, canPurchase, canSell, canConsume, canProductionInput, canProductionOutput);
     }
 }

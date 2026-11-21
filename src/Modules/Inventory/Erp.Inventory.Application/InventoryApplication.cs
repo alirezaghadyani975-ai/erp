@@ -10,6 +10,7 @@ public interface IInventoryDbContext
 {
     IQueryable<ItemGroup> ItemGroups { get; }
     IQueryable<Item> Items { get; }
+    IQueryable<ItemCategory> ItemCategories { get; }
 
     /// <summary>فقط‌خواندنی از اطلاعات پایه: واحدهای سنجش.</summary>
     IQueryable<UnitRef> Units { get; }
@@ -237,11 +238,13 @@ public sealed record SaveItemGroupRequest(string Title, ItemKind Kind, int Sales
     int? PurchaseAccountId, int? ParentId, bool IsActive = true, int? CostAccountId = null);
 
 public sealed record ItemDto(int Id, string Code, string Title, ItemKind Kind, int GroupId, string GroupTitle,
-    short UnitId, string UnitTitle, string? TaxItemId, bool VatExempt, string? Barcode, decimal? SalesPrice, bool IsActive, string? Notes);
+    short UnitId, string UnitTitle, string? TaxItemId, bool VatExempt, string? Barcode, decimal? SalesPrice, bool IsActive, string? Notes,
+    byte? CategoryId = null, string? CategoryTitle = null);
 
 /// <param name="Code">خالی = کد بعدی خودکار.</param>
 public sealed record SaveItemRequest(string? Code, string Title, int GroupId, short UnitId, string? TaxItemId = null,
-    bool VatExempt = false, string? Barcode = null, decimal? SalesPrice = null, bool IsActive = true, string? Notes = null);
+    bool VatExempt = false, string? Barcode = null, decimal? SalesPrice = null, bool IsActive = true, string? Notes = null,
+    byte? CategoryId = null);
 
 public sealed record ItemUnitDto(short Id, string Title);
 
@@ -252,6 +255,7 @@ public static class DependencyInjection
         services.AddSingleton(InventoryPermissions.List);
         services.AddScoped<ItemGroupService>();
         services.AddScoped<ItemService>();
+        services.AddScoped<ItemCategoryService>();
         services.AddScoped<WarehouseService>();
         services.AddScoped<StockDocService>();
         services.AddScoped<StockReportService>();
@@ -259,3 +263,9 @@ public static class DependencyInjection
         return services;
     }
 }
+
+public sealed record ItemCategoryDto(byte Id, string Title, int? InventoryAccountId, string? InventoryAccount, bool CanPurchase, bool CanSell,
+    bool CanConsume, bool CanProductionInput, bool CanProductionOutput, bool IsScrap, int ItemCount);
+
+public sealed record SaveItemCategoryRequest(int? InventoryAccountId, bool CanPurchase, bool CanSell, bool CanConsume, bool CanProductionInput,
+    bool CanProductionOutput);

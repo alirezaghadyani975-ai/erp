@@ -66,6 +66,7 @@ public static class AppMenu
                 new("کالا و خدمات", Icons.Material.Outlined.Inventory2, "/inventory/items", P(I.ItemView)),
                 new("گروه‌های کالا", Icons.Material.Outlined.Category, "/inventory/groups", P(I.Groups)),
                 new("انبارها", Icons.Material.Outlined.Warehouse, "/inventory/warehouses", P(I.Warehouses)),
+                new("انواع کالا", Icons.Material.Outlined.Category, "/inventory/categories", P(I.ItemView)),
             ]),
         ]),
         new("بهای تمام‌شده", Icons.Material.Outlined.Factory, Children:
@@ -199,6 +200,7 @@ public static class AppMenu
         ("/inventory/items", P(I.ItemView)),
         ("/inventory/groups", P(I.Groups)),
         ("/inventory/warehouses", P(I.Warehouses)),
+        ("/inventory/categories", P(I.ItemView)),
         ("/inventory/receipts/new", P(I.ReceiptCreate)),
         ("/inventory/receipts", P(I.ReceiptView)),
         ("/inventory/issues/new", P(I.IssueCreate)),

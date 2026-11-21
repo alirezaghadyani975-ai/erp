@@ -139,8 +139,9 @@ public class ItemService(IInventoryDbContext db, IAccessControl access, TimeProv
         var group = await GroupAsync(request.GroupId, null, ct);
         await EnsureUnitAsync(request.UnitId, null, ct);
         var code = string.IsNullOrWhiteSpace(request.Code) ? await NextCodeAsync(ct) : request.Code;
+        if (group.Kind == ItemKind.Goods) await EnsureCategoryAsync(request.CategoryId, null, ct);
         var item = new Item(code, request.Title, group, request.UnitId, request.TaxItemId, request.VatExempt, request.Barcode,
-            request.SalesPrice, request.Notes, clock.GetUtcNow().UtcDateTime);
+            request.SalesPrice, request.Notes, clock.GetUtcNow().UtcDateTime, request.CategoryId);
         if (!request.IsActive) item.Deactivate();
         await EnsureUniqueAsync(item, ct);
         db.Add(item);
@@ -157,9 +158,15 @@ public class ItemService(IInventoryDbContext db, IAccessControl access, TimeProv
         if (group.Kind != item.Kind && await db.IsItemUsedAsync(id, ct))
             throw new DomainException($"«{item.Title}» در فاکتور آمده است؛ از کالا به خدمت یا برعکس تغییر نمی‌کند.");
         await EnsureUnitAsync(request.UnitId, item.UnitId, ct);
+        if (group.Kind == ItemKind.Goods && request.CategoryId != item.CategoryId)
+        {
+            await EnsureCategoryAsync(request.CategoryId, item.CategoryId, ct);
+            if (item.CategoryId is not null && await db.StockDocs.AnyAsync(d => d.Lines.Any(l => l.ItemId == id), ct))
+                throw new DomainException($"«{item.Title}» سند انبار دارد؛ نوعش (و معین موجودی‌اش) عوض نمی‌شود.");
+        }
 
         item.Update(string.IsNullOrWhiteSpace(request.Code) ? item.Code : request.Code, request.Title, group, request.UnitId,
-            request.TaxItemId, request.VatExempt, request.Barcode, request.SalesPrice, request.Notes);
+            request.TaxItemId, request.VatExempt, request.Barcode, request.SalesPrice, request.Notes, request.CategoryId);
         if (request.IsActive) item.Activate(); else item.Deactivate();
         await EnsureUniqueAsync(item, ct);
         await db.SaveChangesAsync(ct);
@@ -184,6 +191,12 @@ public class ItemService(IInventoryDbContext db, IAccessControl access, TimeProv
         return group;
     }
 
+    private async Task EnsureCategoryAsync(byte? categoryId, byte? current, CancellationToken ct)
+    {
+        if (categoryId is null) throw new DomainException("نوع کالا (مواد، نیم‌ساخته، محصول، ...) الزامی است.");
+        if (!await db.ItemCategories.AnyAsync(c => c.Id == categoryId, ct)) throw new DomainException("نوع کالا پیدا نشد.");
+    }
+
     private async Task EnsureUnitAsync(short unitId, short? current, CancellationToken ct)
     {
         var unit = await db.Units.FirstOrDefaultAsync(u => u.Id == unitId, ct) ?? throw new DomainException("واحد سنجش انتخاب نشده یا پیدا نشد.");
@@ -202,7 +215,39 @@ public class ItemService(IInventoryDbContext db, IAccessControl access, TimeProv
     {
         var groups = await db.ItemGroups.AsNoTracking().ToDictionaryAsync(g => g.Id, g => g.Title, ct);
         var units = await db.Units.ToDictionaryAsync(u => u.Id, u => u.Title, ct);
+        var categories = await db.ItemCategories.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Title, ct);
         return items.Select(i => new ItemDto(i.Id, i.Code, i.Title, i.Kind, i.GroupId, groups.GetValueOrDefault(i.GroupId, "?"),
-            i.UnitId, units.GetValueOrDefault(i.UnitId, "?"), i.TaxItemId, i.VatExempt, i.Barcode, i.SalesPrice, i.IsActive, i.Notes)).ToList();
+            i.UnitId, units.GetValueOrDefault(i.UnitId, "?"), i.TaxItemId, i.VatExempt, i.Barcode, i.SalesPrice, i.IsActive, i.Notes, i.CategoryId,
+            i.CategoryId is byte c ? categories.GetValueOrDefault(c) : null)).ToList();
+    }
+}
+
+/// <summary>
+/// انواع کالا (شش نوع ثابت): معین موجودی و قاعده‌های مجاز خرید، فروش، مصرف و تولید. فهرست آزاد است؛ اصلاح با مجوز گروه‌های کالا.
+/// </summary>
+public class ItemCategoryService(IInventoryDbContext db, IAccessControl access)
+{
+    public async Task<List<ItemCategoryDto>> GetAllAsync(CancellationToken ct)
+    {
+        var categories = await db.ItemCategories.AsNoTracking().OrderBy(c => c.SortOrder).ToListAsync(ct);
+        var ids = categories.Select(c => c.InventoryAccountId ?? 0).ToList();
+        var accounts = await db.Accounts.Where(a => ids.Contains(a.Id)).ToDictionaryAsync(a => a.Id, a => $"{a.Code} - {a.Title}", ct);
+        var counts = await db.Items.Where(i => i.CategoryId != null).GroupBy(i => i.CategoryId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+        return categories.Select(c => new ItemCategoryDto(c.Id, c.Title, c.InventoryAccountId,
+            c.InventoryAccountId is int a ? accounts.GetValueOrDefault(a) : null, c.CanPurchase, c.CanSell, c.CanConsume, c.CanProductionInput,
+            c.CanProductionOutput, c.IsScrap, counts.GetValueOrDefault(c.Id))).ToList();
+    }
+
+    public async Task UpdateAsync(byte id, SaveItemCategoryRequest r, CancellationToken ct)
+    {
+        access.Demand(InventoryPermissions.Groups);
+        var c = await db.ItemCategories.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("نوع کالا پیدا نشد.");
+        if (r.InventoryAccountId is int acc && !await db.Accounts.AnyAsync(a => a.Id == acc && a.IsActive, ct))
+            throw new DomainException("معین موجودی پیدا نشد یا غیرفعال است.");
+        if (r.InventoryAccountId != c.InventoryAccountId && await db.StockDocs.AnyAsync(d => d.Lines.Any(l => db.Items.Any(i => i.Id == l.ItemId && i.CategoryId == id)), ct))
+            throw new DomainException($"کالاهای نوع «{c.Title}» سند انبار دارند؛ معین موجودی این نوع عوض نمی‌شود.");
+        c.Update(r.InventoryAccountId, r.CanPurchase, r.CanSell, r.CanConsume, r.CanProductionInput, r.CanProductionOutput);
+        await db.SaveChangesAsync(ct);
     }
 }
