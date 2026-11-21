@@ -206,6 +206,69 @@ public class PayrollTests(SqlFixture db)
         Assert.Contains("۱۰۰", badSplit.Message);
     }
 
+    [Fact]
+    public async Task Loans_are_deducted_and_final_run_posts_balanced_voucher()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var years = await db.Run<Erp.Accounting.Application.FiscalYears.FiscalYearService, List<Erp.Accounting.Application.FiscalYears.FiscalYearDto>>(
+            x => x.GetAllAsync(default));
+        if (!years.Any(y => string.CompareOrdinal(y.StartDate, "1405/03/31") <= 0 && string.CompareOrdinal(y.EndDate, "1405/03/31") >= 0))
+            await db.Run<Erp.Accounting.Application.FiscalYears.FiscalYearService, short>(x => x.CreateAsync(1405, 1, default));
+
+        var roles = await db.Run<PersonService, List<PersonRoleTypeDto>>(x => x.GetRoleTypesAsync(false, default));
+        var person = await db.Run<PersonService, int>(x => x.CreateAsync(new SavePersonRequest
+        {
+            Kind = PersonKind.Natural, FirstName = "کارمند", LastName = "وام و سند", NationalId = PersonTests.NewNationalCode(),
+            RoleIds = [roles.Single(r => r.Code == RoleCodes.Employee).Id]
+        }, default));
+        var workshop = await db.Run<WorkshopService, int>(x => x.CreateAsync(new SaveWorkshopRequest("9900778899", "کارگاه وام و سند"), default));
+        var employee = await db.Run<EmployeeService, int>(x => x.CreateAsync(new SaveEmployeeRequest(person, null, workshop, null,
+            ContractType.Temporary, "1405/01/01", "1234567892", InsuranceStatus.Insured, 0, s.Center), default));
+        var draft = await db.Run<DecreeService, DecreeDto>(x => x.DraftAsync(employee, default));
+        var wage = draft.Items.Single(i => i.Code == DecreeService.DailyWageCode).PayItemId;
+        await db.Run<DecreeService, int>(x => x.CreateAsync(
+            new SaveDecreeRequest(employee, "1405/01/01", DecreeType.Hire, null, [new DecreeItemInput(wage, 6_000_000)]), default));
+
+        // وام ۱۰ م در ۴ قسط از خرداد؛ مساعده ۲ م یک‌جا در خرداد
+        var loan = await db.Run<LoanService, int>(x => x.CreateAsync(
+            new SaveLoanRequest(employee, LoanKind.Loan, "1405/02/20", 10_000_000, 4, null, 1405, 3), default));
+        await db.Run<LoanService, int>(x => x.CreateAsync(
+            new SaveLoanRequest(employee, LoanKind.Advance, "1405/03/10", 2_000_000, 1, null, 1405, 3), default));
+
+        var runId = await db.Run<PayRunService, int>(x => x.CreateAsync(new CreatePayRunRequest(1405, 3, workshop), default));
+        await db.Run<PayRunService, CalcResultDto>(x => x.CalculateAsync(runId, default));
+        var slip = await db.Run<PayRunService, PayslipDto>(x => x.PayslipAsync(runId, employee, default));
+        Assert.Equal(2_500_000, slip.Deductions.Single(l => l.Code == "LOAN").Amount);
+        Assert.Equal(2_000_000, slip.Deductions.Single(l => l.Code == "ADVANCE").Amount);
+        var loans = await db.Run<LoanService, List<LoanListItemDto>>(x => x.ListAsync(employee, false, default));
+        Assert.Equal(7_500_000, loans.Single(l => l.Kind == LoanKind.Loan).Remaining);
+        Assert.Equal(0, loans.Single(l => l.Kind == LoanKind.Advance).Remaining);
+
+        var used = await Assert.ThrowsAsync<DomainException>(() => db.Run<LoanService>(x => x.DeleteAsync(loan, default)));
+        Assert.Contains("قسط", used.Message);
+
+        // قطعی: سند تراز، اجرا قفل
+        var voucher = await db.Run<PayRunService, RunVoucherDto>(x => x.FinalizeAsync(runId, default));
+        var v = await db.Run<Erp.Accounting.Application.Vouchers.VoucherService, Erp.Accounting.Application.Vouchers.VoucherDto>(x =>
+            x.GetAsync(voucher.VoucherId, default));
+        Assert.True(v.IsBalanced);
+        Assert.Equal("pay_run", v.SourceDocType);
+        Assert.Contains(v.Lines, l => l.AccountCode == "5125" && l.Credit == slip.Net);
+        Assert.Contains(v.Lines, l => l.AccountCode == "2522" && l.Credit == 2_500_000);
+        Assert.Contains(v.Lines, l => l.AccountCode == "2523" && l.Credit == 2_000_000);
+        Assert.Contains(v.Lines, l => l.AccountCode.StartsWith("81") && l.Debit > 0);
+
+        var row = (await db.Run<PayRunService, PayRunDto>(x => x.GetAsync(runId, default))).Rows.Single();
+        var locked = await Assert.ThrowsAsync<DomainException>(() => db.Run<PayRunService>(x => x.SaveAttendanceAsync(runId,
+            [new SaveAttendanceRequest(row.Id, 10, 10, 0, 0, 0, 0, [new CenterShareInput(s.Center, 100)], new Dictionary<int, decimal>())], default)));
+        Assert.Contains("قطعی", locked.Message);
+
+        // برگشت از قطعی: سند حذف می‌شود
+        await db.Run<PayRunService>(x => x.ReopenAsync(runId, default));
+        Assert.Null(await db.Run<PayRunService, RunVoucherDto?>(x => x.VoucherAsync(runId, default)));
+    }
+
     private static Dictionary<string, byte[]> Unzip(byte[] zip)
     {
         using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(zip));

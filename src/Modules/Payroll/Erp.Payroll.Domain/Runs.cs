@@ -19,6 +19,7 @@ public class PayRun : AggregateRoot<int>
 {
     private readonly List<Attendance> _attendances = [];
     private readonly List<RunLine> _lines = [];
+    private readonly List<RunLoanDeduction> _loanDeductions = [];
 
     private PayRun() { } // EF
 
@@ -43,6 +44,7 @@ public class PayRun : AggregateRoot<int>
     public DateTime? CalculatedAt { get; private set; }
     public IReadOnlyList<Attendance> Attendances => _attendances.AsReadOnly();
     public IReadOnlyList<RunLine> Lines => _lines.AsReadOnly();
+    public IReadOnlyList<RunLoanDeduction> LoanDeductions => _loanDeductions.AsReadOnly();
 
     public string Title => $"{Year}/{Month:00}";
 
@@ -72,6 +74,7 @@ public class PayRun : AggregateRoot<int>
         EnsureEditable();
         _attendances.Remove(a);
         _lines.RemoveAll(l => l.EmployeeId == a.EmployeeId);
+        _loanDeductions.Clear(); // با محاسبه دوباره ساخته می‌شود
         Changed();
     }
 
@@ -82,11 +85,28 @@ public class PayRun : AggregateRoot<int>
         if (Status == PayRunStatus.Calculated) Status = PayRunStatus.Draft;
     }
 
-    public void SetResults(IEnumerable<RunLine> lines, int userId, DateTime nowUtc)
+    /// <summary>قطعی: کارکرد و نتیجه قفل می‌شود و سند حسابداری صادر می‌شود (در سرویس).</summary>
+    public void MakeFinal()
+    {
+        if (Status == PayRunStatus.Final) throw new DomainException($"حقوق {Title} قبلاً قطعی شده است.");
+        if (Status != PayRunStatus.Calculated) throw new DomainException($"حقوق {Title} نیازمند محاسبه است؛ اول «محاسبه» بزنید.");
+        Status = PayRunStatus.Final;
+    }
+
+    /// <summary>برگشت از قطعی (سند حسابداری در سرویس حذف می‌شود؛ سند دائم مانع است).</summary>
+    public void Reopen()
+    {
+        if (Status != PayRunStatus.Final) throw new DomainException($"حقوق {Title} قطعی نیست.");
+        Status = PayRunStatus.Calculated;
+    }
+
+    public void SetResults(IEnumerable<RunLine> lines, IEnumerable<RunLoanDeduction> loanDeductions, int userId, DateTime nowUtc)
     {
         EnsureEditable();
         _lines.Clear();
         _lines.AddRange(lines);
+        _loanDeductions.Clear();
+        _loanDeductions.AddRange(loanDeductions);
         Status = PayRunStatus.Calculated;
         (CalculatedBy, CalculatedAt) = (userId, nowUtc);
     }

@@ -83,6 +83,7 @@ public static class AppMenu
             new("پرونده‌های پرسنلی", Icons.Material.Outlined.Badge, "/hr/employees", P(H.EmployeeView)),
             new("محاسبه حقوق", Icons.Material.Outlined.Calculate, "/payroll/runs", P(PY.RunView)),
             new("احکام حقوقی", Icons.Material.Outlined.HistoryEdu, "/payroll/decrees", P(PY.DecreeView)),
+            new("وام و مساعده", Icons.Material.Outlined.Savings, "/payroll/loans", P(PY.LoanView)),
             new("تعاریف کارگزینی و حقوق", Icons.Material.Outlined.Tune, Expanded: false, Children:
             [
                 new("اقلام حقوق", Icons.Material.Outlined.Functions, "/payroll/items", P(PY.Setup)),
@@ -221,6 +222,7 @@ public static class AppMenu
         ("/hr/jobs", P(H.Setup)),
         ("/payroll/decrees", P(PY.DecreeView)),
         ("/payroll/runs", P(PY.RunView)),
+        ("/payroll/loans", P(PY.LoanView)),
         ("/payroll/items", P(PY.Setup)),
         ("/payroll/params", P(PY.Setup)),
         ("/persons/new", P(B.PersonCreate)),

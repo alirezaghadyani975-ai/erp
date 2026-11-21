@@ -267,6 +267,23 @@ BEGIN TRY
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد کارکرد کارمند کارگاه دیگر', N'50423', CAST(@err AS NVARCHAR(50)));
 
+-- 20) وام: کسر بیش از مبلغ و حذف وامِ قسط‌خورده (اسکریپت ۲۳)
+DECLARE @Loan INT;
+INSERT pay.Loans (EmployeeId, Kind, DocNo, LoanDate, Amount, Installments, InstallmentAmount, StartYear, StartMonth, CreatedBy)
+VALUES (@Emp, 1, -1, @D1, 1000, 2, 500, 1419, 1, 1);
+SET @Loan = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT pay.RunLoanDeductions (RunId, LoanId, Amount) VALUES (@Run, @Loan, 1500);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد کسر قسط بیش از مبلغ وام', N'50430', CAST(@err AS NVARCHAR(50)));
+INSERT pay.RunLoanDeductions (RunId, LoanId, Amount) VALUES (@Run, @Loan, 500);
+BEGIN TRY
+    DELETE pay.Loans WHERE Id = @Loan;
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد حذف وامی که قسطش کسر شده', N'547', CAST(@err AS NVARCHAR(50)));
+
 UPDATE pay.Runs SET [Status] = 3 WHERE Id = @Run;
 BEGIN TRY
     UPDATE pay.Attendance SET WorkDays = 10 WHERE Id = @Att;
@@ -291,6 +308,7 @@ INSERT @R VALUES (N'رد دستمزد بیمه برای قلم غیرمشمول'
 
 UPDATE pay.Runs SET [Status] = 1 WHERE Id = @Run;
 DELETE pay.Runs WHERE Id IN (@Run, @Run2);
+DELETE pay.Loans WHERE Id = @Loan;
 DELETE hr.Workshops WHERE Id = @Ws2;
 
 DELETE pay.Decrees WHERE Id = @Dec;

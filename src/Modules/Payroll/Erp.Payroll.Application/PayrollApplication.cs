@@ -13,6 +13,7 @@ public interface IPayrollDbContext
     IQueryable<PaySettings> Settings { get; }
     IQueryable<Decree> Decrees { get; }
     IQueryable<PayRun> Runs { get; }
+    IQueryable<Loan> Loans { get; }
 
     /// <summary>فقط‌خواندنی از کارگزینی.</summary>
     IQueryable<EmployeeRef> Employees { get; }
@@ -43,6 +44,8 @@ public sealed class AccountRef
     public string Code { get; init; } = "";
     public string Title { get; init; } = "";
     public bool IsActive { get; init; }
+    /// <summary>قاعده تفصیلی دارد (ردیف سند به تفکیک کارمند)؛ بدون آن ردیف‌ها تجمیع می‌شوند.</summary>
+    public bool HasDetails { get; init; }
 }
 
 public static class PayrollPermissions
@@ -56,11 +59,18 @@ public static class PayrollPermissions
     public const string RunCreate = "pay.run.create";
     public const string RunEdit = "pay.run.edit";
     public const string RunDelete = "pay.run.delete";
+    public const string RunFinal = "pay.run.final";
+    public const string LoanView = "pay.loan.view";
+    public const string LoanCreate = "pay.loan.create";
+    public const string LoanEdit = "pay.loan.edit";
+    public const string LoanDelete = "pay.loan.delete";
 
     public static IPermissionSource List { get; } = new PermissionList("حقوق و دستمزد")
         .Add("pay.setup", "اقلام، پارامترهای سال و تنظیمات حقوق", ("edit", "تعریف و اصلاح"))
         .Crud("pay.decree", "حکم حقوقی")
-        .Crud("pay.run", "اجرای حقوق (کارکرد، محاسبه، مالیات)");
+        .Crud("pay.run", "اجرای حقوق (کارکرد، محاسبه، مالیات)")
+        .Add("pay.run", "اجرای حقوق (کارکرد، محاسبه، مالیات)", ("final", "قطعی کردن و صدور سند"))
+        .Crud("pay.loan", "وام و مساعده کارکنان");
 }
 
 public sealed record PayItemDto(int Id, string Code, string Title, PayItemKind Kind, PayItemSource Source, string? Formula,
@@ -106,6 +116,7 @@ public static class DependencyInjection
         services.AddScoped<PaySettingsService>();
         services.AddScoped<DecreeService>();
         services.AddScoped<PayRunService>();
+        services.AddScoped<LoanService>();
         services.AddScoped<Files.PayrollFilesService>();
         return services;
     }
@@ -160,3 +171,19 @@ public sealed record PayslipDto(string RunTitle, string Workshop, string Personn
 public sealed record TaxRowInput(string Key, decimal Amount);
 
 public sealed record TaxImportResultDto(int Matched, List<string> Unmatched, CalcResultDto Calculation);
+
+public sealed record LoanListItemDto(int Id, LoanKind Kind, int DocNo, int EmployeeId, string PersonnelNo, string Employee, string LoanDate,
+    decimal Amount, short Installments, decimal InstallmentAmount, string Start, decimal Deducted, decimal DeductedFinal, decimal Remaining,
+    string? Description);
+
+public sealed record LoanDto(int Id, LoanKind Kind, int DocNo, int EmployeeId, string Employee, string LoanDate, decimal Amount,
+    short Installments, decimal InstallmentAmount, short StartYear, byte StartMonth, string? Description, decimal Deducted,
+    List<LoanDeductionDto> Deductions);
+
+public sealed record LoanDeductionDto(int RunId, string Run, PayRunStatus Status, decimal Amount);
+
+/// <param name="InstallmentAmount">خالی = مبلغ ÷ تعداد اقساط</param>
+public sealed record SaveLoanRequest(int EmployeeId, LoanKind Kind, string LoanDate, decimal Amount, int Installments, decimal? InstallmentAmount,
+    short StartYear, byte StartMonth, string? Description = null);
+
+public sealed record RunVoucherDto(long VoucherId, int TempNo, int? VoucherNo, bool IsPermanent);

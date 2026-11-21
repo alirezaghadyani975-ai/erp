@@ -4,6 +4,7 @@
 @inject IDialogService Dialogs
 @inject TabService Tabs
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <TabTitle Text="@(_run is null ? "محاسبه حقوق" : $"حقوق {_run.Title}")" />
 
@@ -38,6 +39,28 @@ else
                     </IfAllowed>
                 </MudMenu>
             </IfAllowed>
+        }
+        @if (_run.Status == PayRunStatus.Calculated)
+        {
+            <IfAllowed Permission="@PayrollPermissions.RunFinal">
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Outlined.Lock" OnClick="FinalizeAsync" Disabled="_busy">
+                    قطعی و صدور سند
+                </MudButton>
+            </IfAllowed>
+        }
+        @if (_voucher is { } v)
+        {
+            <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.ReceiptLong"
+                     OnClick="@(() => Nav.NavigateTo($"/vouchers/{v.VoucherId}"))">
+                سند @(v.VoucherNo?.ToString() ?? $"موقت {v.TempNo}")
+            </MudChip>
+            @if (_run.Status == PayRunStatus.Final && !v.IsPermanent)
+            {
+                <IfAllowed Permission="@PayrollPermissions.RunFinal">
+                    <MudButton Variant="Variant.Text" Color="Color.Warning" StartIcon="@Icons.Material.Outlined.LockOpen" OnClick="ReopenAsync"
+                               Disabled="_busy">برگشت از قطعی</MudButton>
+                </IfAllowed>
+            }
         }
         @if (_run.Status != PayRunStatus.Draft)
         {
@@ -318,6 +341,7 @@ else
     private TaxImportResultDto? _taxResult;
     private bool _busy, _historyOpen, _centersOpen, _slipOpen;
     private List<string>? _fileWarnings;
+    private RunVoucherDto? _voucher;
     private int _tab;
     private EditRow? _centersRow;
     private List<ShareEdit> _centerEdit = [];
@@ -343,6 +367,7 @@ else
         }).ToList();
         _dirty.Clear();
         _summary = (await Backend.Run<PayRunService, List<RunSummaryRowDto>>(s => s.SummaryAsync(Id, default))).Value ?? [];
+        _voucher = _run.Status == PayRunStatus.Final ? (await Backend.Run<PayRunService, RunVoucherDto?>(s => s.VoucherAsync(Id, default))).Value : null;
     }
 
     private void Dirty(EditRow row) => _dirty.Add(row.Id);
@@ -456,6 +481,38 @@ else
             using var streamRef = new DotNetStreamReference(stream);
             await JS.InvokeVoidAsync("erpDownload", file.FileName, streamRef);
             Snackbar.Add(insurance ? "فایل لیست بیمه (DSKKAR00 و DSKWOR00) ساخته شد." : "فایل مالیات حقوق (WP و WH) ساخته شد.", Severity.Success);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task FinalizeAsync()
+    {
+        var noTax = _summary.Count > 0 && _summary.All(x => x.Tax == 0);
+        if (!await Dialogs.AskAsync($"قطعی کردن حقوق {_run!.Title}",
+                (noTax ? "مالیات حقوق هنوز وارد نشده است. " : "") +
+                "بعد از قطعی کردن، کارکرد و نتیجه قفل می‌شود و سند حسابداری حقوق صادر می‌شود (برگشت تا وقتی سند دائم نشده ممکن است).",
+                "قطعی و صدور سند")) return;
+        _busy = true;
+        try
+        {
+            var r = await Backend.Run<PayRunService, RunVoucherDto>(s => s.FinalizeAsync(Id, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            Snackbar.Add($"حقوق قطعی و سند موقت {r.Value!.TempNo} صادر شد.", Severity.Success);
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ReopenAsync()
+    {
+        if (!await Dialogs.AskAsync($"برگشت از قطعی حقوق {_run!.Title}", "سند حسابداری حقوق حذف و کارکرد دوباره قابل اصلاح می‌شود.", "برگشت از قطعی")) return;
+        _busy = true;
+        try
+        {
+            var r = await Backend.Run<PayRunService>(s => s.ReopenAsync(Id, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            Snackbar.Add("حقوق از قطعی برگشت و سندش حذف شد.", Severity.Success);
+            await LoadAsync();
         }
         finally { _busy = false; }
     }

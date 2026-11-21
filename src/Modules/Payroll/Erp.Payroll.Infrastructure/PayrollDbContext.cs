@@ -18,6 +18,7 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
     public IQueryable<PaySettings> Settings => Set<PaySettings>();
     public IQueryable<Decree> Decrees => Set<Decree>();
     public IQueryable<PayRun> Runs => Set<PayRun>();
+    public IQueryable<Loan> Loans => Set<Loan>();
     public IQueryable<CenterRef> Centers => Set<CenterRef>().AsNoTracking();
     public IQueryable<WorkshopRef> Workshops => Set<WorkshopRef>().AsNoTracking();
     public IQueryable<PersonInfoRef> PersonInfos => Set<PersonInfoRef>().AsNoTracking();
@@ -79,6 +80,8 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
             e.Navigation(x => x.Attendances).UsePropertyAccessMode(PropertyAccessMode.Field);
             e.HasMany(x => x.Lines).WithOne().HasForeignKey(l => l.RunId).OnDelete(DeleteBehavior.Cascade);
             e.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            e.HasMany(x => x.LoanDeductions).WithOne().HasForeignKey(l => l.RunId).OnDelete(DeleteBehavior.Cascade);
+            e.Navigation(x => x.LoanDeductions).UsePropertyAccessMode(PropertyAccessMode.Field);
             e.Ignore(x => x.DomainEvents);
         });
         b.Entity<Attendance>(e =>
@@ -117,6 +120,22 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
             e.HasKey(x => new { x.RunId, x.EmployeeId, x.PayItemId });
             e.Property(x => x.Amount).HasPrecision(24, 4);
         });
+        b.Entity<Loan>(e =>
+        {
+            e.ToTable("Loans", "pay", t => t.HasTrigger("trg_Loans_Protect"));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Amount).HasPrecision(24, 0);
+            e.Property(x => x.InstallmentAmount).HasPrecision(24, 0);
+            e.Property(x => x.CreatedAt).HasColumnType("datetime2(0)");
+            e.Ignore(x => x.ItemCode);
+            e.Ignore(x => x.DomainEvents);
+        });
+        b.Entity<RunLoanDeduction>(e =>
+        {
+            e.ToTable("RunLoanDeductions", "pay", t => t.HasTrigger("trg_RunLoanDeductions"));
+            e.HasKey(x => new { x.RunId, x.LoanId });
+            e.Property(x => x.Amount).HasPrecision(24, 0);
+        });
         b.Entity<CenterRef>(e =>
         {
             e.ToTable("CostCenters", "cost", t => t.ExcludeFromMigrations());
@@ -148,7 +167,11 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
         b.Entity<AccountRef>(e =>
         {
             e.HasKey(x => x.Id);
-            e.ToSqlQuery("SELECT Id, Code, Title, IsActive FROM fin.Accounts WHERE [Level] = 3");
+            e.ToSqlQuery("""
+                SELECT a.Id, a.Code, a.Title, a.IsActive,
+                       CAST(CASE WHEN EXISTS (SELECT 1 FROM fin.AccountDetailLevels l WHERE l.AccountId = a.Id) THEN 1 ELSE 0 END AS BIT) AS HasDetails
+                FROM fin.Accounts a WHERE a.[Level] = 3
+                """);
         });
     }
 }

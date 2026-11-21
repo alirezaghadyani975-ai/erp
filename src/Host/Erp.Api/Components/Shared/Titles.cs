@@ -45,6 +45,7 @@ public static class Titles
         [Erp.Payroll.Domain.DecreeType.Change] = "ترفیع / تغییر", [Erp.Payroll.Domain.DecreeType.Other] = "سایر",
         [Erp.Payroll.Domain.PayRunStatus.Draft] = "نیازمند محاسبه", [Erp.Payroll.Domain.PayRunStatus.Calculated] = "محاسبه‌شده",
         [Erp.Payroll.Domain.PayRunStatus.Final] = "قطعی",
+        [Erp.Payroll.Domain.LoanKind.Loan] = "وام", [Erp.Payroll.Domain.LoanKind.Advance] = "مساعده",
         [Erp.Payroll.Domain.MonthDaysMode.Thirty] ="همیشه ۳۰ روز", [Erp.Payroll.Domain.MonthDaysMode.Actual] = "روز واقعی ماه (۲۹ تا ۳۱)",
         [Erp.Sales.Domain.TaxInvoiceType.WithBuyer] = "نوع اول (با مشخصات خریدار)",
         [Erp.Sales.Domain.TaxInvoiceType.WithoutBuyer] = "نوع دوم (بدون مشخصات خریدار)",

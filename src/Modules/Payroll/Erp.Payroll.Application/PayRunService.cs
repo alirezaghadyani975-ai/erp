@@ -1,3 +1,4 @@
+using Erp.Accounting.Contracts;
 using Erp.Payroll.Domain;
 using Erp.Personnel.Contracts;
 using Erp.SharedKernel.Abstractions;
@@ -13,7 +14,8 @@ namespace Erp.Payroll.Application;
 /// اجرای ماهانه حقوق یک کارگاه: ساخت با کارکرد پیش‌فرض (روزهای اشتغال در ماه و مرکز هزینه پرونده)، ویرایش کارکرد و ورودی‌ها،
 /// محاسبه با فرمول‌ها (بیمه با نرخ کارگاه)، و ورود مالیات حقوق از نتیجه سامانه مالیاتی (بعد از محاسبه؛ خودکار دوباره محاسبه می‌شود).
 /// </summary>
-public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrentUser user, TimeProvider clock)
+public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrentUser user, TimeProvider clock, IVoucherPosting posting,
+    IUnitOfWork uow)
 {
     public const string InsuranceWorkerCode = "INS_WORKER";
 
@@ -109,7 +111,7 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
         var employees = await db.Employees.Where(e => ids.Contains(e.Id) || e.WorkshopId == run.WorkshopId).ToDictionaryAsync(e => e.Id, ct);
         var centers = await db.Centers.ToDictionaryAsync(c => c.Id, c => c.Title, ct);
         var columns = (await db.PayItems.AsNoTracking()
-                .Where(i => i.Source == PayItemSource.MonthlyInput || i.Source == PayItemSource.Loan || i.Source == PayItemSource.TaxOffice)
+                .Where(i => i.Source == PayItemSource.MonthlyInput || i.Source == PayItemSource.TaxOffice)
                 .OrderBy(i => i.SortOrder).ThenBy(i => i.Code).ToListAsync(ct))
             .Where(i => i.IsActive || run.Attendances.Any(a => a.InputOf(i.Id) != 0))
             .Select(i => new InputColumnDto(i.Id, i.Code, i.Title, i.Source, i.Kind)).ToList();
@@ -223,6 +225,13 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
         var employees = await db.Employees.Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
         var decrees = await db.Decrees.AsNoTracking().Include(d => d.Items).Where(d => ids.Contains(d.EmployeeId) && d.EffectiveDate <= end)
             .OrderBy(d => d.EffectiveDate).ToListAsync(ct);
+        var loans = await db.Loans.AsNoTracking().Where(l => ids.Contains(l.EmployeeId)).ToListAsync(ct);
+        var loanIds = loans.Select(l => l.Id).ToList();
+        var deductedElsewhere = (await db.Runs.AsNoTracking().Where(r => r.Id != run.Id)
+                .SelectMany(r => r.LoanDeductions.Where(d => loanIds.Contains(d.LoanId))).ToListAsync(ct))
+            .GroupBy(d => d.LoanId).ToDictionary(g => g.Key, g => g.Sum(d => d.Amount));
+        var loanItems = items.Where(i => i.Source == PayItemSource.Loan).ToDictionary(i => i.Code, i => i.Id);
+        var loanDeductions = new List<RunLoanDeduction>();
 
         var warnings = new List<CalcWarningDto>();
         var lines = new List<RunLine>();
@@ -245,8 +254,22 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
             };
             var ctx = new PayCalcContext(a.WorkDays, e.InsuranceStatus == InsuranceStatus.NotInsured ? 0 : a.InsuranceDays, run.MonthDays,
                 a.OtHours, a.NightHours, a.HolidayHours, a.AbsentDays, e.ChildrenCount, e.IsMarried, empRate, erRate, unRate);
-            var result = calculator.Calculate(ctx, parameters, decree ?? new Dictionary<int, decimal>(),
-                a.Inputs.ToDictionary(i => i.PayItemId, i => i.Amount));
+            // اقساط وام و مساعده از برنامه کسر (نه ورود دستی)
+            var inputs = a.Inputs.ToDictionary(i => i.PayItemId, i => i.Amount);
+            foreach (var id in loanItems.Values) inputs.Remove(id);
+            foreach (var loan in loans.Where(l => l.EmployeeId == e.Id))
+            {
+                var installment = loan.InstallmentFor(run.Year, run.Month, deductedElsewhere.GetValueOrDefault(loan.Id));
+                if (installment <= 0) continue;
+                if (!loanItems.TryGetValue(loan.ItemCode, out var itemId))
+                {
+                    Warn($"قلم فعال «{loan.ItemCode}» برای کسر {(loan.Kind == LoanKind.Loan ? "وام" : "مساعده")} شماره {loan.DocNo} نیست؛ کسر نشد.");
+                    continue;
+                }
+                inputs[itemId] = inputs.GetValueOrDefault(itemId) + installment;
+                loanDeductions.Add(new RunLoanDeduction(loan.Id, installment));
+            }
+            var result = calculator.Calculate(ctx, parameters, decree ?? new Dictionary<int, decimal>(), inputs);
             foreach (var w in result.Warnings) Warn(w);
 
             lines.AddRange(result.Amounts.Where(x => x.Value != 0).Select(x => new RunLine(e.Id, x.Key, x.Value)));
@@ -257,7 +280,7 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
         if (run.Attendances.Count > 0 && !run.Attendances.Any(a => a.Inputs.Any(i => items.Any(x => x.Id == i.PayItemId && x.Source == PayItemSource.TaxOffice))))
             warnings.Add(new CalcWarningDto("", "", "مالیات حقوق هنوز وارد نشده است (بعد از محاسبه، نتیجه سامانه مالیاتی را وارد کنید)."));
 
-        run.SetResults(lines, user.UserId, clock.GetUtcNow().UtcDateTime);
+        run.SetResults(lines, loanDeductions, user.UserId, clock.GetUtcNow().UtcDateTime);
         return new CalcResultDto(run.Attendances.Count, earnings, deductions, earnings - deductions, employer, warnings);
     }
 
@@ -283,6 +306,117 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
         var total = segments.Sum(s => s.Days);
         return segments.SelectMany(s => s.Decree.Items.Select(i => (i.PayItemId, Weighted: i.Amount * s.Days)))
             .GroupBy(x => x.PayItemId).ToDictionary(g => g.Key, g => Math.Round(g.Sum(x => x.Weighted) / total, 4));
+    }
+
+    // ---------------- قطعی و سند ----------------
+
+    public const string SourceModule = "payroll";
+    public const string DocType = "pay_run";
+
+    /// <summary>
+    /// قطعی کردن حقوق ماه و صدور سند حسابداری (الگوی pay_run) در یک تراکنش:
+    /// بدهکار هزینه (عامل × مرکز به نسبت تقسیم کارکرد)، بستانکار حقوق پرداختنی هر کارمند، کسور و بدهی‌ها (معین قلم).
+    /// </summary>
+    public async Task<RunVoucherDto> FinalizeAsync(int runId, CancellationToken ct)
+    {
+        access.Demand(PayrollPermissions.RunFinal);
+        var run = await LoadAsync(runId, ct);
+        var request = await PostingRequestAsync(run, ct);
+        run.MakeFinal();
+        await using var tx = await uow.BeginAsync(ct);
+        await db.SaveChangesAsync(ct);
+        var voucher = await posting.PostAsync(request, ct);
+        await tx.CommitAsync(ct);
+        return new RunVoucherDto(voucher.VoucherId, voucher.TempNo, voucher.VoucherNo, voucher.IsPermanent);
+    }
+
+    /// <summary>برگشت از قطعی: سند حسابداری حذف می‌شود (سند دائم‌شده مانع است) و کارکرد دوباره قابل اصلاح است.</summary>
+    public async Task ReopenAsync(int runId, CancellationToken ct)
+    {
+        access.Demand(PayrollPermissions.RunFinal);
+        var run = await LoadAsync(runId, ct);
+        run.Reopen();
+        await using var tx = await uow.BeginAsync(ct);
+        await posting.UnpostAsync(SourceModule, DocType, run.Id, ct);
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+    }
+
+    /// <summary>سند حسابداری اجرای قطعی (یا null).</summary>
+    public async Task<RunVoucherDto?> VoucherAsync(int runId, CancellationToken ct)
+    {
+        access.Demand(PayrollPermissions.RunView);
+        var found = await posting.FindAsync(SourceModule, DocType, [runId], ct);
+        return found.TryGetValue(runId, out var v) ? new RunVoucherDto(v.VoucherId, v.TempNo, v.VoucherNo, v.IsPermanent) : null;
+    }
+
+    private async Task<PostingRequest> PostingRequestAsync(PayRun run, CancellationToken ct)
+    {
+        var items = await db.PayItems.AsNoTracking().ToDictionaryAsync(i => i.Id, ct);
+        var accounts = await db.Accounts.ToDictionaryAsync(a => a.Id, ct);
+        var ids = run.Attendances.Select(a => a.EmployeeId).ToList();
+        var employees = await db.Employees.Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
+        var (_, end) = Period(run);
+        var title = $"حقوق {run.Title} {employees.Values.FirstOrDefault()?.WorkshopTitle}".Trim();
+
+        var expense = new Dictionary<(int Factor, int Center), decimal>();
+        var credits = new Dictionary<(string Key, int? Account, int? Person), decimal>();
+        foreach (var a in run.Attendances)
+        {
+            var e = employees[a.EmployeeId];
+            var mine = run.Lines.Where(l => l.EmployeeId == a.EmployeeId).Select(l => (Item: items[l.PayItemId], l.Amount)).ToList();
+            var net = mine.Where(x => x.Item.Kind == PayItemKind.Earning).Sum(x => x.Amount)
+                      - mine.Where(x => x.Item.Kind == PayItemKind.Deduction).Sum(x => x.Amount);
+            if (net < 0) throw new DomainException($"خالص پرداختی {e.PersonnelNo} {e.DisplayName} منفی است ({net:#,0}).");
+            Add(credits, ("net", null, e.PersonId), net);
+
+            foreach (var (item, amount) in mine.Where(x => x.Amount != 0))
+            {
+                switch (item.Kind)
+                {
+                    case PayItemKind.Earning or PayItemKind.EmployerShare or PayItemKind.Provision:
+                        var factor = item.CostFactorId ?? throw new DomainException($"قلم «{item.Title}» عامل هزینه ندارد؛ در «اقلام حقوق» تعیین کنید.");
+                        foreach (var (center, share) in Split(amount, a.Centers))
+                            expense[(factor, center)] = expense.GetValueOrDefault((factor, center)) + share;
+                        if (item.Kind != PayItemKind.Earning) Credit("liability", item, amount, e);
+                        break;
+                    case PayItemKind.Deduction:
+                        Credit("deduction", item, amount, e);
+                        break;
+                }
+            }
+        }
+
+        var lines = new List<PostingLine>();
+        lines.AddRange(expense.Where(x => x.Value != 0).Select(x => new PostingLine("expense", x.Value,
+            [new PostingDetail(PostingDetailKind.CostFactor, x.Key.Factor), new PostingDetail(PostingDetailKind.CostCenter, x.Key.Center)], title)));
+        lines.AddRange(credits.Where(x => x.Value != 0).Select(x => new PostingLine(x.Key.Key, x.Value,
+            x.Key.Person is int p ? [new PostingDetail(PostingDetailKind.Person, p)] : [], title, x.Key.Account)));
+        if (lines.Count == 0) throw new DomainException("حقوق این ماه مبلغی برای سند ندارد.");
+        return new PostingRequest(SourceModule, DocType, run.Id, end, title, lines);
+
+        void Credit(string key, PayItem item, decimal amount, EmployeeRef e)
+        {
+            var account = item.AccountId is int id ? accounts.GetValueOrDefault(id) : null;
+            if (account is null) throw new DomainException($"قلم «{item.Title}» حساب بستانکار ندارد؛ در «اقلام حقوق» تعیین کنید.");
+            // معین بدون تفصیلی (مثل حق بیمه و مالیات پرداختنی) تجمیعی؛ بقیه به تفکیک کارمند
+            Add(credits, (key, account.Id, account.HasDetails ? e.PersonId : null), amount);
+        }
+
+        static void Add<TKey>(Dictionary<TKey, decimal> map, TKey key, decimal amount) where TKey : notnull =>
+            map[key] = map.GetValueOrDefault(key) + amount;
+    }
+
+    /// <summary>تقسیم مبلغ بین مراکز به درصد؛ آخرین مرکز باقی‌مانده را می‌گیرد تا جمع دقیق بماند.</summary>
+    private static IEnumerable<(int Center, decimal Amount)> Split(decimal amount, IReadOnlyList<AttendanceCenter> centers)
+    {
+        var rest = amount;
+        for (var i = 0; i < centers.Count; i++)
+        {
+            var share = i == centers.Count - 1 ? rest : Math.Round(amount * centers[i].Percent / 100, 0, MidpointRounding.AwayFromZero);
+            rest -= share;
+            yield return (centers[i].CostCenterId, share);
+        }
     }
 
     // ---------------- نتیجه ----------------
@@ -350,7 +484,7 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
 
     private async Task<PayRun> LoadAsync(int runId, CancellationToken ct) =>
         await db.Runs.Include(r => r.Attendances).ThenInclude(a => a.Centers)
-            .Include(r => r.Attendances).ThenInclude(a => a.Inputs).Include(r => r.Lines)
+            .Include(r => r.Attendances).ThenInclude(a => a.Inputs).Include(r => r.Lines).Include(r => r.LoanDeductions)
             .FirstOrDefaultAsync(r => r.Id == runId, ct) ?? throw new NotFoundException("اجرای حقوق پیدا نشد.");
 
     private static (DateOnly Start, DateOnly End) Period(PayRun run)

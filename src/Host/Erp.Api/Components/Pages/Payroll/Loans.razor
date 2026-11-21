@@ -1,0 +1,243 @@
+@page "/payroll/loans"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="وام و مساعده کارکنان" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">وام و مساعده کارکنان</MudText>
+    <MudSpacer />
+    <IfAllowed Permission="@PayrollPermissions.LoanCreate">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">وام یا مساعده جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    این‌جا مبلغ و برنامه کسر ثبت می‌شود؛ پرداخت خود وام یا مساعده را در خزانه‌داری با نوع پرداختی که معین «وام کارکنان» (2522) یا
+    «مساعده کارکنان» (2523) دارد ثبت کنید. هر ماه که حقوق محاسبه شود، یک قسط (حداکثر تا مانده) کسر می‌شود؛ مساعده یک‌جا در ماه شروع.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudAutocomplete T="int?" Value="_employeeFilter" ValueChanged="OnFilterChanged" SearchFunc="SearchEmployees" ToStringFunc="EmployeeTitle"
+                         Label="کارمند" Clearable="true" ResetValueOnEmptyText="true" Dense="true" MaxItems="null"
+                         Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:300px" />
+        <MudCheckBox T="bool" Value="_openOnly" ValueChanged="OnOpenOnlyChanged" Label="فقط دارای مانده" Dense="true" />
+    </MudStack>
+    <MudTable T="LoanListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => EditAsync(a.Item!.Id))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>نوع</MudTh>
+            <MudTh>شماره</MudTh>
+            <MudTh>تاریخ</MudTh>
+            <MudTh>کارمند</MudTh>
+            <MudTh Style="text-align:left">مبلغ</MudTh>
+            <MudTh Style="text-align:left">قسط</MudTh>
+            <MudTh>شروع کسر</MudTh>
+            <MudTh Style="text-align:left">کسرشده</MudTh>
+            <MudTh Style="text-align:left">مانده</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@Titles.Of(context.Kind)</MudTd>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.LoanDate</span></MudTd>
+            <MudTd><span class="code">@context.PersonnelNo</span> @context.Employee</MudTd>
+            <MudTd Class="num">@Format.Amount(context.Amount)</MudTd>
+            <MudTd Class="num">@Format.Amount(context.InstallmentAmount) <span class="select-hint">× @context.Installments</span></MudTd>
+            <MudTd><span class="code">@context.Start</span></MudTd>
+            <MudTd Class="num" title="@($"در حقوق قطعی: {Format.Amount(context.DeductedFinal)}")">@Format.Amount(context.Deducted)</MudTd>
+            <MudTd Class="num"><b>@Format.Amount(context.Remaining)</b></MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTd colspan="4"><b>جمع</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(x => x.Amount))</b></MudTd>
+            <MudTd colspan="2"></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(x => x.Deducted))</b></MudTd>
+            <MudTd Class="num"><b>@Format.Amount(_rows.Sum(x => x.Remaining))</b></MudTd>
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4">وام یا مساعده‌ای ثبت نشده است.</MudText></NoRecordsContent>
+        <PagerContent><MudTablePager RowsPerPageString="ردیف در صفحه" InfoFormat="{first_item}-{last_item} از {all_items}" PageSizeOptions="[25, 50, 100]" /></PagerContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_editOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editId is null ? "وام یا مساعده جدید" : $"{Titles.Of(_kind)} {Format.No(_docNo)}")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="8">
+                <MudAutocomplete T="int?" @bind-Value="_employeeId" SearchFunc="SearchEmployees" ToStringFunc="EmployeeTitle" Label="کارمند"
+                                 Required="true" RequiredError="کارمند الزامی است." Clearable="true" ResetValueOnEmptyText="true" Dense="true"
+                                 MaxItems="null" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="_deducted > 0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="LoanKind" Value="_kind" ValueChanged="OnKindChanged" Label="نوع" Disabled="_editId is not null"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var k in Enum.GetValues<LoanKind>())
+                    {
+                        <MudSelectItem T="LoanKind" Value="k">@Titles.Of(k)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6"><PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal" @bind-Value="_amount" Label="مبلغ (ریال)" Format="#,0" HideSpinButtons="true" Min="0" Class="num"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            @if (_kind == LoanKind.Loan)
+            {
+                <MudItem xs="6" sm="4">
+                    <MudNumericField T="int" @bind-Value="_installments" Label="تعداد اقساط" Min="1" Max="240" HideSpinButtons="true" Class="num"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" sm="8">
+                    <MudNumericField T="decimal?" @bind-Value="_installmentAmount" Label="مبلغ هر قسط" Format="#,0" HideSpinButtons="true" Min="0" Class="num"
+                                     HelperText="@($"خالی = {Format.Amount(_installments > 0 ? Math.Ceiling(_amount / _installments) : 0)} (مبلغ ÷ اقساط)")"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+            }
+            <MudItem xs="6">
+                <MudNumericField T="short" @bind-Value="_startYear" Label="سال شروع کسر" Min="1300" Max="1500" HideSpinButtons="true" Class="num"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            <MudItem xs="6">
+                <MudSelect T="byte" @bind-Value="_startMonth" Label="ماه شروع کسر" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @for (byte m = 1; m <= 12; m++)
+                    {
+                        var month = m;
+                        <MudSelectItem T="byte" Value="month">@month.ToString("00") — @PayRuns.MonthNames[month - 1]</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_description" Label="شرح" MaxLength="300" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudItem>
+            @if (_deductions.Count > 0)
+            {
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2">اقساط کسرشده</MudText>
+                    <table class="voucher-grid">
+                        @foreach (var d in _deductions)
+                        {
+                            <tr>
+                                <td><span class="code">@d.Run</span></td>
+                                <td><RunStatusChip Status="d.Status" /></td>
+                                <td class="num">@Format.Amount(d.Amount)</td>
+                            </tr>
+                        }
+                        <tr><td colspan="2"><b>مانده</b></td><td class="num"><b>@Format.Amount(_amount - _deducted)</b></td></tr>
+                    </table>
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        @if (_editId is not null && _deducted == 0)
+        {
+            <IfAllowed Permission="@PayrollPermissions.LoanDelete">
+                <MudButton Color="Color.Error" OnClick="DeleteAsync">حذف</MudButton>
+            </IfAllowed>
+        }
+        <MudSpacer />
+        <MudButton OnClick="() => _editOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(_employeeId is null || string.IsNullOrWhiteSpace(_date) || _amount <= 0)">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<EmployeeOptionDto> _employees = [];
+    private List<LoanListItemDto> _rows = [];
+    private bool _loading = true, _openOnly = true, _editOpen;
+    private int? _employeeFilter, _editId, _employeeId;
+    private int _docNo, _installments = 1;
+    private LoanKind _kind = LoanKind.Loan;
+    private string? _date, _description;
+    private decimal _amount, _deducted;
+    private decimal? _installmentAmount;
+    private short _startYear;
+    private byte _startMonth = 1;
+    private List<LoanDeductionDto> _deductions = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _employees = (await Backend.Run<LoanService, List<EmployeeOptionDto>>(s => s.EmployeesAsync(null, default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var (employee, open) = (_employeeFilter, _openOnly);
+        var r = await Backend.Run<LoanService, List<LoanListItemDto>>(s => s.ListAsync(employee, open, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private Task OnFilterChanged(int? id) { _employeeFilter = id; return LoadAsync(); }
+    private Task OnOpenOnlyChanged(bool v) { _openOnly = v; return LoadAsync(); }
+
+    private void OnKindChanged(LoanKind k)
+    {
+        _kind = k;
+        if (k == LoanKind.Advance) (_installments, _installmentAmount) = (1, null);
+    }
+
+    private void New()
+    {
+        var today = PersianDate.ToPersian(DateOnly.FromDateTime(DateTime.Now));
+        (_editId, _docNo, _employeeId, _kind, _date, _amount, _installments, _installmentAmount, _description, _deducted) =
+            (null, 0, _employeeFilter, LoanKind.Loan, today, 0, 1, null, null, 0);
+        (_startYear, _startMonth) = (short.Parse(today[..4]), byte.Parse(today.Substring(5, 2)));
+        _deductions = [];
+        _editOpen = true;
+    }
+
+    private async Task EditAsync(int id)
+    {
+        var r = await Backend.Run<LoanService, LoanDto>(s => s.GetAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        var l = r.Value!;
+        if (_employees.All(e => e.Id != l.EmployeeId))
+            _employees = (await Backend.Run<LoanService, List<EmployeeOptionDto>>(s => s.EmployeesAsync(l.EmployeeId, default))).Value ?? _employees;
+        (_editId, _docNo, _employeeId, _kind, _date, _amount, _installments, _installmentAmount, _description, _deducted) =
+            (l.Id, l.DocNo, l.EmployeeId, l.Kind, l.LoanDate, l.Amount, l.Installments, l.InstallmentAmount, l.Description, l.Deducted);
+        (_startYear, _startMonth, _deductions) = (l.StartYear, l.StartMonth, l.Deductions);
+        _editOpen = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveLoanRequest(_employeeId!.Value, _kind, _date!, _amount, _installments, _installmentAmount, _startYear, _startMonth, _description);
+        var error = _editId is int id
+            ? (await Backend.Run<LoanService>(s => s.UpdateAsync(id, request, default))).Error
+            : (await Backend.Run<LoanService, int>(s => s.CreateAsync(request, default))).Error;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _editOpen = false;
+        Snackbar.Add($"{Titles.Of(_kind)} ذخیره شد؛ قسط در محاسبه حقوق ماه {_startYear}/{_startMonth:00} به بعد کسر می‌شود.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.DeleteAsync($"{Titles.Of(_kind)} {Format.No(_docNo)}", "فقط وامی که قسطش کسر نشده حذف می‌شود.")) return;
+        var id = _editId!.Value;
+        var r = await Backend.Run<LoanService>(s => s.DeleteAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _editOpen = false;
+        await LoadAsync();
+    }
+
+    private string? EmployeeTitle(int? id) =>
+        id is int i ? _employees.FirstOrDefault(e => e.Id == i) is { } e ? $"{e.PersonnelNo} — {e.Name}" : "؟" : null;
+
+    private Task<IEnumerable<int?>> SearchEmployees(string? term, CancellationToken ct)
+    {
+        var t = PersianText.NormalizeOrNull(term);
+        IEnumerable<EmployeeOptionDto> q = _employees;
+        if (t is not null && t != EmployeeTitle(_employeeId) && t != EmployeeTitle(_employeeFilter))
+            q = q.Where(e => e.Name.Contains(t) || e.PersonnelNo.StartsWith(t));
+        return Task.FromResult(q.Select(e => (int?)e.Id));
+    }
+}
