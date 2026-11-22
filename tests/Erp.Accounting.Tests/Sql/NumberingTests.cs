@@ -66,5 +66,16 @@ public class NumberingTests(SqlFixture db)
         Assert.Equal(-150m, sales.Opening);
         Assert.Equal([3, 4], sales.Rows.Select(r => r.VoucherNo));
         Assert.Equal(-650m, sales.Ending);
+
+        // سند معکوس و کپی از سند دائم: پیش‌نویس تازه؛ معکوس بدهکار و بستانکار را جابه‌جا می‌کند
+        var reversed = await db.Run<VoucherService, long>(s => s.CopyAsync(march, "1414/03/02", reverse: true, default));
+        var r = await db.Run<VoucherService, VoucherDto>(s => s.GetAsync(reversed, default));
+        Assert.Equal(VoucherStatus.Draft, r.Status);
+        Assert.Equal(("7001", 0m, 300m), (r.Lines[0].AccountCode, r.Lines[0].Debit, r.Lines[0].Credit));
+        Assert.Equal(("6001", 300m, 0m), (r.Lines[1].AccountCode, r.Lines[1].Debit, r.Lines[1].Credit));
+        Assert.StartsWith("معکوس سند 4", r.Description);
+        var copy = await db.Run<VoucherService, VoucherDto>(async s => await s.GetAsync(await s.CopyAsync(march, "1414/03/03", false, default), default));
+        Assert.Equal((300m, 0m, "سند 1414/03/01"), (copy.Lines[0].Debit, copy.Lines[0].Credit, copy.Description));
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<VoucherService, long>(s => s.CopyAsync(march, "1399/01/01", false, default)));
     }
 }

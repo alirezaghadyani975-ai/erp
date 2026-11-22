@@ -63,6 +63,25 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
                 l.FollowUpDate is DateOnly f ? PersianDate.ToPersian(f) : null)).ToList());
     }
 
+    /// <summary>
+    /// کپی سند در یک سند پیش‌نویس تازه به تاریخ داده‌شده؛ با <paramref name="reverse"/> بدهکار و بستانکار جابه‌جا می‌شوند (سند معکوس).
+    /// سند مبدأ می‌تواند خودکار یا دائم باشد؛ نتیجه همیشه سند دستی عادی است. سال مالی از تاریخ پیدا می‌شود.
+    /// </summary>
+    public async Task<long> CopyAsync(long id, string date, bool reverse, CancellationToken ct)
+    {
+        var source = await GetAsync(id, ct);
+        if (source.Type != VoucherType.Normal) throw new DomainException("سند افتتاحیه یا اختتامیه کپی یا معکوس نمی‌شود.");
+        var day = PersianDate.Parse(date);
+        var years = await db.FiscalYears.AsNoTracking().ToListAsync(ct);
+        var year = years.FirstOrDefault(y => y.Contains(day)) ?? throw new DomainException($"تاریخ {date} در هیچ سال مالی نیست.");
+        var no = source.VoucherNo?.ToString() ?? $"موقت {source.TempNo}";
+        var description = reverse ? $"معکوس سند {no} ({source.Date}){(source.Description is { Length: > 0 } d ? ": " + d : "")}" : source.Description;
+        var lines = source.Lines.Select(l => new VoucherLineRequest(l.AccountCode, l.Details.Select(x => x?.Code).ToList(),
+            reverse ? l.Credit : l.Debit, reverse ? l.Debit : l.Credit, l.Description, l.CurrencyCode,
+            l.CurrencyAmount, l.ExchangeRate, l.Quantity, l.UnitId, l.FollowUpNo, l.FollowUpDate)).ToList();
+        return await CreateAsync(new SaveVoucherRequest(year.Id, date, description, lines), ct);
+    }
+
     /// <summary>ثبت سند جدید (پیش‌نویس) با شماره موقت بعدی.</summary>
     public async Task<long> CreateAsync(SaveVoucherRequest request, CancellationToken ct)
     {

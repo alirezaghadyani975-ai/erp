@@ -52,6 +52,17 @@ else
                                OnClick="@(() => Nav.NavigateTo($"/vouchers/print?ids={Id}&year={_yearId}&auto=true"))">چاپ</MudButton>
                 </MudTooltip>
             }
+            @if (!_editing && Id is not null && !IsSystem && Session.Has(AccountingPermissions.VoucherCreate))
+            {
+                <MudTooltip Text="یک سند پیش‌نویس تازه با همین ردیف‌ها">
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.ContentCopy" Disabled="_busy"
+                               OnClick="@(() => OpenCopy(false))">کپی</MudButton>
+                </MudTooltip>
+                <MudTooltip Text="سند پیش‌نویس تازه با جابه‌جایی بدهکار و بستانکار (برای خنثی کردن این سند)">
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.SwapHoriz" Disabled="_busy"
+                               OnClick="@(() => OpenCopy(true))">سند معکوس</MudButton>
+                </MudTooltip>
+            }
             @if (!_editing && Id is not null && (_status is VoucherStatus.Draft or VoucherStatus.Temporary) && !IsSystem
                  && Session.Has(AccountingPermissions.VoucherVoid))
             {
@@ -193,8 +204,44 @@ else
 
 </FormWithList>
 
+<MudDialog @bind-Visible="_copyOpen" Options="new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_copyReverse ? "سند معکوس" : "کپی سند")</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+            @(_copyReverse
+                ? "یک سند پیش‌نویس تازه با همین ردیف‌ها ساخته می‌شود که بدهکار و بستانکارش جابه‌جا شده است؛ اثر این سند را خنثی می‌کند."
+                : "یک سند پیش‌نویس تازه با همین ردیف‌ها و شرح ساخته می‌شود.")
+        </MudText>
+        <PersianDateField @bind-Value="_copyDate" Label="تاریخ سند تازه" Required="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _copyOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CopyAsync" Disabled="_busy || string.IsNullOrEmpty(_copyDate)">ساخت سند</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     [Parameter] public long? Id { get; set; }
+
+    private bool _copyOpen, _copyReverse;
+    private string? _copyDate;
+
+    private void OpenCopy(bool reverse)
+    {
+        (_copyReverse, _copyDate, _copyOpen) = (reverse, Format.Today(), true);
+    }
+
+    private async Task CopyAsync()
+    {
+        _busy = true;
+        var (id, date, reverse) = (Id!.Value, _copyDate!, _copyReverse);
+        var r = await Backend.Run<VoucherService, long>(s => s.CopyAsync(id, date, reverse, default));
+        _busy = false;
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _copyOpen = false;
+        Snackbar.Add(reverse ? "سند معکوس به‌صورت پیش‌نویس ساخته شد." : "کپی سند به‌صورت پیش‌نویس ساخته شد.", Severity.Success);
+        Nav.NavigateTo($"/vouchers/{r.Value}");
+    }
 
     private List<FiscalYearDto> _years = [];
     private short _yearId;
