@@ -1,0 +1,61 @@
+@page "/purchases/reports"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+
+<TabTitle Text="گزارش‌های خرید" />
+
+<div class="no-print">
+    <MudText Typo="Typo.h5" Class="mb-2">گزارش‌های خرید</MudText>
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <MudGrid Spacing="2" Class="align-center">
+            <MudItem xs="12" sm="6" md="3">
+                <MudSelect T="string" Value="_type" ValueChanged="OnTypeChanged" Label="گزارش" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    @foreach (var t in PurchaseReportService.Types) { <MudSelectItem T="string" Value="t.Key">@t.Title</MudSelectItem> }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6" sm="3" md="2"><PersianDateField @bind-Value="_from" Label="از تاریخ" /></MudItem>
+            <MudItem xs="6" sm="3" md="2"><PersianDateField @bind-Value="_to" Label="تا تاریخ" /></MudItem>
+            <MudItem xs="12" sm="6" md="3"><PersonPicker @bind-PersonId="_supplierId" Label="تأمین‌کننده (خالی = همه)" /></MudItem>
+            <MudItem xs="6" sm="3" md="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync" Disabled="_busy">نمایش</MudButton>
+            </MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">@PurchaseReportService.Types.First(t => t.Key == _type).Help</MudText>
+    </MudPaper>
+</div>
+
+@if (_busy) { <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="no-print" /> }
+<ReportTableView Report="_report" />
+
+@code {
+    [SupplyParameterFromQuery(Name = "type")] public string? Type { get; set; }
+
+    private string _type = "items";
+    private string? _from, _to;
+    private int? _supplierId;
+    private bool _busy;
+    private ReportTable? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (PurchaseReportService.Types.Any(t => t.Key == Type)) _type = Type!;
+        var today = Format.Today();
+        (_from, _to) = (today[..8] + "01", today);
+        await RunAsync();
+    }
+
+    private async Task OnTypeChanged(string type)
+    {
+        _type = type;
+        await RunAsync();
+    }
+
+    private async Task RunAsync()
+    {
+        _busy = true;
+        var (type, filter) = (_type, new PurchaseReportFilter(_from, _to, _supplierId));
+        var r = await Backend.Run<PurchaseReportService, ReportTable>(s => s.RunAsync(type, filter, default));
+        if (r.Success) _report = r.Value; else Snackbar.Add(r.Error!, Severity.Error);
+        _busy = false;
+    }
+}

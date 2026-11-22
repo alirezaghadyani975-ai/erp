@@ -67,10 +67,12 @@ public static class SalesPermissions
     public const string ReturnCreate = "sls.return.create";
     public const string ReturnEdit = "sls.return.edit";
     public const string ReturnDelete = "sls.return.delete";
+    public const string ReportView = "sls.report.view";
 
     public static IPermissionSource List { get; } = new PermissionList("فروش")
         .Crud("sls.invoice", "فاکتور فروش")
-        .Crud("sls.return", "برگشت از فروش");
+        .Crud("sls.return", "برگشت از فروش")
+        .Add("sls.report", "گزارش‌های فروش", ("view", "مشاهده"));
 }
 
 public sealed record SalesVoucherDto(long VoucherId, int TempNo, int? VoucherNo, byte Status)
@@ -124,6 +126,7 @@ public static class DependencyInjection
         services.AddSingleton(SalesPermissions.List);
         services.AddScoped<SalesInvoiceService>();
         services.AddScoped<SalesReturnService>();
+        services.AddScoped<SalesReportService>();
         return services;
     }
 }

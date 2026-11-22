@@ -96,6 +96,7 @@ public class PurchasesDbContext : DbContext, IPurchasesDbContext
             e.Ignore(l => l.Title);
             e.Property(l => l.Quantity).HasPrecision(24, 6);
             e.Property(l => l.EnteredPrice).HasPrecision(24, 4);
+            e.Property(l => l.CostAmount).HasPrecision(24, 4);
             e.ToSqlQuery(StockLineRef.Sql);
         });
         b.Entity<PartyRef>(e =>

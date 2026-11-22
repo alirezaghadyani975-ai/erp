@@ -54,10 +54,12 @@ public static class PurchasePermissions
     public const string ReturnCreate = "pur.return.create";
     public const string ReturnEdit = "pur.return.edit";
     public const string ReturnDelete = "pur.return.delete";
+    public const string ReportView = "pur.report.view";
 
     public static IPermissionSource List { get; } = new PermissionList("خرید")
         .Crud("pur.invoice", "فاکتور خرید")
-        .Crud("pur.return", "برگشت از خرید");
+        .Crud("pur.return", "برگشت از خرید")
+        .Add("pur.report", "گزارش‌های خرید", ("view", "مشاهده"));
 }
 
 /// <summary>سند حسابداری فرم؛ وضعیت: 1 پیش‌نویس، 2 موقت، 3 دائم.</summary>
@@ -112,6 +114,7 @@ public static class DependencyInjection
         services.AddSingleton(PurchasePermissions.List);
         services.AddScoped<PurchaseInvoiceService>();
         services.AddScoped<PurchaseReturnService>();
+        services.AddScoped<PurchaseReportService>();
         return services;
     }
 }

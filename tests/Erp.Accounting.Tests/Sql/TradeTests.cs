@@ -183,6 +183,16 @@ public class TradeTests(SqlFixture db)
             new SavePurchaseReturnRequest("1417/03/06", id, null, [new ReturnLineRequest(lineId, 2, issue2[0])]), default));
         Assert.Equal(1800m, (await db.Run<PurchaseReturnService, PurchaseReturnDto>(x => x.GetAsync(ret2, default))).Amount);
 
+        // گزارش خرید: ۳ خرید با فی پس از تخفیف ۹۰۰، کامل برگشت خورده
+        var buyFilter = new PurchaseReportFilter("1417/03/01", "1417/03/06", s.Supplier, s.Goods);
+        foreach (var (key, _, _) in PurchaseReportService.Types)
+            await db.Run<PurchaseReportService, Erp.SharedKernel.Reports.ReportTable>(x => x.RunAsync(key, buyFilter, default));
+        var buyRow = Assert.Single((await db.Run<PurchaseReportService, Erp.SharedKernel.Reports.ReportTable>(x => x.RunAsync("items", buyFilter, default))).Rows);
+        Assert.Equal((3m, 3m, 2700m, 2700m, 0m), ((decimal)buyRow["qty"]!, (decimal)buyRow["retQty"]!, (decimal)buyRow["purchases"]!,
+            (decimal)buyRow["returns"]!, (decimal)buyRow["net"]!));
+        var priceRow = Assert.Single((await db.Run<PurchaseReportService, Erp.SharedKernel.Reports.ReportTable>(x => x.RunAsync("prices", buyFilter, default))).Rows);
+        Assert.Equal(900m, priceRow["avg"]);
+
         var over = await Assert.ThrowsAsync<DomainException>(() => StockAsync(StockDocType.PurchaseReturnIssue, "1417/03/07", s.Supplier,
             new StockLineRequest(s.Goods, 1, SourceLineId: receipt[0])));
         Assert.Contains("قابل برگشت", over.Message);
@@ -240,6 +250,16 @@ public class TradeTests(SqlFixture db)
         var rv = await Voucher(ret.Voucher!.VoucherId);
         Assert.True(rv.IsBalanced);
         Assert.Equal(["6202", "5141", "6301", "2411"], rv.Lines.Select(l => l.AccountCode));
+
+        // گزارش فروش: ۴ فروش، ۱ برگشت؛ پس از تخفیف ۹۰۰۰ منهای برگشت ۲۲۵۰
+        var salesFilter = new SalesReportFilter("1417/04/01", "1417/04/03", s.Customer, s.Goods);
+        foreach (var (key, _, _) in SalesReportService.Types)
+            await db.Run<SalesReportService, Erp.SharedKernel.Reports.ReportTable>(x => x.RunAsync(key, salesFilter, default));
+        var saleRow = Assert.Single((await db.Run<SalesReportService, Erp.SharedKernel.Reports.ReportTable>(x => x.RunAsync("items", salesFilter, default))).Rows);
+        Assert.Equal((4m, 1m, 9000m, 2250m, 6750m), ((decimal)saleRow["qty"]!, (decimal)saleRow["retQty"]!, (decimal)saleRow["sales"]!,
+            (decimal)saleRow["returns"]!, (decimal)saleRow["net"]!));
+        var vatRow = Assert.Single((await db.Run<SalesReportService, Erp.SharedKernel.Reports.ReportTable>(x => x.RunAsync("vat", salesFilter, default))).Rows);
+        Assert.Equal(675m, vatRow["vat"]);                                         // ۹۰۰ − ۲۲۵
 
         // اصلاح برگشت همان سند را بازنویسی می‌کند؛ حذف برگشت، فاکتور را دوباره قابل اصلاح می‌کند
         await db.Run<SalesReturnService>(x => x.UpdateAsync(retId,

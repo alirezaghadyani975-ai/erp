@@ -28,7 +28,7 @@ public sealed class StockLineRef
 {
     public const string Sql = """
         SELECT l.Id, l.DocId, d.DocType, d.DocNo, d.DocDate, d.WarehouseId, w.Title AS WarehouseTitle, d.PartyId,
-               l.RowNo, l.ItemId, l.Quantity, l.SourceLineId, l.EnteredPrice
+               l.RowNo, l.ItemId, l.Quantity, l.SourceLineId, l.EnteredPrice, l.Amount AS CostAmount
         FROM inv.StockDocLines l JOIN inv.StockDocs d ON d.Id = l.DocId JOIN inv.Warehouses w ON w.Id = d.WarehouseId
         """;
 
@@ -45,6 +45,8 @@ public sealed class StockLineRef
     public decimal Quantity { get; init; }
     public long? SourceLineId { get; init; }
     public decimal? EnteredPrice { get; init; }
+    /// <summary>بهای محاسبه‌شده ردیف (بعد از محاسبه بهای تمام‌شده ماه؛ قبل از آن null).</summary>
+    public decimal? CostAmount { get; init; }
 
     /// <summary>مثل «رسید خرید 000003 ردیف 2».</summary>
     public string Title => $"{DocType.Title()} {DocNo:000000} ردیف {RowNo}";

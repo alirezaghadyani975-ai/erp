@@ -47,11 +47,13 @@ public static class AppMenu
         [
             new("فاکتور فروش", Icons.Material.Outlined.Receipt, "/sales", P(SL.InvoiceView), NavLinkMatch.All),
             new("برگشت از فروش", Icons.Material.Outlined.AssignmentReturn, "/sales/returns", P(SL.ReturnView)),
+            new("گزارش‌های فروش", Icons.Material.Outlined.Assessment, "/sales/reports", P(SL.ReportView)),
         ]),
         new("خرید", Icons.Material.Outlined.ShoppingCart, Children:
         [
             new("فاکتور خرید", Icons.Material.Outlined.ReceiptLong, "/purchases", P(PU.InvoiceView), NavLinkMatch.All),
             new("برگشت از خرید", Icons.Material.Outlined.RemoveShoppingCart, "/purchases/returns", P(PU.ReturnView)),
+            new("گزارش‌های خرید", Icons.Material.Outlined.Assessment, "/purchases/reports", P(PU.ReportView)),
         ]),
         new("انبار", Icons.Material.Outlined.Warehouse, Children:
         [
@@ -198,10 +200,12 @@ public static class AppMenu
         ("/fiscal-years", P(A.FiscalView)),
         ("/posting-templates", P(A.TemplateView)),
         ("/sales/returns/new", P(SL.ReturnCreate)),
+        ("/sales/reports", P(SL.ReportView)),
         ("/sales/returns", P(SL.ReturnView)),
         ("/sales/new", P(SL.InvoiceCreate)),
         ("/sales", P(SL.InvoiceView)),
         ("/purchases/returns/new", P(PU.ReturnCreate)),
+        ("/purchases/reports", P(PU.ReportView)),
         ("/purchases/returns", P(PU.ReturnView)),
         ("/purchases/new", P(PU.InvoiceCreate)),
         ("/purchases", P(PU.InvoiceView)),
