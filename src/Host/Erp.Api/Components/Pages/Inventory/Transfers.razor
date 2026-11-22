@@ -1,0 +1,62 @@
+@page "/inventory/transfers"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject TabService Tabs
+
+<TabTitle Text="انتقال بین انبارها" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h5">انتقال بین انبارها</MudText>
+    <MudSpacer />
+    <PersianDateField @bind-Value="_from" Label="از تاریخ" />
+    <PersianDateField @bind-Value="_to" Label="تا تاریخ" />
+    <MudButton Variant="Variant.Outlined" OnClick="LoadAsync">نمایش</MudButton>
+    <IfAllowed Permission="@InventoryPermissions.TransferCreate">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/inventory/transfers/new"))">انتقال جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر انتقال یک حواله انتقال از انبار مبدأ و یک رسید انتقال به انبار مقصد هم‌تاریخ می‌سازد. بهای کالا همان میانگین انبار مبدأ است و سند حسابداری ندارد.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="StockTransferListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/inventory/transfers/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره</MudTh>
+            <MudTh>تاریخ</MudTh>
+            <MudTh>از انبار</MudTh>
+            <MudTh>به انبار</MudTh>
+            <MudTh Style="text-align:left">ردیف</MudTh>
+            <MudTh Style="text-align:left">مقدار</MudTh>
+            <MudTh>شرح</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd>@context.From</MudTd>
+            <MudTd>@context.To</MudTd>
+            <MudTd Class="num">@context.LineCount</MudTd>
+            <MudTd Class="num">@context.Quantity.ToString("#,0.######")</MudTd>
+            <MudTd>@context.Description</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">انتقالی در این بازه ثبت نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<StockTransferListItemDto> _rows = [];
+    private bool _loading = true;
+    private string? _from, _to;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var (from, to) = (_from, _to);
+        var r = await Backend.Run<StockTransferService, List<StockTransferListItemDto>>(s => s.ListAsync(from, to, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

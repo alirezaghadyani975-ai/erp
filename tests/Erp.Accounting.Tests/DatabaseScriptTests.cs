@@ -26,7 +26,7 @@ public class DatabaseScriptTests
              "Erp.Database.Migrations.24_payroll_payments.sql",
              "Erp.Database.Migrations.25_payroll_settlement.sql",
              "Erp.Database.Migrations.26_item_categories.sql",
-             "Erp.Database.Migrations.27_production.sql"],
+             "Erp.Database.Migrations.27_production.sql", "Erp.Database.Migrations.28_stock_transfer.sql"],
             names);
     }
 

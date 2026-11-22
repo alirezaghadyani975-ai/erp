@@ -145,7 +145,8 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
     public async Task<long> CreateAsync(SaveStockDocRequest request, CancellationToken ct)
     {
         access.Demand(request.Type.IsReceipt() ? InventoryPermissions.ReceiptCreate : InventoryPermissions.IssueCreate);
-        if (request.Type.IsProduction()) throw new DomainException($"«{request.Type.Title()}» فقط از گزارش تولید ساخته می‌شود.");
+        if (request.Type.IsSourced())
+            throw new DomainException($"«{request.Type.Title()}» فقط از {(request.Type.IsTransfer() ? "فرم انتقال بین انبارها" : "گزارش تولید")} ساخته می‌شود.");
         access.DemandScope(ScopeKind.Warehouse, request.WarehouseId);
         return await CreateCoreAsync(request, null, ct);
     }
@@ -467,7 +468,7 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
     private static void EnsureNotSourced(StockDoc doc)
     {
         if (doc.SourceModule is not null)
-            throw new DomainException($"«{doc.DocType.Title()}» {doc.DocNo:000000} از گزارش تولید ساخته شده است؛ از همان گزارش اصلاح یا حذف کنید.");
+            throw new DomainException($"«{doc.DocType.Title()}» {doc.DocNo:000000} از {(doc.SourceModule == StockTransferService.Module ? "انتقال بین انبارها" : "گزارش تولید")} ساخته شده است؛ از همان فرم اصلاح یا حذف کنید.");
     }
 }
 

@@ -379,6 +379,22 @@ BEGIN TRY
     SET @err = 0;
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد حواله مصرف تولید بدون گزارش تولید', N'547', CAST(@err AS NVARCHAR(50)));
+
+-- ۲۸: انتقال بین انبارها فقط با SourceModule؛ مبدأ و مقصد یکی نباشد
+BEGIN TRY
+    INSERT inv.StockDocs (DocType, DocNo, DocDate, WarehouseId, CreatedBy) VALUES (15, -4, @D1, @Wh, 1);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد حواله انتقال بدون فرم انتقال', N'547', CAST(@err AS NVARCHAR(50)));
+DECLARE @TIss BIGINT;
+INSERT inv.StockDocs (DocType, DocNo, DocDate, WarehouseId, CreatedBy, SourceModule, SourceId) VALUES (15, -5, @D1, @Wh, 1, 'transfer', 0);
+SET @TIss = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT inv.StockDocs (DocType, DocNo, DocDate, WarehouseId, CreatedBy, SourceModule, SourceId) VALUES (5, -5, @D1, @Wh, 1, 'transfer', @TIss);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد انتقال به همان انبار', N'50330', CAST(@err AS NVARCHAR(50)));
+DELETE inv.StockDocs WHERE Id = @TIss;
 DELETE prd.Boms WHERE Id = @Bom;
 DELETE inv.Items WHERE Id IN (@Prod, @Mat);
 

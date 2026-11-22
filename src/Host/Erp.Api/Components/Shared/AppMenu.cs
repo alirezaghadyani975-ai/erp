@@ -59,6 +59,7 @@ public static class AppMenu
         [
             new("رسیدهای انبار", Icons.Material.Outlined.MoveToInbox, "/inventory/receipts", P(I.ReceiptView)),
             new("حواله‌های انبار", Icons.Material.Outlined.Outbox, "/inventory/issues", P(I.IssueView)),
+            new("انتقال بین انبارها", Icons.Material.Outlined.SyncAlt, "/inventory/transfers", P(I.TransferView)),
             new("گزارش‌های انبار", Icons.Material.Outlined.Assessment, Children:
             [
                 new("کاردکس کالا", Icons.Material.Outlined.ViewList, "/inventory/kardex", P(I.Kardex)),
@@ -218,6 +219,8 @@ public static class AppMenu
         ("/inventory/categories", P(I.ItemView)),
         ("/inventory/receipts/new", P(I.ReceiptCreate)),
         ("/inventory/receipts", P(I.ReceiptView)),
+        ("/inventory/transfers/new", P(I.TransferCreate)),
+        ("/inventory/transfers", P(I.TransferView)),
         ("/inventory/issues/new", P(I.IssueCreate)),
         ("/inventory/issues", P(I.IssueView)),
         ("/inventory/kardex", P(I.Kardex)),

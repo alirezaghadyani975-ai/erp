@@ -11,6 +11,8 @@ public enum StockDocType : byte
     SalesReturnReceipt = 3,
     /// <summary>رسید محصول و ضایعات تولید (فقط از گزارش تولید).</summary>
     ProductionReceipt = 4,
+    /// <summary>رسید انتقال بین انبارها (جفت حواله انتقال؛ فقط از فرم انتقال).</summary>
+    TransferReceipt = 5,
     /// <summary>حواله فروش (قبل از فاکتور فروش).</summary>
     SalesIssue = 11,
     /// <summary>حواله برگشت از خرید (از ردیف رسید خرید).</summary>
@@ -18,7 +20,9 @@ public enum StockDocType : byte
     /// <summary>حواله مصرف غیرتولیدی (با عامل و مرکز هزینه).</summary>
     Consumption = 13,
     /// <summary>حواله مصرف تولید (فقط از گزارش تولید).</summary>
-    ProductionIssue = 14
+    ProductionIssue = 14,
+    /// <summary>حواله انتقال بین انبارها (جفت رسید انتقال؛ فقط از فرم انتقال).</summary>
+    TransferIssue = 15
 }
 
 /// <summary>
@@ -73,6 +77,12 @@ public static class StockDocTypes
     /// <summary>سند تولید: فقط از گزارش تولید ساخته و اصلاح می‌شود.</summary>
     public static bool IsProduction(this StockDocType type) => type is StockDocType.ProductionReceipt or StockDocType.ProductionIssue;
 
+    /// <summary>انتقال بین انبارها: فقط از فرم انتقال ساخته و اصلاح می‌شود.</summary>
+    public static bool IsTransfer(this StockDocType type) => type is StockDocType.TransferReceipt or StockDocType.TransferIssue;
+
+    /// <summary>سندی که ماژول یا فرم دیگری می‌سازد (تولید، انتقال) و از فرم رسید و حواله ساخته نمی‌شود.</summary>
+    public static bool IsSourced(this StockDocType type) => type.IsProduction() || type.IsTransfer();
+
     public static bool IsReturn(this StockDocType type) =>
         type is StockDocType.SalesReturnReceipt or StockDocType.PurchaseReturnIssue;
 
@@ -94,6 +104,8 @@ public static class StockDocTypes
         StockDocType.Consumption => "حواله مصرف",
         StockDocType.ProductionReceipt => "رسید تولید",
         StockDocType.ProductionIssue => "حواله مصرف تولید",
+        StockDocType.TransferReceipt => "رسید انتقال",
+        StockDocType.TransferIssue => "حواله انتقال",
         _ => "سند انبار"
     };
 

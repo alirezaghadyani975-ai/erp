@@ -1,0 +1,157 @@
+@page "/inventory/transfers/new"
+@page "/inventory/transfers/{Id:long}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="@(Id is null ? "انتقال جدید" : $"انتقال {Format.No(_docNo)}")" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h5">@(Id is null ? "انتقال بین انبارها" : $"انتقال {Format.No(_docNo)}")</MudText>
+    @if (_receiptId is long rid)
+    {
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => Tabs.Go($"/inventory/issues/{Id}"))">حواله انتقال @Format.No(_docNo)</MudChip>
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => Tabs.Go($"/inventory/receipts/{rid}"))">رسید انتقال @Format.No(_receiptNo)</MudChip>
+    }
+    <MudSpacer />
+    <IfAllowed Permission="@(Id is null ? InventoryPermissions.TransferCreate : InventoryPermissions.TransferEdit)">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Save" OnClick="SaveAsync" Disabled="_busy">ذخیره</MudButton>
+    </IfAllowed>
+    @if (Id is not null)
+    {
+        <IfAllowed Permission="@InventoryPermissions.TransferDelete">
+            <MudButton Color="Color.Error" OnClick="DeleteAsync" Disabled="_busy">حذف</MudButton>
+        </IfAllowed>
+    }
+    <MudButton OnClick="@(() => Tabs.Go("/inventory/transfers"))">فهرست</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="3"><PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" /></MudItem>
+        <MudItem xs="6" sm="3">
+            <MudSelect T="int?" @bind-Value="_fromWh" Label="از انبار" Required="true" RequiredError="انبار مبدأ را انتخاب کنید."
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                @foreach (var w in _warehouses) { <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudSelect T="int?" @bind-Value="_toWh" Label="به انبار" Required="true" RequiredError="انبار مقصد را انتخاب کنید."
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                @foreach (var w in _warehouses.Where(w => w.Id != _fromWh)) { <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
+        <MudText Typo="Typo.h6">کالاها</MudText>
+        <MudSpacer />
+        <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _lines.Add(new Line()))">ردیف جدید</MudButton>
+    </MudStack>
+    <table class="voucher-grid">
+        <thead><tr><th>#</th><th>کالا</th><th>مقدار</th><th>واحد</th><th>شرح</th><th></th></tr></thead>
+        <tbody>
+            @for (var i = 0; i < _lines.Count; i++)
+            {
+                var line = _lines[i];
+                var no = i + 1;
+                <tr>
+                    <td class="num">@no</td>
+                    <td style="min-width:260px">
+                        <MudAutocomplete T="ItemDto" Value="line.Item" ValueChanged="it => line.Item = it" SearchFunc="SearchItems"
+                                         ToStringFunc="@(it => it is null ? null : $"{it.Code} - {it.Title}")" Placeholder="کد، نام یا بارکد"
+                                         ResetValueOnEmptyText="true" Dense="true" MaxItems="40" Variant="Variant.Text" Margin="Margin.Dense" />
+                    </td>
+                    <td><NumCell @bind-Value="line.Quantity" Label="مقدار" /></td>
+                    <td>@line.Item?.UnitTitle</td>
+                    <td><MudTextField @bind-Value="line.Description" Variant="Variant.Text" Margin="Margin.Dense" /></td>
+                    <td><MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="حذف ردیف" OnClick="() => _lines.Remove(line)" /></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
+        جمع مقدار: @_lines.Sum(l => l.Quantity).ToString("#,0.######") در @_lines.Count(l => l.Item is not null) ردیف. موجودی انبار مبدأ در تاریخ انتقال کنترل می‌شود.
+    </MudText>
+</MudPaper>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private sealed class Line
+    {
+        public ItemDto? Item { get; set; }
+        public decimal Quantity { get; set; }
+        public string? Description { get; set; }
+    }
+
+    private List<WarehouseDto> _warehouses = [];
+    private List<ItemDto> _items = [];
+    private List<Line> _lines = [new()];
+    private string? _date = Format.Today(), _description;
+    private int? _fromWh, _toWh;
+    private int _docNo, _receiptNo;
+    private long? _receiptId;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _warehouses = (await Backend.Run<WarehouseService, List<WarehouseDto>>(s => s.GetAllAsync(false, default))).Value ?? [];
+        _items = (await Backend.Run<ItemService, List<ItemDto>>(s => s.SearchAsync(null, null, null, true, default))).Value ?? [];
+        if (Id is long id)
+        {
+            var r = await Backend.Run<StockTransferService, StockTransferDto>(s => s.GetAsync(id, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            var t = r.Value!;
+            (_docNo, _date, _fromWh, _toWh, _description, _receiptId, _receiptNo) =
+                (t.DocNo, t.Date, t.FromWarehouseId, t.ToWarehouseId, t.Description, t.ReceiptId, t.ReceiptNo);
+            _lines = t.Lines.Select(l => new Line { Item = _items.FirstOrDefault(i => i.Id == l.ItemId), Quantity = l.Quantity, Description = l.Description }).ToList();
+        }
+    }
+
+    private Task<IEnumerable<ItemDto>> SearchItems(string? term, CancellationToken ct)
+    {
+        IEnumerable<ItemDto> list = _items.Where(i => i.IsActive && i.Kind == ItemKind.Goods);
+        term = PersianText.NormalizeOrNull(term);
+        if (term is not null) list = list.Where(i => i.Title.Contains(term) || i.Code.StartsWith(term) || i.Barcode == term);
+        return Task.FromResult(list);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_fromWh is null || _toWh is null) { Snackbar.Add("انبار مبدأ و مقصد را انتخاب کنید.", Severity.Warning); return; }
+        var request = new SaveStockTransferRequest(_date ?? "", _fromWh.Value, _toWh.Value, _description,
+            _lines.Where(l => l.Item is not null).Select(l => new StockTransferLineRequest(l.Item!.Id, l.Quantity, l.Description)).ToList());
+        _busy = true;
+        try
+        {
+            if (Id is long id)
+            {
+                var r = await Backend.Run<StockTransferService>(s => s.UpdateAsync(id, request, default));
+                if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+                Snackbar.Add("انتقال ذخیره شد.", Severity.Success);
+            }
+            else
+            {
+                var r = await Backend.Run<StockTransferService, long>(s => s.CreateAsync(request, default));
+                if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+                Snackbar.Add("انتقال ثبت شد.", Severity.Success);
+                Tabs.Go($"/inventory/transfers/{r.Value}");
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.DeleteAsync($"انتقال {Format.No(_docNo)}", "حواله و رسید انتقال هر دو حذف می‌شوند.")) return;
+        var id = Id!.Value;
+        var r = await Backend.Run<StockTransferService>(s => s.DeleteAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Tabs.CloseCurrentAndGo("/inventory/transfers");
+    }
+}

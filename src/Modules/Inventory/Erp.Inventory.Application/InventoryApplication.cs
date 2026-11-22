@@ -172,6 +172,10 @@ public static class InventoryPermissions
     public const string Kardex = "inv.kardex.view";
     public const string Costing = "inv.costing.run";
     public const string Reports = "inv.report.view";
+    public const string TransferView = "inv.transfer.view";
+    public const string TransferCreate = "inv.transfer.create";
+    public const string TransferEdit = "inv.transfer.edit";
+    public const string TransferDelete = "inv.transfer.delete";
 
     public static IPermissionSource List { get; } = new PermissionList("کالا و انبار")
         .Crud("inv.item", "کالا و خدمات")
@@ -181,7 +185,8 @@ public static class InventoryPermissions
         .Crud("inv.issue", "حواله انبار")
         .Add("inv.kardex", "کاردکس و موجودی", ("view", "مشاهده"))
         .Add("inv.costing", "محاسبه بهای تمام‌شده", ("run", "اجرا و مشاهده"))
-        .Add("inv.report", "گزارش‌های انبار", ("view", "مشاهده"));
+        .Add("inv.report", "گزارش‌های انبار", ("view", "مشاهده"))
+        .Crud("inv.transfer", "انتقال بین انبارها");
 
     /// <summary>پیشوند مجوز فرم رسید یا حواله (برای FormToolbar).</summary>
     public static string Prefix(StockDocType type) => type.IsReceipt() ? "inv.receipt" : "inv.issue";
@@ -217,7 +222,7 @@ public sealed record StockDocDto(long Id, StockDocType Type, int DocNo, string D
 
     /// <summary>سندی که ردیف فاکتورشده یا برگشت‌خورده دارد یا از ماژول دیگری ساخته شده اصلاح و حذف نمی‌شود.</summary>
     public string? LockReason => SourceModule is not null
-        ? "این سند را گزارش تولید ساخته است؛ برای اصلاح یا حذف، همان گزارش تولید را تغییر دهید."
+        ? $"این سند را {(SourceModule == "transfer" ? "انتقال بین انبارها" : "گزارش تولید")} ساخته است؛ برای اصلاح یا حذف، همان فرم را تغییر دهید."
         : Lines.FirstOrDefault(l => l.Invoice is not null) is { } li
         ? $"ردیف {li.RowNo} این سند در {li.Invoice!.Title} {li.Invoice.DocNo:000000} آمده است؛ برای اصلاح یا حذف، اول آن را از فاکتور بردارید."
         : Lines.FirstOrDefault(l => l.ReturnedQuantity > 0) is { } lr
@@ -272,6 +277,7 @@ public static class DependencyInjection
         services.AddScoped<StockDocService>();
         services.AddScoped<StockReportService>();
         services.AddScoped<InventoryReportService>();
+        services.AddScoped<StockTransferService>();
         services.AddScoped<StockCostingService>();
         return services;
     }

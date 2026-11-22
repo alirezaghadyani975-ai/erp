@@ -414,6 +414,21 @@ public class TradeTests(SqlFixture db)
         await StockAsync(StockDocType.Consumption, "1417/08/12", null, new StockLineRequest(item, 5, CostFactorId: factor.Id, CostCenterId: center));
         await StockAsync(StockDocType.SalesReturnReceipt, "1417/08/15", s.Customer, new StockLineRequest(item, 1, SourceLineId: issue[0]));
 
+        // انتقال ۴ عدد به انبار دیگر: بهای مقصد = میانگین مبدأ (۶۰)؛ انبار یکسان و بیش از موجودی رد
+        var source = (await db.Run<WarehouseService, List<WarehouseDto>>(x => x.GetAllAsync(false, default))).First().Id;
+        var target = await db.Run<WarehouseService, int>(x => x.CreateAsync(new SaveWarehouseRequest($"T{Guid.NewGuid():N}"[..8], "انبار مقصد تست"), default));
+        var same = await Assert.ThrowsAsync<DomainException>(() => db.Run<StockTransferService, long>(x => x.CreateAsync(
+            new SaveStockTransferRequest("1417/08/16", source, source, null, [new StockTransferLineRequest(item, 1)]), default)));
+        Assert.Contains("یکی باشد", same.Message);
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<StockTransferService, long>(x => x.CreateAsync(
+            new SaveStockTransferRequest("1417/08/16", source, target, null, [new StockTransferLineRequest(item, 50)]), default)));
+        var transferId = await db.Run<StockTransferService, long>(x => x.CreateAsync(
+            new SaveStockTransferRequest("1417/08/16", source, target, "انتقال تست", [new StockTransferLineRequest(item, 4)]), default));
+        var transfer = await db.Run<StockTransferService, StockTransferDto>(x => x.GetAsync(transferId, default));
+        Assert.Equal((source, target, 4m), (transfer.FromWarehouseId, transfer.ToWarehouseId, Assert.Single(transfer.Lines).Quantity));
+        var locked = await Assert.ThrowsAsync<DomainException>(() => db.Run<StockDocService>(x => x.DeleteAsync(transfer.ReceiptId, default)));
+        Assert.Contains("انتقال", locked.Message);
+
         var year = (await db.Run<FiscalYearService, List<FiscalYearDto>>(x => x.GetAllAsync(default))).Single(y => y.Title.Contains("1417")).Id;
         var periods = await db.Run<StockCostingService, List<CostPeriodDto>>(x => x.PeriodsAsync(year, default));
         var aban = periods.Single(p => p.PeriodNo == 8);
@@ -422,8 +437,10 @@ public class TradeTests(SqlFixture db)
         Assert.Contains(results[^1].Warnings, w => w.Problem.Contains("فاکتور خرید ندارد") && w.Quantity == 10);
 
         var kardex = await db.Run<StockReportService, KardexDto>(x => x.KardexAsync(item, null, null, null, default));
-        Assert.Equal([0m, 1200m, 300m, 300m, 60m], kardex.Rows.Select(r => r.Amount!.Value));
+        Assert.Equal([0m, 1200m, 300m, 300m, 60m, 240m, 240m], kardex.Rows.Select(r => r.Amount!.Value));
         Assert.Equal((11m, 660m), (kardex.Closing, kardex.ClosingAmount));
+        var targetKardex = await db.Run<StockReportService, KardexDto>(x => x.KardexAsync(item, target, null, null, default));
+        Assert.Equal((4m, 240m), (targetKardex.Closing, targetKardex.ClosingAmount));
 
         // سند ماه: بهای تمام‌شده 7001، هزینه مصرف، موجودی 2206 و برگشت؛ تراز
         var after = (await db.Run<StockCostingService, List<CostPeriodDto>>(x => x.PeriodsAsync(year, default))).Single(p => p.PeriodNo == 8);

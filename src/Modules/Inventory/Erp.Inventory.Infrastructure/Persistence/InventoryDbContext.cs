@@ -203,7 +203,7 @@ internal class StockDocConfiguration : IEntityTypeConfiguration<StockDoc>
 {
     public void Configure(EntityTypeBuilder<StockDoc> b)
     {
-        b.ToTable("StockDocs", "inv", t => t.HasTrigger("trg_StockDocs_CostRuns"));
+        b.ToTable("StockDocs", "inv", t => { t.HasTrigger("trg_StockDocs_CostRuns"); t.HasTrigger("trg_StockDocs_Transfer"); });
         b.HasKey(d => d.Id);
         b.Property(d => d.Description).HasMaxLength(500);
         b.Property(d => d.CreatedAt).HasColumnType("datetime2(0)");

@@ -75,7 +75,7 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
     }
 
     private sealed record Line(long Id, StockDocType Type, DateOnly Date, long DocId, int DocNo, short RowNo, int ItemId, int WarehouseId, decimal Quantity,
-        long? SourceLineId, int? FactorId, int? CenterId, decimal? EnteredPrice);
+        long? SourceLineId, int? FactorId, int? CenterId, decimal? EnteredPrice, long? SourceId);
 
     private async Task<CostRunResultDto> RunAsync(FiscalPeriodRef period, CancellationToken ct)
     {
@@ -100,11 +100,11 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
                 .SelectMany(d => d.Lines.Select(l => new
                 {
                     l.Id, d.DocType, d.DocDate, DocId = d.Id, d.DocNo, l.RowNo, l.ItemId, d.WarehouseId, l.Quantity, l.SourceLineId,
-                    l.CostFactorId, l.CostCenterId, l.EnteredPrice
+                    l.CostFactorId, l.CostCenterId, l.EnteredPrice, d.SourceId
                 }))
                 .ToListAsync(ct))
             .Select(l => new Line(l.Id, l.DocType, l.DocDate, l.DocId, l.DocNo, l.RowNo, l.ItemId, l.WarehouseId, l.Quantity, l.SourceLineId,
-                l.CostFactorId, l.CostCenterId, l.EnteredPrice))
+                l.CostFactorId, l.CostCenterId, l.EnteredPrice, l.SourceId))
             .OrderBy(l => l.Date).ThenBy(l => Phase(l.Type)).ThenBy(l => l.DocId).ThenBy(l => l.RowNo)
             .ToList();
 
@@ -120,6 +120,8 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
         var itemIds = lines.Select(l => l.ItemId).Distinct().ToList();
         var itemTitles = await db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => $"{i.Code} - {i.Title}", ct);
 
+        // رسید انتقال = بهای ردیف هم‌شماره حواله انتقال (شناسه حواله = SourceId هر دو سند)
+        var transferIssues = lines.Where(l => l.Type == StockDocType.TransferIssue).ToDictionary(l => (l.DocId, l.RowNo), l => l.Id);
         var state = new Dictionary<(int, int), (decimal Qty, decimal Amount)>(opening);
         var costs = new Dictionary<long, (decimal Unit, decimal Amount)>();
         var warnings = new List<CostWarningDto>();
@@ -138,6 +140,7 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
                     StockDocType.Opening => TradeMath.Rial((l.EnteredPrice ?? 0) * l.Quantity),
                     StockDocType.PurchaseReceipt when invoiced.TryGetValue(l.Id, out var inv) => inv,
                     StockDocType.PurchaseReceipt => Missing(l, "فاکتور خرید ندارد؛ بها صفر حساب شد."),
+                    StockDocType.TransferReceipt => TransferValue(l),
                     _ => TradeMath.Rial(SourceUnit(l) * l.Quantity) // برگشت از فروش
                 };
                 if (l.Type == StockDocType.Opening && value == 0) Warn(l, "فی موجودی اول دوره صفر است.");
@@ -184,6 +187,11 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
             return 0;
         }
 
+        decimal TransferValue(Line l) =>
+            l.SourceId is long issue && transferIssues.TryGetValue((issue, l.RowNo), out var issueLine) && costs.TryGetValue(issueLine, out var c)
+                ? c.Amount
+                : Missing(l, "حواله انتقال این ردیف پیدا نشد؛ بها صفر حساب شد.");
+
         decimal SourceUnit(Line l)
         {
             if (l.SourceLineId is not long s) return 0;
@@ -194,12 +202,17 @@ public class StockCostingService(IInventoryDbContext db, IVoucherPosting posting
         }
     }
 
-    /// <summary>ترتیب داخل یک روز: رسیدهای مستقل، حواله‌ها، برگشت از فروش.</summary>
+    /// <summary>
+    /// ترتیب داخل یک روز: رسیدهای مستقل، حواله انتقال (میانگین مبدأ)، رسید انتقال (همان بها، پیش از خروج‌های مقصد)،
+    /// بقیه حواله‌ها و رسید تولید، برگشت از فروش.
+    /// </summary>
     private static int Phase(StockDocType type) => type switch
     {
         StockDocType.Opening or StockDocType.PurchaseReceipt => 0,
-        StockDocType.SalesReturnReceipt => 2,
-        _ => 1
+        StockDocType.TransferIssue => 1,
+        StockDocType.TransferReceipt => 2,
+        StockDocType.SalesReturnReceipt => 4,
+        _ => 3
     };
 
     private async Task<PostingRequest> PostingRequestAsync(CostRun run, FiscalPeriodRef period, List<Line> lines,
