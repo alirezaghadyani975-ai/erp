@@ -188,6 +188,12 @@
 - بخش API در `run-test.bat` با رمز تازه admin (متغیر `ERP_PASS`)
 
 ## ۷. نکته‌های فنی
+- **کارایی (۱۴۰۵/۰۹/۰۱)**: علت کندی ۲۵ تا ۵۰ ثانیه‌ای فرم‌ها و گزارش‌ها حافظه SQL Server بود، نه کد: نمونه ERP حداقل حافظه نداشت، زیر
+  فشار RAM لپ‌تاپ به ~۳۵۰ مگابایت رسیده بود و فقط ۸ مگابایت حافظه کوئری داشت؛ هر کوئری مرتب‌سازی/گروه‌بندی در صف RESOURCE_SEMAPHORE
+  تا ~۲۵ ثانیه می‌ماند. روی نمونه `ERP` تنظیم شد: `min server memory` = 1024 و `max server memory` = 3072 (برگشت: sp_configure). در نصب مشتری
+  همین را تنظیم کنید؛ برنامه در شروع اگر حافظه کم باشد هشدار لاگ می‌کند (`ModelWarmUp.CheckSqlMemory`).
+  عملیات کندتر از `Diagnostics:SlowOperationMs` (پیش‌فرض ۷۰۰) در لاگ با نام سرویس می‌آید (`Backend.Run`).
+  Include چند مجموعه با SplitQuery است (`UseCompanySqlServer`)؛ فهرست کنار فرم سند فقط ۳۰۰ سند آخر را می‌آورد.
 - اسناد بستن سال `SourceModule = "accounting"`؛ ردیف انتقال مانده با `Voucher.AddCarryLine`.
 - سند موقت باید اول پیش‌نویس با ردیف ذخیره شود، بعد موقت (تریگر `trg_Vouchers_Validate`).
 - در LINQ query syntax متغیری به اسم `from` نگذار. `IAccountingDbContext` در Application متدهای رابطه‌ای ندارد.

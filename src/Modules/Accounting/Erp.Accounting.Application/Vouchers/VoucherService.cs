@@ -15,7 +15,8 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
 {
     private const int NumberingRetries = 3;
 
-    public async Task<List<VoucherSummaryDto>> ListAsync(short fiscalYearId, VoucherStatus? status, CancellationToken ct)
+    /// <param name="latest">فقط این تعداد سند آخر (بر اساس شماره موقت)؛ برای فهرست کنار فرم روی داده سنگین.</param>
+    public async Task<List<VoucherSummaryDto>> ListAsync(short fiscalYearId, VoucherStatus? status, CancellationToken ct, int? latest = null)
     {
         access.Demand(AccountingPermissions.VoucherView);
         access.DemandScope(ScopeKind.FiscalYear, fiscalYearId);
@@ -23,6 +24,7 @@ public class VoucherService(IAccountingDbContext db, ICurrentUser user, TimeProv
         if (access.OwnDocsOnly) query = query.Where(v => v.CreatedBy == access.UserId);
         if (status is not null)
             query = query.Where(v => v.Status == status);
+        if (latest is int n) query = query.OrderByDescending(v => v.TempNo).Take(n);
 
         var rows = await query.OrderBy(v => v.TempNo)
             .Select(v => new { v.Id, v.TempNo, v.VoucherNo, v.VoucherDate, v.Description, v.Type, v.Status,

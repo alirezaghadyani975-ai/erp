@@ -285,8 +285,15 @@ public static class CompanyDatabaseExtensions
         return services;
     }
 
-    /// <summary>DbContext ماژول روی اتصال مشترک شرکت، با لاگ تغییرات.</summary>
+    /// <summary>
+    /// DbContext ماژول روی اتصال مشترک شرکت، با لاگ تغییرات. Include چند مجموعه (مثلاً سند با ردیف‌ها و جزئیات) با کوئری جدا
+    /// برای هر مجموعه اجرا می‌شود تا روی سندهای بزرگ ردیف‌ها ضرب نشوند (cartesian explosion).
+    /// </summary>
     public static DbContextOptionsBuilder UseCompanyDatabase(this DbContextOptionsBuilder options, IServiceProvider sp) =>
-        options.UseSqlServer(sp.GetRequiredService<CompanyConnection>().Connection)
+        options.UseCompanySqlServer(sp.GetRequiredService<CompanyConnection>().Connection)
             .AddInterceptors(sp.GetRequiredService<AuditInterceptor>());
+
+    /// <summary>تنظیمات SQL Server مشترک همه DbContextهای شرکت (برای ساخت مدل در شروع برنامه هم همین).</summary>
+    public static DbContextOptionsBuilder UseCompanySqlServer(this DbContextOptionsBuilder options, System.Data.Common.DbConnection connection) =>
+        options.UseSqlServer(connection, o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
 }

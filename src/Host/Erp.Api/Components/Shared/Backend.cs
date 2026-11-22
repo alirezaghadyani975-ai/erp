@@ -12,13 +12,19 @@ namespace Erp.Api.Components.Shared;
 /// خطای یک عملیات روی عملیات بعدی اثر می‌گذارد. با scope جدا، هر عملیات DbContext تمیز خودش را دارد.
 /// نشست کاربر (کاربر، شرکت، مجوزها) از اتصال به scope عملیات کپی می‌شود.
 /// </summary>
-public sealed class Backend(IServiceScopeFactory scopes, AppSession session, NavigationManager nav, ILogger<Backend> logger)
+public sealed class Backend(IServiceScopeFactory scopes, AppSession session, NavigationManager nav, ILogger<Backend> logger, IConfiguration config)
 {
+    /// <summary>عملیات کندتر از این (میلی‌ثانیه) در لاگ هشدار می‌گیرد؛ تنظیم: Diagnostics:SlowOperationMs.</summary>
+    private int SlowMs => config.GetValue("Diagnostics:SlowOperationMs", 700);
+
     public async Task<Result<T>> Run<TService, T>(Func<TService, Task<T>> operation) where TService : notnull
     {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        TimeSpan sessionTime = default;
         try
         {
             await session.EnsureAsync();
+            sessionTime = System.Diagnostics.Stopwatch.GetElapsedTime(started);
             await using var scope = scopes.CreateAsyncScope();
             scope.ServiceProvider.GetRequiredService<AppSession>().Adopt(session);
             return Result<T>.Ok(await operation(scope.ServiceProvider.GetRequiredService<TService>()));
@@ -50,6 +56,14 @@ public sealed class Backend(IServiceScopeFactory scopes, AppSession session, Nav
                 message = ErrorCode.Message(code);
             }
             return Result<T>.Fail(message);
+        }
+        finally
+        {
+            // عملیات کند در لاگ (برای پیدا کردن گلوگاه روی داده‌های سنگین)
+            var total = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+            if (total.TotalMilliseconds >= SlowMs)
+                logger.LogWarning("عملیات کند {Service}: {Total} میلی‌ثانیه (نشست {Session})", typeof(TService).Name,
+                    (int)total.TotalMilliseconds, (int)sessionTime.TotalMilliseconds);
         }
     }
 

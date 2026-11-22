@@ -272,7 +272,8 @@ else
             year = years.Value?.FirstOrDefault()?.Id ?? 0;
         }
         if (year == 0) return [];
-        var r = await Backend.Run<VoucherService, List<VoucherSummaryDto>>(s => s.ListAsync(year, null, default));
+        // روی داده سنگین فقط ۳۰۰ سند آخر؛ همه اسناد و جستجوی کامل در فهرست اسناد
+        var r = await Backend.Run<VoucherService, List<VoucherSummaryDto>>(s => s.ListAsync(year, null, default, latest: 300));
         return (r.Value ?? []).OrderByDescending(v => v.TempNo).Select(v => new SideItem($"/vouchers/{v.Id}",
             $"سند {v.TempNo}{(v.VoucherNo is int n ? $" (قطعی {n})" : "")}", $"{v.Date} · {v.Description}", Format.Amount(v.TotalDebit),
             Format.Status(v.Status), Format.StatusColor(v.Status))).ToList();

@@ -37,6 +37,40 @@ public static class ModelWarmUp
             }
         }
         logger.LogInformation("مدل {Built} از {Total} DbContext در {Ms} میلی‌ثانیه آماده شد", built, types.Count, started.ElapsedMilliseconds);
+        CheckSqlMemory(services, logger);
+    }
+
+    /// <summary>
+    /// SQL Server بدون حداقل حافظه، زیر فشار حافظه ویندوز کوچک می‌شود و کوئری‌ها برای «memory grant» صف می‌کشند
+    /// (انتظار RESOURCE_SEMAPHORE تا ~۲۵ ثانیه حتی برای کوئری کوچک). اینجا فقط هشدار لاگ می‌شود؛ تنظیم با مدیر سرور است.
+    /// کاربر SQL کم‌دسترسی ممکن است VIEW SERVER STATE نداشته باشد؛ آن‌وقت بررسی بی‌صدا رد می‌شود.
+    /// </summary>
+    private static void CheckSqlMemory(IServiceProvider services, ILogger logger)
+    {
+        var connectionString = services.GetRequiredService<IConfiguration>().GetConnectionString("Central");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        try
+        {
+            using var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString);
+            connection.Open();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT (SELECT CAST(value_in_use AS INT) FROM sys.configurations WHERE name = 'min server memory (MB)'),
+                       (SELECT MAX(target_memory_kb) / 1024 FROM sys.dm_exec_query_resource_semaphores WHERE resource_semaphore_id = 0),
+                       (SELECT MAX(waiter_count) FROM sys.dm_exec_query_resource_semaphores)
+                """;
+            using var reader = cmd.ExecuteReader();
+            if (!reader.Read()) return;
+            var (minMb, grantMb, waiters) = (reader.GetInt32(0), reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1)), reader.IsDBNull(2) ? 0 : Convert.ToInt32(reader.GetValue(2)));
+            if (minMb < 512 || grantMb < 100 || waiters > 0)
+                logger.LogWarning("حافظه SQL Server کم است (حداقل حافظه {Min} مگابایت، حافظه کوئری {Grant} مگابایت، در صف {Waiters}). " +
+                                  "کوئری‌ها ممکن است تا ۲۵ ثانیه منتظر بمانند؛ 'min server memory' را دست‌کم ۱۰۲۴ و 'max server memory' را مناسب سرور تنظیم کنید.",
+                    minMb, grantMb, waiters);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "بررسی حافظه SQL Server انجام نشد");
+        }
     }
 
     /// <summary>
@@ -49,7 +83,7 @@ public static class ModelWarmUp
             return (DbContext)sp.GetRequiredService(type);
         var connection = new CompanyConnection(new NoCompany());
         var builder = (DbContextOptionsBuilder)Activator.CreateInstance(typeof(DbContextOptionsBuilder<>).MakeGenericType(type))!;
-        builder.UseSqlServer(connection.Connection).AddInterceptors(sp.GetRequiredService<AuditInterceptor>());
+        builder.UseCompanySqlServer(connection.Connection).AddInterceptors(sp.GetRequiredService<AuditInterceptor>());
         return (DbContext)ActivatorUtilities.CreateInstance(sp, type, builder.Options, connection);
     }
 
