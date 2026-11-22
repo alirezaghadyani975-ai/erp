@@ -7,6 +7,7 @@ using Erp.Payroll.Domain;
 using Erp.Personnel.Application;
 using Erp.Personnel.Contracts;
 using Erp.SharedKernel.Domain;
+using Erp.SharedKernel.Reports;
 
 namespace Erp.Accounting.Tests.Sql;
 
@@ -348,8 +349,8 @@ public class PayrollTests(SqlFixture db)
         Assert.Contains(v.Lines, l => l.AccountCode == "2522" && l.Credit == 8_000_000);
 
         // گزارش‌ها روی همین داده
-        var reports = (Func<Erp.Payroll.Application.Reports.PayrollReportService, Task<Erp.Payroll.Application.Reports.ReportTable>> q) =>
-            db.Run<Erp.Payroll.Application.Reports.PayrollReportService, Erp.Payroll.Application.Reports.ReportTable>(q);
+        var reports = (Func<Erp.Payroll.Application.Reports.PayrollReportService, Task<Erp.SharedKernel.Reports.ReportTable>> q) =>
+            db.Run<Erp.Payroll.Application.Reports.PayrollReportService, Erp.SharedKernel.Reports.ReportTable>(q);
         var f = new Erp.Payroll.Application.Reports.PayrollReportFilter(1405, 3, workshop);
 
         var register = await reports(x => x.RegisterAsync(f, default));

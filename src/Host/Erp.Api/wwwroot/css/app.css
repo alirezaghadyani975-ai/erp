@@ -56,6 +56,10 @@ html, body {
 .report-grid th { background: var(--mud-palette-background-gray); font-weight: 600; }
 .report-grid th.group { text-align: center; }
 .report-grid .num { text-align: left; font-variant-numeric: tabular-nums; }
+.report-grid tr.report-parent { cursor: pointer; }
+.report-grid tr.report-parent:hover td { background: var(--mud-palette-action-default-hover); }
+.report-grid tr.report-child td { background: var(--mud-palette-background-gray); font-size: .78rem; color: var(--mud-palette-text-secondary); }
+.report-grid tr.report-child td:first-child { padding-right: 24px; }
 .report-grid tbody tr:nth-child(even) td { background: var(--mud-palette-background-gray); }
 .report-grid tfoot td { font-weight: 700; background: var(--mud-palette-background-gray); }
 @media print {

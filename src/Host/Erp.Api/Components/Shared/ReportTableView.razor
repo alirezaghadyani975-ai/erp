@@ -1,5 +1,5 @@
-@* نمایش، چاپ و اکسل یک گزارش جدولی حقوق (ReportTable) با سرستون گروهی و ردیف جمع. *@
-@using Erp.Payroll.Application.Reports
+@* نمایش، چاپ و اکسل یک گزارش جدولی (ReportTable) با سرستون گروهی، ردیف جمع و سطح دوم باز و بسته‌شونده.
+   چاپ همان حالتی را می‌گیرد که روی صفحه است؛ اکسل همیشه هر دو سطح را دارد. *@
 @inject IJSRuntime JS
 
 @if (Report is { } r)
@@ -15,6 +15,11 @@
                 @foreach (var s in r.Subtitle) { <div class="report-sheet-sub">@s</div> }
             </div>
             <div class="no-print d-flex gap-2">
+                @if (r.HasChildren)
+                {
+                    <MudButton Variant="Variant.Text" StartIcon="@(_allOpen ? Icons.Material.Outlined.UnfoldLess : Icons.Material.Outlined.UnfoldMore)"
+                               OnClick="ToggleAll">@(_allOpen ? "بستن همه" : $"باز کردن همه{(r.ChildTitle is null ? "" : $" ({r.ChildTitle})")}")</MudButton>
+                }
                 <ExcelButton Build="BuildExcel" Disabled="r.Rows.Count == 0" />
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Print" Disabled="r.Rows.Count == 0"
                            OnClick="@(() => JS.InvokeVoidAsync("print").AsTask())">چاپ</MudButton>
@@ -57,7 +62,31 @@
                     <tbody>
                         @foreach (var row in r.Rows)
                         {
-                            <tr>@foreach (var c in r.Columns) { <td class="@Css(c)">@Text(c, row[c.Key])</td> }</tr>
+                            var hasChildren = row.Children is { Count: > 0 };
+                            var open = hasChildren && _open.Contains(row);
+                            <tr class="@(hasChildren ? "report-parent" : null)" @onclick="() => Toggle(row)">
+                                @for (var i = 0; i < r.Columns.Count; i++)
+                                {
+                                    var c = r.Columns[i];
+                                    <td class="@Css(c)">
+                                        @if (i == 0 && hasChildren)
+                                        {
+                                            <MudIcon Icon="@(open ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ChevronLeft)" Size="Size.Small"
+                                                     Class="no-print" Style="vertical-align:middle" />
+                                        }
+                                        @Text(c, row[c.Key])
+                                    </td>
+                                }
+                            </tr>
+                            @if (open)
+                            {
+                                foreach (var child in row.Children!)
+                                {
+                                    <tr class="report-child">
+                                        @foreach (var c in r.Columns) { <td class="@Css(c)">@Text(c, child[c.Key])</td> }
+                                    </tr>
+                                }
+                            }
                         }
                     </tbody>
                     @if (r.Columns.Any(c => c.Sum && c.Kind is ReportColumnKind.Amount or ReportColumnKind.Number))
@@ -84,6 +113,31 @@
 @code {
     [Parameter] public ReportTable? Report { get; set; }
 
+    private readonly HashSet<ReportRow> _open = new(ReferenceEqualityComparer.Instance);
+    private ReportTable? _shown;
+    private bool _allOpen;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(Report, _shown)) return;
+        _shown = Report;
+        _open.Clear();
+        _allOpen = false;
+    }
+
+    private void Toggle(ReportRow row)
+    {
+        if (row.Children is not { Count: > 0 }) return;
+        if (!_open.Remove(row)) _open.Add(row);
+    }
+
+    private void ToggleAll()
+    {
+        _allOpen = !_allOpen;
+        _open.Clear();
+        if (_allOpen && Report is { } r) foreach (var row in r.Rows.Where(x => x.Children is { Count: > 0 })) _open.Add(row);
+    }
+
     private sealed record Block(string? Group, List<ReportColumn> Columns);
 
     /// <summary>ستون‌های پشت‌سرهم با یک گروه، یک بلوک سرستون.</summary>
@@ -104,7 +158,7 @@
 
     private static string Css(ReportColumn c) => c.Kind switch
     {
-        ReportColumnKind.Amount or ReportColumnKind.Number => "num",
+        ReportColumnKind.Amount or ReportColumnKind.Number or ReportColumnKind.Percent => "num",
         ReportColumnKind.Code => "code",
         _ => ""
     };
@@ -113,22 +167,27 @@
     {
         null => "",
         decimal d when c.Kind == ReportColumnKind.Amount => d == 0 ? "" : Format.Amount(d),
-        decimal d => d == 0 ? "" : d.ToString("#,0.##"),
+        decimal d when c.Kind == ReportColumnKind.Percent => d.ToString("#,0.#", System.Globalization.CultureInfo.InvariantCulture) + "٪",
+        decimal d => d == 0 ? "" : d.ToString("#,0.##", System.Globalization.CultureInfo.InvariantCulture),
         _ => v.ToString() ?? ""
     };
 
     private ExcelFile? BuildExcel()
     {
         if (Report is not { } r) return null;
-        var columns = r.Columns.Select(c => new ExcelColumn<ReportRow>(
-            c.Group is null ? c.Title : $"{c.Group} - {c.Title}", row => row[c.Key],
+        // سطح دوم زیر ردیف خودش با ستون «سطح» برای فیلتر در اکسل
+        var rows = r.Rows.SelectMany(x => new[] { (Level: 1, Row: x) }.Concat((x.Children ?? []).Select(ch => (Level: 2, Row: ch)))).ToList();
+        var columns = new List<ExcelColumn<(int Level, ReportRow Row)>>();
+        if (r.HasChildren) columns.Add(new("سطح", x => x.Level, ExcelKind.Number));
+        columns.AddRange(r.Columns.Select(c => new ExcelColumn<(int Level, ReportRow Row)>(
+            c.Group is null ? c.Title : $"{c.Group} - {c.Title}", x => x.Row[c.Key],
             c.Kind switch
             {
                 ReportColumnKind.Amount => ExcelKind.Amount,
-                ReportColumnKind.Number => ExcelKind.Number,
+                ReportColumnKind.Number or ReportColumnKind.Percent => ExcelKind.Number,
                 ReportColumnKind.Code => ExcelKind.Code,
                 _ => ExcelKind.Text
-            })).ToList();
-        return ExcelExport.Build(r.Title, r.Subtitle, columns, r.Rows);
+            })));
+        return ExcelExport.Build(r.Title, r.Subtitle, columns, rows);
     }
 }

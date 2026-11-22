@@ -72,10 +72,12 @@ public static class ProductionPermissions
     public const string ReportCreate = "prd.report.create";
     public const string ReportEdit = "prd.report.edit";
     public const string ReportDelete = "prd.report.delete";
+    public const string AnalysisView = "prd.analysis.view";
 
     public static IPermissionSource List { get; } = new PermissionList("تولید")
         .Crud("prd.bom", "فرمول ساخت")
-        .Crud("prd.report", "گزارش تولید");
+        .Crud("prd.report", "گزارش تولید")
+        .Add("prd.analysis", "گزارش‌های تحلیلی تولید", ("view", "مشاهده"));
 }
 
 // ---------------- DTOs ----------------
@@ -124,6 +126,7 @@ public static class DependencyInjection
         services.AddSingleton(ProductionPermissions.List);
         services.AddScoped<BomService>();
         services.AddScoped<ProductionReportService>();
+        services.AddScoped<ProductionAnalysisService>();
         return services;
     }
 }

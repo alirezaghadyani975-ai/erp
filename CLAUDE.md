@@ -87,7 +87,10 @@
   خرید/فروش/مصرف/ورود و خروج تولید را تعیین می‌کند (سرویس + تریگر 50320).
 - **تولید مرحله ۱** (`src/Modules/Production`، schema `prd`، اسکریپت ۲۷، طرح `docs/production-design.md`): فرمول ساخت (`BomService`) و
   گزارش تولید تک‌مرحله‌ای بدون دستور تولید (`ProductionReportService`)؛ سندهای انبار تولید (رسید ۴، حواله ۱۴) فقط از `IProductionStock`
-  با `SourceModule`. جذب، بها و سند تولید = مرحله ۲.
+  با `SourceModule`. جذب، بها و سند تولید = مرحله ۲. زمان و اپراتور فقط روی مراکز تولیدی (`CenterRef.IsProduction`).
+  گزارش‌های تحلیلی تولید: `ProductionAnalysisService` (`/production/analysis`، مجوز `prd.analysis.view`، ۱۱ گزارش با سطح دوم).
+- **گزارش جدولی مشترک**: `Erp.SharedKernel.Reports` (`ReportTable`/`ReportRow` با `Children` برای سطح دوم) و `Shared/ReportTableView`
+  (نمایش، باز/بسته کردن سطح دوم، چاپ، اکسل با ستون «سطح»). گزارش تازه هر ماژول همین را برگرداند.
 - مخزن: گیت‌هاب خصوصی `alirezaghadyani975-ai/erp`؛ push فقط با دستور ساده `git push` از همین پوشه. وضعیت روز و قدم بعدی: `docs/HANDOFF.md`.
 - بعدی: بازبینی ظاهری فرم‌ها با افزونه UI Design Review، اتصال مستقیم سامانه مودیان (کلید، شماره مالیاتی، صف ارسال)،
   گزارش‌های فروش و خرید، سقف مبلغ و گردش تأیید.

@@ -33,6 +33,8 @@ public static class AppForms
         new("انبارها", "انبار", "/inventory/warehouses", Icons.Material.Outlined.Warehouse, "تعریف انبار انباردار"),
         new("انواع کالا", "انبار", "/inventory/categories", Icons.Material.Outlined.Category, "نوع کالا مواد نیم‌ساخته محصول ضایعات معین موجودی"),
         new("گزارش تولید", "تولید", "/production/reports", Icons.Material.Outlined.Assignment, "تولید مصرف مواد رسید محصول ضایعات اپراتور انحراف"),
+        new("گزارش‌های تحلیلی تولید", "تولید", "/production/analysis", Icons.Material.Outlined.Assessment,
+            "تولید روزانه تجمیعی مصرف مواد انحراف زمان ضایعات اپراتور کارکرد مرکز راندمان جایگزین خارج از فرمول"),
         new("فرمول ساخت", "تولید", "/production/boms", Icons.Material.Outlined.AccountTree, "bom فرمول مواد جایگزین ضایعات زمان استاندارد"),
         new("محاسبه بهای تمام‌شده", "بهای تمام‌شده", "/inventory/costing", Icons.Material.Outlined.Calculate, "بهای تمام شده کالای فروش رفته میانگین موزون سند ماه"),
         new("پرونده‌های پرسنلی", "منابع انسانی", "/hr/employees", Icons.Material.Outlined.Badge, "کارمند پرسنل استخدام کارگزینی ترک کار"),

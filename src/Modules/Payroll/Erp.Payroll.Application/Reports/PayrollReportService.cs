@@ -3,6 +3,7 @@ using Erp.Personnel.Contracts;
 using Erp.SharedKernel.Calendar;
 using Erp.SharedKernel.Domain;
 using Erp.SharedKernel.Security;
+using Erp.SharedKernel.Reports;
 using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Payroll.Application.Reports;

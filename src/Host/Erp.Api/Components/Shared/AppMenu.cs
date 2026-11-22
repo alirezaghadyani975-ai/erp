@@ -73,6 +73,7 @@ public static class AppMenu
         new("تولید", Icons.Material.Outlined.PrecisionManufacturing, Children:
         [
             new("گزارش‌های تولید", Icons.Material.Outlined.Assignment, "/production/reports", P(PR.ReportView)),
+            new("گزارش‌های تحلیلی تولید", Icons.Material.Outlined.Assessment, "/production/analysis", P(PR.AnalysisView)),
             new("فرمول‌های ساخت", Icons.Material.Outlined.AccountTree, "/production/boms", P(PR.BomView)),
         ]),
         new("بهای تمام‌شده", Icons.Material.Outlined.Factory, Children:
@@ -218,6 +219,7 @@ public static class AppMenu
         ("/production/boms", P(PR.BomView)),
         ("/production/reports/new", P(PR.ReportCreate)),
         ("/production/reports", P(PR.ReportView)),
+        ("/production/analysis", P(PR.AnalysisView)),
         ("/expenses/new", P(ExpensePermissions.Create)),
         ("/expenses", P(ExpensePermissions.View)),
         ("/treasury/receipts/new", P(T.ReceiptCreate)),

@@ -9,6 +9,7 @@ using Erp.Inventory.Domain;
 using Erp.Production.Application;
 using Erp.Production.Domain;
 using Erp.SharedKernel.Domain;
+using Erp.SharedKernel.Reports;
 
 namespace Erp.Accounting.Tests.Sql;
 
@@ -99,6 +100,22 @@ public class ProductionTests(SqlFixture db)
         var receiptLines = (await db.Run<StockDocService, StockDocDto>(x => x.GetAsync(receipt.Id, default))).Lines;
         Assert.Contains(receiptLines, l => l.ItemId == product && l.Quantity == 200);
         Assert.Contains(receiptLines, l => l.ItemId == scrap && l.Quantity == 12);
+
+        // گزارش‌های تحلیلی: انحراف مواد، زمان و ضایعات، با سطح دوم به تفکیک محصول
+        var filter = new ProductionAnalysisFilter("1417/03/01", "1417/03/31", product);
+        Task<ReportTable> Analysis(string type) => db.Run<ProductionAnalysisService, ReportTable>(x => x.RunAsync(type, filter, default));
+        foreach (var (key, _, _) in ProductionAnalysisService.Types) await Analysis(key);
+        var matVar = Assert.Single((await Analysis("material-variance")).Rows);
+        Assert.Equal(8m, matVar["variance"]);                     // ۱۱۰ − ۱۰۲
+        Assert.Equal(7.8m, matVar["pct"]);
+        var timeVar = Assert.Single((await Analysis("time-variance")).Rows);
+        Assert.Equal(2m, timeVar["stdMan"]);
+        Assert.Equal(2.22m, timeVar["actMan"]);
+        var scrapRow = Assert.Single((await Analysis("scrap")).Rows);
+        Assert.Equal(0.06m, Assert.Single(scrapRow.Children!)["perUnit"]);  // ۱۲ ÷ ۲۰۰
+        var consumption = Assert.Single((await Analysis("consumption")).Rows);
+        Assert.Equal(110m, consumption["qty"]);
+        Assert.Equal(100m, Assert.Single(consumption.Children!)["share"]);
 
         // سند تولید از فرم انبار اصلاح نمی‌شود
         var locked = await Assert.ThrowsAsync<DomainException>(() => db.Run<StockDocService>(x => x.DeleteAsync(issue.Id, default)));
