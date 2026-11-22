@@ -242,7 +242,7 @@ public class InventoryReportService(IInventoryDbContext db, IAccessControl acces
             return Row(cats.Select(c => Row(null, ("title", c.Value.Title), ("stock", byCategory.GetValueOrDefault(c.Key)), ("ledger", null), ("diff", null))).ToList(),
                 ("title", accounts.GetValueOrDefault(id, "?")), ("stock", stock), ("ledger", partial ? null : book),
                 ("diff", partial ? null : book - stock));
-        }).ToList();
+        }).Where(r => (decimal?)r["stock"] is not (null or 0) || r["ledger"] is decimal l && l != 0).ToList();
         if (partial) subtitle.Add("با فیلتر یا محدوده انبار، مانده دفتر (که انبار ندارد) نمایش داده نمی‌شود.");
         return new ReportTable("کنترل موجودی با دفتر معین", subtitle,
             [Text("title", "معین / نوع کالا"), Amt("stock", "موجودی ریالی انبار"), Amt("ledger", "مانده دفتر معین"), Amt("diff", "اختلاف (دفتر − انبار)")],

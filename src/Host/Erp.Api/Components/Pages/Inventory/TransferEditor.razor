@@ -31,13 +31,13 @@
     <MudGrid Spacing="2">
         <MudItem xs="12" sm="3"><PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" /></MudItem>
         <MudItem xs="6" sm="3">
-            <MudSelect T="int?" @bind-Value="_fromWh" Label="از انبار" Required="true" RequiredError="انبار مبدأ را انتخاب کنید."
+            <MudSelect T="int?" @bind-Value="_fromWh" Label="از انبار" Required="true" ToStringFunc="@WarehouseTitle" RequiredError="انبار مبدأ را انتخاب کنید."
                        Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
                 @foreach (var w in _warehouses) { <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem> }
             </MudSelect>
         </MudItem>
         <MudItem xs="6" sm="3">
-            <MudSelect T="int?" @bind-Value="_toWh" Label="به انبار" Required="true" RequiredError="انبار مقصد را انتخاب کنید."
+            <MudSelect T="int?" @bind-Value="_toWh" Label="به انبار" Required="true" ToStringFunc="@WarehouseTitle" RequiredError="انبار مقصد را انتخاب کنید."
                        Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
                 @foreach (var w in _warehouses.Where(w => w.Id != _fromWh)) { <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem> }
             </MudSelect>
@@ -112,6 +112,8 @@
             _lines = t.Lines.Select(l => new Line { Item = _items.FirstOrDefault(i => i.Id == l.ItemId), Quantity = l.Quantity, Description = l.Description }).ToList();
         }
     }
+
+    private string? WarehouseTitle(int? id) => id is int i ? _warehouses.FirstOrDefault(w => w.Id == i)?.Title : null;
 
     private Task<IEnumerable<ItemDto>> SearchItems(string? term, CancellationToken ct)
     {
