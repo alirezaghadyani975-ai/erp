@@ -33,6 +33,14 @@ public class ProductionReportService(IProductionDbContext db, IAccessControl acc
             r.Operators.Count, r.Operators.Sum(o => o.Hours), r.Description)).ToList();
     }
 
+    /// <summary>کارکنان شاغل برای پنجره اپراتورها.</summary>
+    public async Task<List<LookupDto>> OperatorsAsync(CancellationToken ct)
+    {
+        access.Demand(ProductionPermissions.ReportView);
+        return await db.Employees.Where(e => e.Status != Erp.Personnel.Contracts.EmployeeStatus.Left).OrderBy(e => e.PersonnelNo)
+            .Select(e => new LookupDto(e.Id, e.PersonnelNo + " — " + e.DisplayName)).ToListAsync(ct);
+    }
+
     /// <summary>فرمول‌های معتبر یک محصول در تاریخ (اول پیش‌فرض).</summary>
     public async Task<List<LookupDto>> BomsForAsync(int productId, string date, CancellationToken ct)
     {

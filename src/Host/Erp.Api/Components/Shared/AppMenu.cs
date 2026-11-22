@@ -17,6 +17,7 @@ using PU = Erp.Purchases.Application.PurchasePermissions;
 using SL = Erp.Sales.Application.SalesPermissions;
 using H = Erp.Personnel.Application.PersonnelPermissions;
 using PY = Erp.Payroll.Application.PayrollPermissions;
+using PR = Erp.Production.Application.ProductionPermissions;
 
 namespace Erp.Api.Components.Shared;
 
@@ -68,6 +69,11 @@ public static class AppMenu
                 new("انبارها", Icons.Material.Outlined.Warehouse, "/inventory/warehouses", P(I.Warehouses)),
                 new("انواع کالا", Icons.Material.Outlined.Category, "/inventory/categories", P(I.ItemView)),
             ]),
+        ]),
+        new("تولید", Icons.Material.Outlined.PrecisionManufacturing, Children:
+        [
+            new("گزارش‌های تولید", Icons.Material.Outlined.Assignment, "/production/reports", P(PR.ReportView)),
+            new("فرمول‌های ساخت", Icons.Material.Outlined.AccountTree, "/production/boms", P(PR.BomView)),
         ]),
         new("بهای تمام‌شده", Icons.Material.Outlined.Factory, Children:
         [
@@ -208,6 +214,10 @@ public static class AppMenu
         ("/inventory/kardex", P(I.Kardex)),
         ("/inventory/balances", P(I.Kardex)),
         ("/inventory/costing", P(I.Costing)),
+        ("/production/boms/new", P(PR.BomCreate)),
+        ("/production/boms", P(PR.BomView)),
+        ("/production/reports/new", P(PR.ReportCreate)),
+        ("/production/reports", P(PR.ReportView)),
         ("/expenses/new", P(ExpensePermissions.Create)),
         ("/expenses", P(ExpensePermissions.View)),
         ("/treasury/receipts/new", P(T.ReceiptCreate)),

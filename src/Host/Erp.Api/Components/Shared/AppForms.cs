@@ -32,6 +32,8 @@ public static class AppForms
         new("موجودی انبارها", "انبار", "/inventory/balances", Icons.Material.Outlined.Inventory, "موجودی کالا انبار"),
         new("انبارها", "انبار", "/inventory/warehouses", Icons.Material.Outlined.Warehouse, "تعریف انبار انباردار"),
         new("انواع کالا", "انبار", "/inventory/categories", Icons.Material.Outlined.Category, "نوع کالا مواد نیم‌ساخته محصول ضایعات معین موجودی"),
+        new("گزارش تولید", "تولید", "/production/reports", Icons.Material.Outlined.Assignment, "تولید مصرف مواد رسید محصول ضایعات اپراتور انحراف"),
+        new("فرمول ساخت", "تولید", "/production/boms", Icons.Material.Outlined.AccountTree, "bom فرمول مواد جایگزین ضایعات زمان استاندارد"),
         new("محاسبه بهای تمام‌شده", "بهای تمام‌شده", "/inventory/costing", Icons.Material.Outlined.Calculate, "بهای تمام شده کالای فروش رفته میانگین موزون سند ماه"),
         new("پرونده‌های پرسنلی", "منابع انسانی", "/hr/employees", Icons.Material.Outlined.Badge, "کارمند پرسنل استخدام کارگزینی ترک کار"),
         new("محاسبه حقوق", "منابع انسانی", "/payroll/runs", Icons.Material.Outlined.Calculate, "حقوق ماه کارکرد لیست حقوق فیش بیمه مالیات"),

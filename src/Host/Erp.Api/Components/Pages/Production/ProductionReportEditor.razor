@@ -1,0 +1,444 @@
+@page "/production/reports/new"
+@page "/production/reports/{Id:long}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="@(Id is null ? "گزارش تولید جدید" : $"گزارش تولید {Format.No(_docNo)}")" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h5">@(Id is null ? "گزارش تولید جدید" : $"گزارش تولید {Format.No(_docNo)}")</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Timer" OnClick="OpenTimes">زمان (@_ops.Count)</MudButton>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Engineering" OnClick="OpenOperators">
+        اپراتورها (@_operators.Count، @_operators.Sum(o => o.Hours).ToString("#,0.##") ساعت)
+    </MudButton>
+    <IfAllowed Permission="@(Id is null ? ProductionPermissions.ReportCreate : ProductionPermissions.ReportEdit)">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Save" OnClick="SaveAsync" Disabled="_busy">ذخیره</MudButton>
+    </IfAllowed>
+    @if (Id is not null)
+    {
+        <IfAllowed Permission="@ProductionPermissions.ReportDelete">
+            <MudButton Color="Color.Error" OnClick="DeleteAsync" Disabled="_busy">حذف</MudButton>
+        </IfAllowed>
+    }
+    <MudButton OnClick="@(() => Tabs.Go("/production/reports"))">فهرست</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="6" sm="2"><PersianDateField Value="_date" ValueChanged="OnDate" Label="تاریخ" Required="true" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <ProdItemPicker Value="_productId" ValueChanged="OnProduct" Items="_items" Filter="@(i => i.CanOutput)" Label="محصول" Required="true" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="int?" @bind-Value="_bomId" Label="فرمول ساخت" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Required="true">
+                @foreach (var b in _boms) { <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudNumericField T="decimal" @bind-Value="_quantity" Label="@($"مقدار تولید ({Unit(_productId)})")" Min="0" HideSpinButtons="true" Class="num"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudSelect T="int?" @bind-Value="_outWh" Label="انبار رسید محصول و ضایعات" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                @foreach (var w in _warehouses) { <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_description" Label="شرح" MaxLength="500" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.AutoFixHigh" OnClick="FillAsync"
+                       Disabled="_bomId is null || _quantity <= 0">پر کردن از فرمول</MudButton>
+        </MudItem>
+    </MudGrid>
+    @if (_stockDocs.Count > 0)
+    {
+        <MudStack Row="true" Spacing="2" Class="mt-2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">سندهای انبار:</MudText>
+            @foreach (var d in _stockDocs)
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" OnClick="() => OpenDoc(d)">
+                    @d.Type.Title() <span class="code mx-1">@Format.No(d.DocNo)</span> — @d.Warehouse
+                </MudChip>
+            }
+        </MudStack>
+    }
+</MudPaper>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
+        <MudText Typo="Typo.h6">مواد مصرفی</MudText>
+        <MudSpacer />
+        <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _materials.Add(new MaterialRow { WarehouseId = _warehouses.FirstOrDefault()?.Id }))">ماده خارج از فرمول</MudButton>
+    </MudStack>
+    <table class="voucher-grid">
+        <thead><tr><th>#</th><th>ماده</th><th>جایگزین</th><th>انبار برداشت</th><th>استاندارد</th><th>واقعی</th><th>انحراف</th><th>واحد</th><th></th></tr></thead>
+        <tbody>
+            @for (var i = 0; i < _materials.Count; i++)
+            {
+                var row = _materials[i];
+                var no = i + 1;
+                var first = row.BomMaterialId is int bm && _materials.First(m => m.BomMaterialId == bm) == row;
+                <tr>
+                    <td class="num">@no</td>
+                    <td>
+                        @if (row.BomMaterialId is null) { <ProdItemPicker @bind-Value="row.ItemId" Items="_items" Filter="@(x => x.CanInput)" Label="ماده" Compact="true" /> }
+                        else { <span>@ItemText(row.ItemId)</span> }
+                    </td>
+                    <td>
+                        @if (first && Draft(row.BomMaterialId) is { Options.Count: > 0 } draft)
+                        {
+                            <MudSelect T="byte" Value="@(row.OptionNo ?? 0)" ValueChanged="@((byte o) => ChooseOption(draft, o))" Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
+                                <MudSelectItem T="byte" Value="(byte)0">ماده اصلی</MudSelectItem>
+                                @foreach (var opt in draft.Options)
+                                {
+                                    <MudSelectItem T="byte" Value="opt.OptionNo">@($"گزینه {opt.OptionNo}: {string.Join(" + ", opt.Items.Select(s => Title(s.ItemId)))}")</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                        else if (row.OptionNo is not null) { <MudText Typo="Typo.caption" Color="Color.Secondary">گزینه @row.OptionNo</MudText> }
+                    </td>
+                    <td>
+                        <MudSelect T="int?" @bind-Value="row.WarehouseId" Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
+                            @foreach (var w in _warehouses) { <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem> }
+                        </MudSelect>
+                    </td>
+                    <td class="num">@row.Std.ToString("#,0.######")</td>
+                    <td><NumCell @bind-Value="row.Actual" Label="مقدار واقعی" /></td>
+                    <td class="num" style="@VarStyle(row.Actual - row.Std)">@Var(row.Actual - row.Std)</td>
+                    <td>@Unit(row.ItemId)</td>
+                    <td>
+                        @if (row.BomMaterialId is null)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="حذف ردیف" OnClick="() => _materials.Remove(row)" />
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    @if (_materials.Count == 0) { <MudText Typo="Typo.caption" Color="Color.Secondary">فرمول و مقدار را انتخاب کنید و «پر کردن از فرمول» را بزنید.</MudText> }
+</MudPaper>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
+        <MudText Typo="Typo.h6">ضایعات</MudText>
+        <MudSpacer />
+        <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _scraps.Add(new ScrapRow()))">ردیف ضایعات</MudButton>
+    </MudStack>
+    <table class="voucher-grid">
+        <thead><tr><th>#</th><th>کالای ضایعات</th><th>نوع</th><th>استاندارد</th><th>واقعی</th><th>انحراف</th><th>واحد</th><th></th></tr></thead>
+        <tbody>
+            @for (var i = 0; i < _scraps.Count; i++)
+            {
+                var row = _scraps[i];
+                var no = i + 1;
+                <tr>
+                    <td class="num">@no</td>
+                    <td><ProdItemPicker @bind-Value="row.ItemId" Items="_items" Filter="@(x => x.IsScrap)" Label="ضایعات" Compact="true" /></td>
+                    <td>
+                        <MudSelect T="ScrapType" @bind-Value="row.Type" Variant="Variant.Text" Margin="Margin.Dense" Dense="true">
+                            <MudSelectItem T="ScrapType" Value="ScrapType.MaterialOnly">فقط مواد</MudSelectItem>
+                            <MudSelectItem T="ScrapType" Value="ScrapType.Full">مواد + سهم دستمزد و سربار</MudSelectItem>
+                        </MudSelect>
+                    </td>
+                    <td class="num">@row.Std.ToString("#,0.######")</td>
+                    <td><NumCell @bind-Value="row.Actual" Label="مقدار واقعی" /></td>
+                    <td class="num" style="@VarStyle(row.Actual - row.Std)">@Var(row.Actual - row.Std)</td>
+                    <td>@Unit(row.ItemId)</td>
+                    <td><MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="حذف ردیف" OnClick="() => _scraps.Remove(row)" /></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</MudPaper>
+
+<MudDialog @bind-Visible="_timeOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">زمان استاندارد و واقعی مراکز</MudText></TitleContent>
+    <DialogContent>
+        <table class="voucher-grid">
+            <thead><tr><th>مرکز هزینه</th><th>نفر-زمان استاندارد</th><th>نفر-زمان واقعی</th><th>واحد</th><th>ماشین-زمان استاندارد</th><th>ماشین-زمان واقعی</th><th>واحد</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var op in _opEdit)
+                {
+                    <tr>
+                        <td>
+                            <MudSelect T="int?" @bind-Value="op.CenterId" Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Style="min-width:170px" Disabled="op.FromBom">
+                                @foreach (var c in _centers) { <MudSelectItem T="int?" Value="c.Id">@c.Title</MudSelectItem> }
+                            </MudSelect>
+                        </td>
+                        <td>@TimeUnits.Text(op.StdMan)</td>
+                        <td><NumCell @bind-Value="op.Man" Label="نفر-زمان واقعی" /></td>
+                        <td><UnitSelect @bind-Value="op.ManUnit" /></td>
+                        <td>@TimeUnits.Text(op.StdMachine)</td>
+                        <td><NumCell @bind-Value="op.Machine" Label="ماشین-زمان واقعی" /></td>
+                        <td><UnitSelect @bind-Value="op.MachineUnit" /></td>
+                        <td>
+                            @if (!op.FromBom) { <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small" aria-label="حذف" OnClick="() => _opEdit.Remove(op)" /> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _opEdit.Add(new OpRow { ManUnit = TimeUnit.Minute, MachineUnit = TimeUnit.Minute }))">مرکز خارج از فرمول</MudButton>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _timeOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyTimes">تأیید</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="_opOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">اپراتورها</MudText></TitleContent>
+    <DialogContent>
+        <table class="voucher-grid">
+            <thead><tr><th>اپراتور</th><th>مرکز هزینه</th><th>ساعت کار</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var o in _operatorEdit)
+                {
+                    <tr>
+                        <td>
+                            <MudSelect T="int?" @bind-Value="o.EmployeeId" Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Style="min-width:200px">
+                                @foreach (var e in _employees) { <MudSelectItem T="int?" Value="e.Id">@e.Title</MudSelectItem> }
+                            </MudSelect>
+                        </td>
+                        <td>
+                            <MudSelect T="int?" @bind-Value="o.CenterId" Clearable="true" Placeholder="—" Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Style="min-width:150px">
+                                @foreach (var c in _centers) { <MudSelectItem T="int?" Value="c.Id">@c.Title</MudSelectItem> }
+                            </MudSelect>
+                        </td>
+                        <td><NumCell @bind-Value="o.Hours" Label="ساعت" /></td>
+                        <td><MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small" aria-label="حذف" OnClick="() => _operatorEdit.Remove(o)" /></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _operatorEdit.Add(new OperatorRow { CenterId = _ops.FirstOrDefault()?.CostCenterId }))">اپراتور</MudButton>
+        @if (_employees.Count == 0) { <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">کارمند شاغلی در کارگزینی تعریف نشده است.</MudText> }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _opOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyOperators">تأیید</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private sealed class MaterialRow
+    {
+        public int? ItemId { get; set; }
+        public int? WarehouseId { get; set; }
+        public decimal Std { get; set; }
+        public decimal Actual { get; set; }
+        public int? BomMaterialId { get; set; }
+        public byte? OptionNo { get; set; }
+    }
+
+    private sealed class ScrapRow
+    {
+        public int? ItemId { get; set; }
+        public decimal Std { get; set; }
+        public decimal Actual { get; set; }
+        public ScrapType Type { get; set; } = ScrapType.MaterialOnly;
+    }
+
+    private sealed class OpRow
+    {
+        public int? CenterId { get; set; }
+        public bool FromBom { get; set; }
+        public decimal StdMan { get; set; }
+        public decimal StdMachine { get; set; }
+        public decimal Man { get; set; }
+        public TimeUnit ManUnit { get; set; }
+        public decimal Machine { get; set; }
+        public TimeUnit MachineUnit { get; set; }
+    }
+
+    private sealed class OperatorRow
+    {
+        public int? EmployeeId { get; set; }
+        public int? CenterId { get; set; }
+        public decimal Hours { get; set; }
+    }
+
+    private List<ProductionItemDto> _items = [];
+    private List<LookupDto> _warehouses = [], _centers = [], _employees = [], _boms = [];
+    private string? _date = Format.Today(), _description;
+    private int? _productId, _bomId, _outWh;
+    private decimal _quantity;
+    private int _docNo;
+    private bool _busy, _timeOpen, _opOpen;
+    private List<MaterialRow> _materials = [];
+    private List<ScrapRow> _scraps = [];
+    private List<ProductionOperationInput> _ops = [];
+    private List<ProductionOperatorInput> _operators = [];
+    private List<StockDocLinkDto> _stockDocs = [];
+    private Dictionary<int, DraftMaterialDto> _draft = [];
+    private List<OpRow> _opEdit = [];
+    private List<OperatorRow> _operatorEdit = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _items = (await Backend.Run<BomService, List<ProductionItemDto>>(s => s.ItemsAsync(default))).Value ?? [];
+        _warehouses = (await Backend.Run<BomService, List<LookupDto>>(s => s.WarehousesAsync(default))).Value ?? [];
+        _centers = (await Backend.Run<BomService, List<LookupDto>>(s => s.CentersAsync(default))).Value ?? [];
+        _employees = (await Backend.Run<ProductionReportService, List<LookupDto>>(s => s.OperatorsAsync(default))).Value ?? [];
+        if (Id is long id)
+        {
+            var r = await Backend.Run<ProductionReportService, ProductionReportDto>(s => s.GetAsync(id, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            var p = r.Value!;
+            (_docNo, _date, _productId, _bomId, _quantity, _outWh, _description) = (p.DocNo, p.Date, p.ProductId, p.BomId, p.Quantity, p.OutputWarehouseId, p.Description);
+            _materials = p.Materials.Select(m => new MaterialRow
+            {
+                ItemId = m.ItemId, WarehouseId = m.WarehouseId, Std = m.StandardQty, Actual = m.ActualQty, BomMaterialId = m.BomMaterialId, OptionNo = m.OptionNo
+            }).ToList();
+            _scraps = p.Scraps.Select(s => new ScrapRow { ItemId = s.ItemId, Std = s.StandardQty, Actual = s.ActualQty, Type = s.ScrapType }).ToList();
+            (_ops, _operators, _stockDocs) = (p.Operations, p.Operators, p.StockDocs);
+            await LoadBomsAsync();
+            // گزینه‌های جایگزین فرمول برای تغییر انتخاب
+            var (bomId, qty) = (p.BomId, p.Quantity);
+            var d = await Backend.Run<ProductionReportService, ProductionDraftDto>(s => s.DraftAsync(bomId, qty, default));
+            if (d.Success) _draft = d.Value!.Materials.ToDictionary(m => m.BomMaterialId);
+        }
+    }
+
+    private string Unit(int? itemId) => itemId is int i ? _items.FirstOrDefault(x => x.Id == i)?.Unit ?? "" : "";
+    private string Title(int itemId) => _items.FirstOrDefault(x => x.Id == itemId)?.Title ?? "؟";
+    private string ItemText(int? itemId) => itemId is int i && _items.FirstOrDefault(x => x.Id == i) is { } x ? $"{x.Code} {x.Title}" : "؟";
+    private DraftMaterialDto? Draft(int? bomMaterialId) => bomMaterialId is int b ? _draft.GetValueOrDefault(b) : null;
+    private static string Var(decimal v) => v == 0 ? "—" : (v > 0 ? "+" : "−") + Math.Abs(v).ToString("#,0.######");
+    private static string VarStyle(decimal v) => v > 0 ? "color:var(--mud-palette-error)" : v < 0 ? "color:var(--mud-palette-success)" : "";
+
+    private async Task OnDate(string? v) { _date = v; await LoadBomsAsync(); }
+
+    private async Task OnProduct(int? v)
+    {
+        _productId = v;
+        _bomId = null;
+        await LoadBomsAsync();
+        _bomId ??= _boms.FirstOrDefault()?.Id;
+    }
+
+    private async Task LoadBomsAsync()
+    {
+        if (_productId is not int product || string.IsNullOrEmpty(_date)) { _boms = []; return; }
+        var date = _date;
+        _boms = (await Backend.Run<ProductionReportService, List<LookupDto>>(s => s.BomsForAsync(product, date, default))).Value ?? [];
+        // فرمول فعلی گزارش اگر دیگر معتبر نیست هم در فهرست بماند
+        if (_bomId is int b && _boms.All(x => x.Id != b)) _boms.Add(new LookupDto(b, $"فرمول فعلی ({b})"));
+    }
+
+    private async Task FillAsync()
+    {
+        if (_materials.Count > 0 && !await Dialogs.AskAsync("پر کردن از فرمول", "ردیف‌های مواد، ضایعات و زمان فعلی با مقادیر استاندارد فرمول جایگزین می‌شود.", "جایگزین کن")) return;
+        var (bomId, qty) = (_bomId!.Value, _quantity);
+        var r = await Backend.Run<ProductionReportService, ProductionDraftDto>(s => s.DraftAsync(bomId, qty, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        var d = r.Value!;
+        _draft = d.Materials.ToDictionary(m => m.BomMaterialId);
+        _outWh = d.OutputWarehouseId;
+        _materials = d.Materials.Select(m => new MaterialRow
+        {
+            ItemId = m.ItemId, WarehouseId = m.WarehouseId, Std = m.StandardQty, Actual = m.StandardQty, BomMaterialId = m.BomMaterialId
+        }).ToList();
+        _scraps = d.Scraps.Select(s => new ScrapRow { ItemId = s.ItemId, Std = s.StandardQty, Actual = s.ActualQty, Type = s.ScrapType }).ToList();
+        _ops = d.Operations;
+    }
+
+    /// <summary>تعویض ردیف فرمول با ماده اصلی یا یکی از گزینه‌های جایگزین (استاندارد = استاندارد اصلی × ضریب).</summary>
+    private void ChooseOption(DraftMaterialDto draft, byte option)
+    {
+        var index = _materials.FindIndex(m => m.BomMaterialId == draft.BomMaterialId);
+        var warehouse = _materials[index].WarehouseId ?? draft.WarehouseId;
+        _materials.RemoveAll(m => m.BomMaterialId == draft.BomMaterialId);
+        var rows = option == 0
+            ? [new MaterialRow { ItemId = draft.ItemId, WarehouseId = warehouse, Std = draft.StandardQty, Actual = draft.StandardQty, BomMaterialId = draft.BomMaterialId }]
+            : draft.Options.First(o => o.OptionNo == option).Items.Select(s =>
+            {
+                var std = Math.Round(draft.StandardQty * s.Factor, 6);
+                return new MaterialRow { ItemId = s.ItemId, WarehouseId = warehouse, Std = std, Actual = std, BomMaterialId = draft.BomMaterialId, OptionNo = option };
+            }).ToList();
+        _materials.InsertRange(Math.Min(index, _materials.Count), rows);
+    }
+
+    private void OpenTimes()
+    {
+        _opEdit = _ops.Select(o =>
+        {
+            var (mu, cu) = (TimeUnits.Best(o.ActualManSeconds), TimeUnits.Best(o.ActualMachineSeconds));
+            return new OpRow
+            {
+                CenterId = o.CostCenterId, FromBom = o.StdManSeconds > 0 || o.StdMachineSeconds > 0, StdMan = o.StdManSeconds, StdMachine = o.StdMachineSeconds,
+                Man = o.ActualManSeconds / TimeUnits.Factor(mu), ManUnit = mu, Machine = o.ActualMachineSeconds / TimeUnits.Factor(cu), MachineUnit = cu
+            };
+        }).ToList();
+        _timeOpen = true;
+    }
+
+    private void ApplyTimes()
+    {
+        _ops = _opEdit.Where(o => o.CenterId is not null && (o.FromBom || o.Man > 0 || o.Machine > 0))
+            .Select(o => new ProductionOperationInput(o.CenterId!.Value, o.StdMan, o.StdMachine, o.Man * TimeUnits.Factor(o.ManUnit), o.Machine * TimeUnits.Factor(o.MachineUnit)))
+            .ToList();
+        _timeOpen = false;
+    }
+
+    private void OpenOperators()
+    {
+        _operatorEdit = _operators.Select(o => new OperatorRow { EmployeeId = o.EmployeeId, CenterId = o.CostCenterId, Hours = o.Hours }).ToList();
+        if (_operatorEdit.Count == 0) _operatorEdit.Add(new OperatorRow { CenterId = _ops.FirstOrDefault()?.CostCenterId });
+        _opOpen = true;
+    }
+
+    private void ApplyOperators()
+    {
+        _operators = _operatorEdit.Where(o => o.EmployeeId is not null).Select(o => new ProductionOperatorInput(o.EmployeeId!.Value, o.CenterId, o.Hours)).ToList();
+        _opOpen = false;
+    }
+
+    private void OpenDoc(StockDocLinkDto d) =>
+        Tabs.Go(d.Type == StockDocType.ProductionReceipt ? $"/inventory/receipts/{d.Id}" : $"/inventory/issues/{d.Id}");
+
+    private SaveProductionReportRequest Request() => new(_date ?? "", _bomId ?? 0, _quantity, _outWh ?? 0, _description,
+        _materials.Where(m => m.ItemId is not null || m.Actual != 0)
+            .Select(m => new ProductionMaterialInput(m.ItemId ?? 0, m.WarehouseId ?? 0, m.Std, m.Actual, m.BomMaterialId, m.OptionNo)).ToList(),
+        _scraps.Where(s => s.ItemId is not null || s.Actual != 0).Select(s => new ProductionScrapInput(s.ItemId ?? 0, s.Std, s.Actual, s.Type)).ToList(),
+        _ops, _operators);
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        try
+        {
+            var request = Request();
+            if (Id is long id)
+            {
+                var r = await Backend.Run<ProductionReportService>(s => s.UpdateAsync(id, request, default));
+                if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+                var g = await Backend.Run<ProductionReportService, ProductionReportDto>(s => s.GetAsync(id, default));
+                if (g.Success) _stockDocs = g.Value!.StockDocs;
+                Snackbar.Add("گزارش تولید و سندهای انبار ذخیره شد.", Severity.Success);
+            }
+            else
+            {
+                var r = await Backend.Run<ProductionReportService, long>(s => s.CreateAsync(request, default));
+                if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+                Snackbar.Add("گزارش تولید و سندهای انبار ذخیره شد.", Severity.Success);
+                Tabs.Go($"/production/reports/{r.Value}");
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.DeleteAsync($"گزارش تولید {Format.No(_docNo)}", "رسید تولید و حواله‌های مصرف آن هم حذف می‌شود.")) return;
+        var id = Id!.Value;
+        var r = await Backend.Run<ProductionReportService>(s => s.DeleteAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Tabs.CloseCurrentAndGo("/production/reports");
+    }
+}

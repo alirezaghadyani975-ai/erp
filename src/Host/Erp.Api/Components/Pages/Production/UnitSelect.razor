@@ -1,0 +1,12 @@
+@* انتخاب واحد زمان: ثانیه، دقیقه، ساعت *@
+<MudSelect T="TimeUnit" Value="Value" ValueChanged="ValueChanged" Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Style="min-width:80px">
+    @foreach (var u in Enum.GetValues<TimeUnit>())
+    {
+        <MudSelectItem T="TimeUnit" Value="u">@TimeUnits.Title(u)</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter] public TimeUnit Value { get; set; }
+    [Parameter] public EventCallback<TimeUnit> ValueChanged { get; set; }
+}

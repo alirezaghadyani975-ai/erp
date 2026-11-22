@@ -1,0 +1,64 @@
+@page "/production/reports"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject TabService Tabs
+
+<TabTitle Text="گزارش‌های تولید" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h5">گزارش‌های تولید</MudText>
+    <MudSpacer />
+    <PersianDateField @bind-Value="_from" Label="از تاریخ" />
+    <PersianDateField @bind-Value="_to" Label="تا تاریخ" />
+    <MudButton Variant="Variant.Outlined" OnClick="LoadAsync">نمایش</MudButton>
+    <IfAllowed Permission="@ProductionPermissions.ReportCreate">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/production/reports/new"))">گزارش تولید جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر گزارش تولید رسید تولید (محصول و ضایعات) و حواله مصرف مواد را خودش در انبار می‌سازد؛ این سندها از فرم‌های انبار تغییر نمی‌کنند.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="ProductionReportListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/production/reports/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>شماره</MudTh>
+            <MudTh>تاریخ</MudTh>
+            <MudTh>محصول</MudTh>
+            <MudTh>فرمول</MudTh>
+            <MudTh Style="text-align:left">مقدار</MudTh>
+            <MudTh Style="text-align:left">اپراتور</MudTh>
+            <MudTh Style="text-align:left">ساعت اپراتور</MudTh>
+            <MudTh>شرح</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@Format.No(context.DocNo)</span></MudTd>
+            <MudTd><span class="code">@context.Date</span></MudTd>
+            <MudTd>@context.Product</MudTd>
+            <MudTd><span class="code">@context.Bom</span></MudTd>
+            <MudTd Class="num">@context.Quantity.ToString("#,0.######") @context.Unit</MudTd>
+            <MudTd Class="num">@context.OperatorCount</MudTd>
+            <MudTd Class="num">@context.OperatorHours.ToString("#,0.##")</MudTd>
+            <MudTd>@context.Description</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">گزارش تولیدی در این بازه ثبت نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<ProductionReportListItemDto> _rows = [];
+    private bool _loading = true;
+    private string? _from, _to;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var (from, to) = (_from, _to);
+        var r = await Backend.Run<ProductionReportService, List<ProductionReportListItemDto>>(s => s.ListAsync(from, to, null, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

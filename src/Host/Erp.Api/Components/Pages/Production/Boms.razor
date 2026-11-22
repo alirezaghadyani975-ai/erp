@@ -1,0 +1,66 @@
+@page "/production/boms"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject TabService Tabs
+
+<TabTitle Text="فرمول‌های ساخت" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">فرمول‌های ساخت</MudText>
+    <MudSpacer />
+    <MudCheckBox T="bool" Value="_inactive" ValueChanged="OnInactive" Label="غیرفعال‌ها هم" Dense="true" />
+    <IfAllowed Permission="@ProductionPermissions.BomCreate">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/production/boms/new"))">فرمول جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر فرمول مواد، جایگزین‌ها، ضایعات و زمان استاندارد مراکز را برای «مقدار پایه» محصول نگه می‌دارد. هر محصول یک فرمول پیش‌فرض دارد؛
+    فرمولی که در گزارش تولید آمده حذف نمی‌شود و فقط غیرفعال می‌شود.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="BomListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/production/boms/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>کد</MudTh>
+            <MudTh>عنوان</MudTh>
+            <MudTh>محصول</MudTh>
+            <MudTh Style="text-align:left">مقدار پایه</MudTh>
+            <MudTh Style="text-align:left">ردیف مواد</MudTh>
+            <MudTh>اعتبار</MudTh>
+            <MudTh Style="text-align:left">گزارش تولید</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Code</span></MudTd>
+            <MudTd>
+                @context.Title
+                @if (context.IsDefault) { <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">پیش‌فرض</MudChip> }
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd>@context.Product</MudTd>
+            <MudTd Class="num">@context.BaseQuantity.ToString("#,0.######") @context.Unit</MudTd>
+            <MudTd Class="num">@context.MaterialCount</MudTd>
+            <MudTd><span class="code">@context.ValidFrom</span>@(context.ValidTo is null ? "" : " تا ")<span class="code">@context.ValidTo</span></MudTd>
+            <MudTd Class="num">@context.ReportCount</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">فرمولی تعریف نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<BomListItemDto> _rows = [];
+    private bool _loading = true, _inactive;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private Task OnInactive(bool v) { _inactive = v; return LoadAsync(); }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var inactive = _inactive;
+        var r = await Backend.Run<BomService, List<BomListItemDto>>(s => s.ListAsync(null, inactive, default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

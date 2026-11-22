@@ -1,0 +1,27 @@
+@* انتخاب کالای تولید از فهرست آماده (فیلترشده با نوع کالا: ورودی، خروجی یا ضایعات). *@
+<MudAutocomplete T="int?" Value="Value" ValueChanged="ValueChanged" SearchFunc="Search" ToStringFunc="Title" Label="@Label"
+                 Clearable="true" ResetValueOnEmptyText="true" Strict="false" Dense="true" MaxItems="50" Disabled="Disabled"
+                 Required="Required" RequiredError="@($"{Label} الزامی است.")"
+                 Variant="@(Compact ? Variant.Text : Variant.Outlined)" Margin="Margin.Dense" Style="min-width:220px" />
+
+@code {
+    [Parameter] public int? Value { get; set; }
+    [Parameter] public EventCallback<int?> ValueChanged { get; set; }
+    [Parameter, EditorRequired] public List<ProductionItemDto> Items { get; set; } = [];
+    [Parameter] public Func<ProductionItemDto, bool>? Filter { get; set; }
+    [Parameter] public string Label { get; set; } = "کالا";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Compact { get; set; }
+
+    private string? Title(int? id) =>
+        id is int i ? Items.FirstOrDefault(x => x.Id == i) is { } x ? $"{x.Code} {x.Title}" : "؟" : null;
+
+    private Task<IEnumerable<int?>> Search(string? term, CancellationToken ct)
+    {
+        var t = PersianText.NormalizeOrNull(term);
+        var q = Items.Where(i => Filter?.Invoke(i) ?? true);
+        if (t is not null && t != Title(Value)) q = q.Where(i => i.Title.Contains(t) || i.Code.StartsWith(t));
+        return Task.FromResult(q.Select(i => (int?)i.Id));
+    }
+}
