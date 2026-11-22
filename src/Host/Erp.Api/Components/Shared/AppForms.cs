@@ -31,6 +31,8 @@ public static class AppForms
         new("کاردکس کالا", "انبار", "/inventory/kardex", Icons.Material.Outlined.ViewList, "گردش کالا"),
         new("موجودی انبارها", "انبار", "/inventory/balances", Icons.Material.Outlined.Inventory, "موجودی کالا انبار"),
         new("انبارها", "انبار", "/inventory/warehouses", Icons.Material.Outlined.Warehouse, "تعریف انبار انباردار"),
+        new("گزارش‌های انبار", "انبار", "/inventory/reports", Icons.Material.Outlined.Assessment,
+            "گردش کالا رسید حواله فاکتورنشده مصرف مرکز عامل کنترل موجودی دفتر معین"),
         new("انواع کالا", "انبار", "/inventory/categories", Icons.Material.Outlined.Category, "نوع کالا مواد نیم‌ساخته محصول ضایعات معین موجودی"),
         new("گزارش تولید", "تولید", "/production/reports", Icons.Material.Outlined.Assignment, "تولید مصرف مواد رسید محصول ضایعات اپراتور انحراف"),
         new("گزارش‌های تحلیلی تولید", "تولید", "/production/analysis", Icons.Material.Outlined.Assessment,

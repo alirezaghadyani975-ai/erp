@@ -61,6 +61,7 @@ public static class AppMenu
             [
                 new("کاردکس کالا", Icons.Material.Outlined.ViewList, "/inventory/kardex", P(I.Kardex)),
                 new("موجودی انبارها", Icons.Material.Outlined.Inventory, "/inventory/balances", P(I.Kardex)),
+                new("گردش، فاکتورنشده و کنترل", Icons.Material.Outlined.Assessment, "/inventory/reports", P(I.Reports)),
             ]),
             new("تعاریف انبار", Icons.Material.Outlined.Tune, Expanded: false, Children:
             [
@@ -214,6 +215,7 @@ public static class AppMenu
         ("/inventory/issues", P(I.IssueView)),
         ("/inventory/kardex", P(I.Kardex)),
         ("/inventory/balances", P(I.Kardex)),
+        ("/inventory/reports", P(I.Reports)),
         ("/inventory/costing", P(I.Costing)),
         ("/production/boms/new", P(PR.BomCreate)),
         ("/production/boms", P(PR.BomView)),

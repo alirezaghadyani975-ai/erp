@@ -68,6 +68,26 @@ public class InventoryDbContext : DbContext, IInventoryDbContext
                           OR EXISTS (SELECT 1 FROM inv.StockDocLines WHERE ItemId = {itemId}) THEN 1 ELSE 0 END AS Value
             """).SingleAsync(ct) == 1;
 
+    public async Task<Dictionary<int, decimal>> LedgerBalancesAsync(IReadOnlyCollection<int> accountIds, DateOnly toDate, CancellationToken ct)
+    {
+        if (accountIds.Count == 0) return [];
+        var json = System.Text.Json.JsonSerializer.Serialize(accountIds.Distinct());
+        var rows = await Database.SqlQuery<LedgerRow>($"""
+            WITH ids AS (SELECT CAST([value] AS INT) AS Id FROM OPENJSON({json}))
+            SELECT l.AccountId, SUM(l.Debit - l.Credit) AS Balance
+              FROM fin.VoucherLines l JOIN fin.Vouchers v ON v.Id = l.VoucherId JOIN ids ON ids.Id = l.AccountId
+             WHERE v.Status IN (2, 3) AND v.VoucherDate <= {toDate}
+             GROUP BY l.AccountId
+            """).ToListAsync(ct);
+        return rows.ToDictionary(r => r.AccountId, r => r.Balance);
+    }
+
+    private sealed class LedgerRow
+    {
+        public int AccountId { get; init; }
+        public decimal Balance { get; init; }
+    }
+
     public async Task<Dictionary<long, InvoiceLink>> InvoiceLinksAsync(IReadOnlyCollection<long> stockLineIds, CancellationToken ct)
     {
         if (stockLineIds.Count == 0) return [];

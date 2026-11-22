@@ -27,6 +27,13 @@
     <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
 }
 
+@foreach (var a in _alerts)
+{
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">
+        @a.Text <MudLink Href="@a.Url" Class="mr-2">مشاهده</MudLink>
+    </MudAlert>
+}
+
 <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-1">دسترسی سریع</MudText>
 @if (Quick.Count == 0)
 {
@@ -137,8 +144,13 @@ else
         await LoadAsync();
     }
 
+    private List<InventoryAlertDto> _alerts = [];
+
     private async Task LoadAsync()
     {
+        // هشدارها مستقل از داشبورد مالی؛ بدون مجوز گزارش انبار فهرست خالی برمی‌گردد
+        var alerts = await Backend.Run<InventoryReportService, List<InventoryAlertDto>>(s => s.AlertsAsync(default));
+        if (alerts.Success) _alerts = alerts.Value!;
         if (!CanSeeDashboard) return;
         var r = await Backend.Run<DashboardService, DashboardDto>(s => s.GetAsync(default));
         if (r.Success) { _data = r.Value; _error = null; } else _error = r.Error;

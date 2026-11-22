@@ -117,6 +117,17 @@ public class ProductionTests(SqlFixture db)
         Assert.Equal(110m, consumption["qty"]);
         Assert.Equal(100m, Assert.Single(consumption.Children!)["share"]);
 
+        // گزارش‌های انبار: گردش ماده (۳۰۰ ورود، ۱۱۰ خروج) و رسید خرید فاکتورنشده
+        var invFilter = new InventoryReportFilter("1417/03/01", "1417/03/31", warehouse);
+        Task<ReportTable> Inv(string type) => db.Run<InventoryReportService, ReportTable>(x => x.RunAsync(type, invFilter, default));
+        foreach (var (key, _, _) in InventoryReportService.Types) await Inv(key);
+        var m1Code = (await db.Run<BomService, List<ProductionItemDto>>(x => x.ItemsAsync(default))).Single(i => i.Id == m1).Code;
+        var move = (await Inv("movement")).Rows.Single(r => ((string)r["title"]!).StartsWith(m1Code + " "));
+        Assert.Equal(300m, move["in"]);
+        Assert.Equal(110m, move["out"]);
+        Assert.Equal(190m, move["closing"]);
+        Assert.Contains((await Inv("uninvoiced")).Rows, r => (string?)r["title"] == "رسید خرید" && (string?)r["date"] == "1417/03/01");
+
         // سند تولید از فرم انبار اصلاح نمی‌شود
         var locked = await Assert.ThrowsAsync<DomainException>(() => db.Run<StockDocService>(x => x.DeleteAsync(issue.Id, default)));
         Assert.Contains("گزارش تولید", locked.Message);

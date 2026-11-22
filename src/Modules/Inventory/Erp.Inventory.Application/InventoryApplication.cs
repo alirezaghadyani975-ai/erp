@@ -47,6 +47,9 @@ public interface IInventoryDbContext
     /// <summary>کالا در فاکتور خرید یا فروش یا سند انبار آمده است؟</summary>
     Task<bool> IsItemUsedAsync(int itemId, CancellationToken ct);
 
+    /// <summary>فقط‌خواندنی از حسابداری: مانده (بدهکار − بستانکار) معین‌ها تا تاریخ از سندهای موقت و دائم.</summary>
+    Task<Dictionary<int, decimal>> LedgerBalancesAsync(IReadOnlyCollection<int> accountIds, DateOnly toDate, CancellationToken ct);
+
     /// <summary>فاکتور یا برگشتی که هر ردیف سند انبار در آن آمده (ردیف‌های فاکتورنشده در نتیجه نیستند).</summary>
     Task<Dictionary<long, InvoiceLink>> InvoiceLinksAsync(IReadOnlyCollection<long> stockLineIds, CancellationToken ct);
 
@@ -168,6 +171,7 @@ public static class InventoryPermissions
     public const string IssueDelete = "inv.issue.delete";
     public const string Kardex = "inv.kardex.view";
     public const string Costing = "inv.costing.run";
+    public const string Reports = "inv.report.view";
 
     public static IPermissionSource List { get; } = new PermissionList("کالا و انبار")
         .Crud("inv.item", "کالا و خدمات")
@@ -176,7 +180,8 @@ public static class InventoryPermissions
         .Crud("inv.receipt", "رسید انبار")
         .Crud("inv.issue", "حواله انبار")
         .Add("inv.kardex", "کاردکس و موجودی", ("view", "مشاهده"))
-        .Add("inv.costing", "محاسبه بهای تمام‌شده", ("run", "اجرا و مشاهده"));
+        .Add("inv.costing", "محاسبه بهای تمام‌شده", ("run", "اجرا و مشاهده"))
+        .Add("inv.report", "گزارش‌های انبار", ("view", "مشاهده"));
 
     /// <summary>پیشوند مجوز فرم رسید یا حواله (برای FormToolbar).</summary>
     public static string Prefix(StockDocType type) => type.IsReceipt() ? "inv.receipt" : "inv.issue";
@@ -266,6 +271,7 @@ public static class DependencyInjection
         services.AddScoped<WarehouseService>();
         services.AddScoped<StockDocService>();
         services.AddScoped<StockReportService>();
+        services.AddScoped<InventoryReportService>();
         services.AddScoped<StockCostingService>();
         return services;
     }
