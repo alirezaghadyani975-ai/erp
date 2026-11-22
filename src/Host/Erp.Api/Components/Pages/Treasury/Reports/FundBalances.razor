@@ -8,7 +8,7 @@
 <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="mb-3" Spacing="2">
     <MudText Typo="Typo.h5">موجودی صندوق، بانک و تنخواه</MudText>
     <MudSpacer />
-    <div style="width:180px"><PersianDateField Value="_asOf" ValueChanged="async v => { _asOf = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+    <div style="width:180px"><PersianDateField Value="@_asOf" ValueChanged="async v => { _asOf = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
     <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
     <ExcelButton Build="BuildExcel" Disabled="_rows.Count == 0" />
 </MudStack>

@@ -39,8 +39,8 @@
                 <MudSelectItem T="StockDocType?" Value="t">@t.Title()</MudSelectItem>
             }
         </MudSelect>
-        <div style="width:170px"><PersianDateField Value="_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
-        <div style="width:170px"><PersianDateField Value="_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="@_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="@_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
     </MudStack>
 
     <MudTable T="StockDocListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"

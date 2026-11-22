@@ -206,8 +206,14 @@ public sealed record StockLineDto(long Id, short RowNo, int ItemId, string ItemC
 public sealed record StockDocDto(long Id, StockDocType Type, int DocNo, string Date, int WarehouseId, string Warehouse,
     int? PartyId, string? PartyName, string? Description, List<StockLineDto> Lines)
 {
-    /// <summary>سندی که ردیف فاکتورشده یا برگشت‌خورده دارد اصلاح و حذف نمی‌شود.</summary>
-    public string? LockReason => Lines.FirstOrDefault(l => l.Invoice is not null) is { } li
+    /// <summary>ماژول سازنده سند (مثلاً production) و شناسه فرم آن؛ چنین سندی فقط از همان فرم تغییر می‌کند.</summary>
+    public string? SourceModule { get; init; }
+    public long? SourceId { get; init; }
+
+    /// <summary>سندی که ردیف فاکتورشده یا برگشت‌خورده دارد یا از ماژول دیگری ساخته شده اصلاح و حذف نمی‌شود.</summary>
+    public string? LockReason => SourceModule is not null
+        ? "این سند را گزارش تولید ساخته است؛ برای اصلاح یا حذف، همان گزارش تولید را تغییر دهید."
+        : Lines.FirstOrDefault(l => l.Invoice is not null) is { } li
         ? $"ردیف {li.RowNo} این سند در {li.Invoice!.Title} {li.Invoice.DocNo:000000} آمده است؛ برای اصلاح یا حذف، اول آن را از فاکتور بردارید."
         : Lines.FirstOrDefault(l => l.ReturnedQuantity > 0) is { } lr
             ? $"ردیف {lr.RowNo} این سند برگشت خورده است؛ برای اصلاح یا حذف، اول سند برگشت را حذف کنید."

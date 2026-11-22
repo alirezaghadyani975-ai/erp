@@ -35,7 +35,7 @@
                             Disabled="_reportCount > 0" />
         </MudItem>
         <MudItem xs="6" sm="3">
-            <MudNumericField T="decimal" @bind-Value="_baseQty" Label="@($"مقدار پایه ({Unit(_productId)})")" Min="0" HideSpinButtons="true" Class="num"
+            <MudNumericField T="decimal" @bind-Value="_baseQty" Label="@(Unit(_productId) is { Length: > 0 } u ? $"مقدار پایه ({u})" : "مقدار پایه")" Min="0" HideSpinButtons="true" Class="num" Format="#,0.######"
                              HelperText="همه مقادیر برای این مقدار محصول" Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
         <MudItem xs="6" sm="3">

@@ -445,7 +445,7 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
                     l.CostFactorId, l.CostFactorId is int f ? factors.GetValueOrDefault(f) : null,
                     l.CostCenterId, l.CostCenterId is int c ? centers.GetValueOrDefault(c) : null,
                     l.EnteredPrice, l.UnitCost, l.Amount, l.Description, links.GetValueOrDefault(l.Id), returned.GetValueOrDefault(l.Id));
-            }).ToList());
+            }).ToList()) { SourceModule = doc.SourceModule, SourceId = doc.SourceId };
     }
 
     private async Task<StockDoc> LoadAsync(long id, bool tracking, CancellationToken ct, bool checkOwner = true)

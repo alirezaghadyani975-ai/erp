@@ -28,17 +28,17 @@
 
 <MudPaper Class="pa-3 mb-3" Elevation="1">
     <MudGrid Spacing="2">
-        <MudItem xs="6" sm="2"><PersianDateField Value="_date" ValueChanged="OnDate" Label="تاریخ" Required="true" /></MudItem>
-        <MudItem xs="12" sm="4">
+        <MudItem xs="6" sm="3"><PersianDateField Value="@_date" ValueChanged="OnDate" Label="تاریخ" Required="true" /></MudItem>
+        <MudItem xs="12" sm="5">
             <ProdItemPicker Value="_productId" ValueChanged="OnProduct" Items="_items" Filter="@(i => i.CanOutput)" Label="محصول" Required="true" />
         </MudItem>
-        <MudItem xs="12" sm="3">
+        <MudItem xs="12" sm="4">
             <MudSelect T="int?" @bind-Value="_bomId" Label="فرمول ساخت" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Required="true">
                 @foreach (var b in _boms) { <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem> }
             </MudSelect>
         </MudItem>
         <MudItem xs="6" sm="3">
-            <MudNumericField T="decimal" @bind-Value="_quantity" Label="@($"مقدار تولید ({Unit(_productId)})")" Min="0" HideSpinButtons="true" Class="num"
+            <MudNumericField T="decimal" @bind-Value="_quantity" Label="@UnitLabel("مقدار تولید", _productId)" Min="0" HideSpinButtons="true" Class="num" Format="#,0.######"
                              Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
         <MudItem xs="6" sm="3">
@@ -306,6 +306,7 @@
     }
 
     private string Unit(int? itemId) => itemId is int i ? _items.FirstOrDefault(x => x.Id == i)?.Unit ?? "" : "";
+    private string UnitLabel(string label, int? itemId) => Unit(itemId) is { Length: > 0 } u ? $"{label} ({u})" : label;
     private string Title(int itemId) => _items.FirstOrDefault(x => x.Id == itemId)?.Title ?? "؟";
     private string ItemText(int? itemId) => itemId is int i && _items.FirstOrDefault(x => x.Id == i) is { } x ? $"{x.Code} {x.Title}" : "؟";
     private DraftMaterialDto? Draft(int? bomMaterialId) => bomMaterialId is int b ? _draft.GetValueOrDefault(b) : null;

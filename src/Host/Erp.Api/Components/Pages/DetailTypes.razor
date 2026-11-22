@@ -57,11 +57,11 @@
                                          Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </MudItem>
                     <MudItem xs="4">
-                        <MudTextField T="string" Value="_edit.From" ValueChanged="v => _edit.From = Pad(v)" Label="از کد" Class="code"
+                        <MudTextField T="string" Value="@_edit.From" ValueChanged="v => _edit.From = Pad(v)" Label="از کد" Class="code"
                                       MaxLength="_edit.Length" InputMode="InputMode.numeric" Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </MudItem>
                     <MudItem xs="4">
-                        <MudTextField T="string" Value="_edit.To" ValueChanged="v => _edit.To = Pad(v)" Label="تا کد" Class="code"
+                        <MudTextField T="string" Value="@_edit.To" ValueChanged="v => _edit.To = Pad(v)" Label="تا کد" Class="code"
                                       MaxLength="_edit.Length" InputMode="InputMode.numeric" Variant="Variant.Outlined" Margin="Margin.Dense" />
                     </MudItem>
                     @if (_edit.Id is not null)

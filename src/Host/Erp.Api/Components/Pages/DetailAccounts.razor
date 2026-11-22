@@ -17,7 +17,7 @@
     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@Titles.Owner(_type.OwnerModule)</MudChip>
     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"><span class="code">@_type.CodeFrom</span>&nbsp;تا&nbsp;<span class="code">@_type.CodeTo</span></MudChip>
     <MudSpacer />
-    <MudTextField T="string" Value="_term" ValueChanged="SearchChanged" Immediate="true" DebounceInterval="300" Placeholder="کد یا عنوان"
+    <MudTextField T="string" Value="@_term" ValueChanged="SearchChanged" Immediate="true" DebounceInterval="300" Placeholder="کد یا عنوان"
                   Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
                   Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:240px" />
 </MudStack>

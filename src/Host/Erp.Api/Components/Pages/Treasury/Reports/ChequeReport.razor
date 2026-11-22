@@ -26,8 +26,8 @@
                 @foreach (var s in Statuses) { <MudSelectItem T="byte" Value="s">@StatusTitle(s)</MudSelectItem> }
             </MudSelect>
         </MudItem>
-        <MudItem xs="6" md="3"><PersianDateField Value="_fromDue" ValueChanged="async v => { _fromDue = v; await LoadAsync(); }" Label="سررسید از" /></MudItem>
-        <MudItem xs="6" md="3"><PersianDateField Value="_toDue" ValueChanged="async v => { _toDue = v; await LoadAsync(); }" Label="سررسید تا" /></MudItem>
+        <MudItem xs="6" md="3"><PersianDateField Value="@_fromDue" ValueChanged="async v => { _fromDue = v; await LoadAsync(); }" Label="سررسید از" /></MudItem>
+        <MudItem xs="6" md="3"><PersianDateField Value="@_toDue" ValueChanged="async v => { _toDue = v; await LoadAsync(); }" Label="سررسید تا" /></MudItem>
         <MudItem xs="12" md="4">
             <MudTextField T="string" @bind-Value="_term" Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="_ => LoadAsync()"
                           Placeholder="سریال، صیاد یا طرف حساب" Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"

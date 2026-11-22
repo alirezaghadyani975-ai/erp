@@ -18,6 +18,11 @@
              CanEdit="LockReason is null" CanDelete="LockReason is null" Busy="_saving" LockReason="@LockReason"
              OnNew="@(() => Tabs.Go(NewUrl(_type)))" OnEdit="() => _editing = true" OnSave="SaveAsync" OnCancel="CancelAsync" OnDelete="DeleteAsync">
     <Chips>
+        @if (_dto is { SourceModule: "production", SourceId: long reportId })
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Icon="@Icons.Material.Outlined.PrecisionManufacturing"
+                     OnClick="@(() => Tabs.Go($"/production/reports/{reportId}"))">از گزارش تولید</MudChip>
+        }
         @if (!IsNew && HasInvoicing)
         {
             var invoiced = _lines.Count(l => l.Invoice is not null);
@@ -275,15 +280,19 @@
     private bool ReadOnly => !_editing || LockReason is not null;
     private bool Dirty => _editing && !IsNew;
     private bool HasPrice => _type == StockDocType.Opening;
-    private bool HasInvoicing => _type is not (StockDocType.Opening or StockDocType.Consumption);
+    private bool HasInvoicing => _type is not (StockDocType.Opening or StockDocType.Consumption) && !_type.IsProduction();
     private string? LockReason => _dto?.LockReason;
 
-    private StockDocType[] Types => Receipts
-        ? [StockDocType.PurchaseReceipt, StockDocType.SalesReturnReceipt, StockDocType.Opening]
-        : [StockDocType.SalesIssue, StockDocType.PurchaseReturnIssue, StockDocType.Consumption];
+    // سند تولید فقط نمایش داده می‌شود و از این فرم ساخته نمی‌شود
+    private StockDocType[] Types => (Receipts
+        ? new[] { StockDocType.PurchaseReceipt, StockDocType.SalesReturnReceipt, StockDocType.Opening }
+        : new[] { StockDocType.SalesIssue, StockDocType.PurchaseReturnIssue, StockDocType.Consumption })
+        .Concat(_type.IsProduction() ? [_type] : []).ToArray();
 
     private string Hint => _type switch
     {
+        StockDocType.ProductionReceipt => "رسید تولید: محصول و ضایعات گزارش تولید؛ فقط از همان گزارش تولید تغییر می‌کند.",
+        StockDocType.ProductionIssue => "حواله مصرف تولید: مواد مصرفی گزارش تولید از این انبار؛ فقط از همان گزارش تولید تغییر می‌کند.",
         StockDocType.Opening => "موجودی اول دوره: یک بار برای هر انبار، روز اول سال مالی و پیش از همه سندهای آن انبار. فی هر کالا بهای اول دوره است.",
         StockDocType.PurchaseReceipt => "اول رسید، بعد فاکتور خرید: فاکتور خرید ردیف‌هایش را از همین رسید برمی‌دارد. بهای رسید فقط از فاکتور خرید می‌آید؛ تا فاکتور نیامده در محاسبه بهای تمام‌شده صفر حساب و گزارش می‌شود.",
         StockDocType.SalesReturnReceipt => "از ردیف‌های حواله فروشِ فاکتورشده؛ بعد از ثبت، «برگشت از فروش» را از روی این رسید صادر کنید.",

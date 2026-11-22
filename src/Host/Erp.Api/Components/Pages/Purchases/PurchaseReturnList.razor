@@ -22,8 +22,8 @@
         <MudTextField T="string" @bind-Value="_term" Immediate="true" DebounceInterval="300" OnDebounceIntervalElapsed="_ => LoadAsync()"
                       Placeholder="تأمین‌کننده، شماره یا شرح" Clearable="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
                       Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:240px" />
-        <div style="width:170px"><PersianDateField Value="_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
-        <div style="width:170px"><PersianDateField Value="_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="@_from" ValueChanged="async v => { _from = v; await LoadAsync(); }" Label="از تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="@_to" ValueChanged="async v => { _to = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
     </MudStack>
     <MudTable T="PurchaseReturnListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
               OnRowClick="@(a => Tabs.Go($"/purchases/returns/{a.Item!.Id}"))" RowStyle="cursor:pointer">

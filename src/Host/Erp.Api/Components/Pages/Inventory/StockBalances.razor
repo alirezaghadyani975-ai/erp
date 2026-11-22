@@ -28,7 +28,7 @@
                 <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem>
             }
         </MudSelect>
-        <div style="width:170px"><PersianDateField Value="_date" ValueChanged="async v => { _date = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
+        <div style="width:170px"><PersianDateField Value="@_date" ValueChanged="async v => { _date = v; await LoadAsync(); }" Label="تا تاریخ" /></div>
         <MudCheckBox T="bool" Value="_zero" ValueChanged="async v => { _zero = v; await LoadAsync(); }" Label="موجودی صفر هم" Dense="true" />
     </MudStack>
 
