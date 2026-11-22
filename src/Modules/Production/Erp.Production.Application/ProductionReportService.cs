@@ -152,7 +152,10 @@ public class ProductionReportService(IProductionDbContext db, IAccessControl acc
         var employeeIds = report.Operators.Select(o => o.EmployeeId).ToList();
         if (await db.Employees.CountAsync(e => employeeIds.Contains(e.Id), ct) != employeeIds.Count) throw new DomainException("اپراتور پیدا نشد.");
         var centerIds = report.Operations.Select(o => o.CostCenterId).Concat(report.Operators.Select(o => o.CostCenterId).OfType<int>()).Distinct().ToList();
-        if (await db.Centers.CountAsync(c => centerIds.Contains(c.Id), ct) != centerIds.Count) throw new DomainException("مرکز هزینه پیدا نشد.");
+        var centers = await db.Centers.Where(c => centerIds.Contains(c.Id)).ToListAsync(ct);
+        if (centers.Count != centerIds.Count) throw new DomainException("مرکز هزینه پیدا نشد.");
+        if (centers.FirstOrDefault(c => !c.IsProduction) is { } nonProd)
+            throw new DomainException($"مرکز «{nonProd.Title}» تولیدی نیست؛ زمان و اپراتور گزارش تولید فقط روی مراکز تولیدی ثبت می‌شود.");
     }
 
     /// <summary>سندهای انبار گزارش: حواله مصرف تولید برای هر انبار مواد و یک رسید تولید؛ سندهای قبلی بازنویسی یا حذف می‌شوند.</summary>

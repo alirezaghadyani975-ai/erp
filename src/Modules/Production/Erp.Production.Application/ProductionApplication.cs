@@ -50,6 +50,8 @@ public sealed class CenterRef
     public int Id { get; init; }
     public string Title { get; init; } = "";
     public bool IsActive { get; init; }
+    /// <summary>نوع مرکز با وظیفه «تولیدی»؛ زمان استاندارد و اپراتور فقط روی این مراکز.</summary>
+    public bool IsProduction { get; init; }
 }
 
 public sealed class StockDocRef

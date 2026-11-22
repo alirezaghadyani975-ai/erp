@@ -22,7 +22,7 @@ public class BomService(IProductionDbContext db, IAccessControl access, TimeProv
         await db.Warehouses.Where(w => w.IsActive).OrderBy(w => w.Code).Select(w => new LookupDto(w.Id, w.Title)).ToListAsync(ct);
 
     public async Task<List<LookupDto>> CentersAsync(CancellationToken ct) =>
-        await db.Centers.Where(c => c.IsActive).OrderBy(c => c.Title).Select(c => new LookupDto(c.Id, c.Title)).ToListAsync(ct);
+        await db.Centers.Where(c => c.IsActive && c.IsProduction).OrderBy(c => c.Title).Select(c => new LookupDto(c.Id, c.Title)).ToListAsync(ct);
 
     // ---------------- فرمول ----------------
 
@@ -130,7 +130,10 @@ public class BomService(IProductionDbContext db, IAccessControl access, TimeProv
         var whIds = bom.Materials.Select(m => m.WarehouseId).OfType<int>().Append(bom.OutputWarehouseId).Append(bom.IssueWarehouseId).Distinct().ToList();
         if (await db.Warehouses.CountAsync(w => whIds.Contains(w.Id), ct) != whIds.Count) throw new DomainException("انبار فرمول پیدا نشد.");
         var centerIds = bom.Operations.Select(o => o.CostCenterId).Distinct().ToList();
-        if (await db.Centers.CountAsync(c => centerIds.Contains(c.Id), ct) != centerIds.Count) throw new DomainException("مرکز هزینه زمان استاندارد پیدا نشد.");
+        var centers = await db.Centers.Where(c => centerIds.Contains(c.Id)).ToListAsync(ct);
+        if (centers.Count != centerIds.Count) throw new DomainException("مرکز هزینه زمان استاندارد پیدا نشد.");
+        if (centers.FirstOrDefault(c => !c.IsProduction) is { } nonProd)
+            throw new DomainException($"مرکز «{nonProd.Title}» تولیدی نیست؛ زمان استاندارد فقط برای مراکز تولیدی ثبت می‌شود.");
 
         await EnsureNoCycleAsync(bom, ct);
 

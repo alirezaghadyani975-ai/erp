@@ -59,6 +59,17 @@ public class ProductionTests(SqlFixture db)
             Bom("T-BAD2", product, warehouse, [new BomMaterialInput(m1, 1, null, 0, null, [])], [new BomScrapInput(m2, 1, ScrapType.Full)]), default)));
         Assert.Contains("ضایعات", badScrap.Message);
 
+        // زمان استاندارد فقط روی مرکز تولیدی؛ فهرست مراکز فقط تولیدی‌ها
+        var adminType = (await db.Run<Erp.Costing.Application.Setup.CostSetupService, List<CostCenterTypeDto>>(
+            x => x.GetCenterTypesAsync(true, default))).First(t => t.Function == Erp.Costing.Contracts.CostFunction.Admin);
+        var adminCenter = await db.Run<CostCenterService, int>(x => x.CreateAsync(new SaveCostCenterRequest { Title = "اداری تست تولید", CenterTypeId = adminType.Id }, default));
+        var badCenter = await Assert.ThrowsAsync<DomainException>(() => db.Run<BomService, int>(x => x.CreateAsync(
+            Bom("T-BAD3", product, warehouse, [new BomMaterialInput(m1, 1, null, 0, null, [])], [], [new BomOperationInput(adminCenter, 60, 0, null)]), default)));
+        Assert.Contains("تولیدی نیست", badCenter.Message);
+        var centers = await db.Run<BomService, List<LookupDto>>(x => x.CentersAsync(default));
+        Assert.Contains(centers, c => c.Id == center);
+        Assert.DoesNotContain(centers, c => c.Id == adminCenter);
+
         // فرمول: ۱۰۰ واحد محصول از ۵۰ ماده با ۲٪ افت؛ جایگزین: ۱٫۲ برابر ماده دوم؛ ۵ ضایعات؛ ۱ نفر-ساعت و نیم ماشین-ساعت
         var bomId = await db.Run<BomService, int>(x => x.CreateAsync(Bom("T-001", product, warehouse,
             [new BomMaterialInput(m1, 50, null, 2, null, [new BomSubstituteInput(1, m2, 1.2m)])],

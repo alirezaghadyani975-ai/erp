@@ -148,8 +148,12 @@ public class ProductionDbContext : DbContext, IProductionDbContext
         });
         b.Entity<CenterRef>(e =>
         {
-            e.ToTable("CostCenters", "cost", t => t.ExcludeFromMigrations());
             e.HasKey(x => x.Id);
+            // Function = 1 یعنی تولیدی (CostFunction.Production)
+            e.ToSqlQuery("""
+                SELECT c.Id, c.Title, c.IsActive, CAST(CASE WHEN t.[Function] = 1 THEN 1 ELSE 0 END AS bit) AS IsProduction
+                FROM cost.CostCenters c JOIN cost.CostCenterTypes t ON t.Id = c.CenterTypeId
+                """);
         });
         b.Entity<EmployeeRef>(e =>
         {

@@ -182,6 +182,10 @@
             </tbody>
         </table>
         <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _opEdit.Add(new OpRow { ManUnit = TimeUnit.Minute, MachineUnit = TimeUnit.Minute }))">مرکز خارج از فرمول</MudButton>
+        @if (_centers.Count == 0)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">مرکز تولیدی تعریف نشده است؛ در «مراکز هزینه» مرکزی با نوع تولیدی بسازید.</MudText>
+        }
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="() => _timeOpen = false">انصراف</MudButton>
