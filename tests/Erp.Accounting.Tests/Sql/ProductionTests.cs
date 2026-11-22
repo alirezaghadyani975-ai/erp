@@ -10,6 +10,7 @@ using Erp.Production.Application;
 using Erp.Production.Domain;
 using Erp.SharedKernel.Domain;
 using Erp.SharedKernel.Reports;
+using Erp.SharedKernel.Security;
 
 namespace Erp.Accounting.Tests.Sql;
 
@@ -127,6 +128,16 @@ public class ProductionTests(SqlFixture db)
         Assert.Equal(110m, move["out"]);
         Assert.Equal(190m, move["closing"]);
         Assert.Contains((await Inv("uninvoiced")).Rows, r => (string?)r["title"] == "رسید خرید" && (string?)r["date"] == "1417/03/01");
+
+        // محدوده داده انبار: کاربر محدود به انبار دیگر، سندها و انبار این تست را نمی‌بیند
+        using (TestAccess.As(new Restricted(77, InventoryPermissions.ReceiptView, InventoryPermissions.IssueView, InventoryPermissions.Kardex,
+                   InventoryPermissions.Reports).Limit(ScopeKind.Warehouse, -1)))
+        {
+            Assert.Empty(await db.Run<StockDocService, List<StockDocListItemDto>>(x => x.ListAsync(true, null, null, "1417/03/01", "1417/03/31", default)));
+            Assert.DoesNotContain(await db.Run<WarehouseService, List<WarehouseDto>>(x => x.GetAllAsync(false, default)), w => w.Id == warehouse);
+            await Assert.ThrowsAsync<ForbiddenException>(() => db.Run<StockDocService, StockDocDto>(x => x.GetAsync(issue.Id, default)));
+            await Assert.ThrowsAsync<ForbiddenException>(() => Inv("movement"));
+        }
 
         // سند تولید از فرم انبار اصلاح نمی‌شود
         var locked = await Assert.ThrowsAsync<DomainException>(() => db.Run<StockDocService>(x => x.DeleteAsync(issue.Id, default)));

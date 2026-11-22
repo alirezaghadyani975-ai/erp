@@ -153,7 +153,7 @@ public class UserCompany
         var wanted = new HashSet<(byte, int)>();
         foreach (var (kind, items) in limitedScopes)
         {
-            if (kind is < 1 or > 4) throw new DomainException("نوع محدوده داده معتبر نیست.");
+            if (kind is < 1 or > 5) throw new DomainException("نوع محدوده داده معتبر نیست.");
             limits |= (byte)(1 << (kind - 1));
             foreach (var item in items) wanted.Add((kind, item));
         }

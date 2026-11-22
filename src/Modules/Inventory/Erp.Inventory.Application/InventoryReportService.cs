@@ -48,7 +48,8 @@ public class InventoryReportService(IInventoryDbContext db, IAccessControl acces
         var alerts = new List<InventoryAlertDto>();
         if (!access.Has(InventoryPermissions.Reports)) return alerts;
         var weekAgo = DateOnly.FromDateTime(clock.GetLocalNow().DateTime).AddDays(-7);
-        var old = await db.StockDocs.Where(d => Invoiceable.Contains(d.DocType) && d.DocDate <= weekAgo)
+        var allowed = access.WarehouseIds();
+        var old = await db.StockDocs.Where(d => Invoiceable.Contains(d.DocType) && d.DocDate <= weekAgo && (allowed == null || allowed.Contains(d.WarehouseId)))
             .Select(d => new { d.Id, LineIds = d.Lines.Select(l => l.Id).ToList() }).ToListAsync(ct);
         if (old.Count > 0)
         {
@@ -112,7 +113,8 @@ public class InventoryReportService(IInventoryDbContext db, IAccessControl acces
         DateOnly? from = PersianDate.TryParse(f.From, out var a) ? a : null;
         var to = PersianDate.TryParse(f.To, out var b) ? b : DateOnly.MaxValue;
         var docs = db.StockDocs.Where(d => d.DocDate <= to);
-        if (f.WarehouseId is int w) docs = docs.Where(d => d.WarehouseId == w);
+        if (f.WarehouseId is int w) { access.DemandScope(ScopeKind.Warehouse, w); docs = docs.Where(d => d.WarehouseId == w); }
+        if (access.WarehouseIds() is { } allowed) docs = docs.Where(d => allowed.Contains(d.WarehouseId));
         var lines = (await docs.SelectMany(d => d.Lines.Select(l => new { d.DocType, d.DocDate, d.WarehouseId, l.ItemId, l.Quantity, l.Amount }))
             .ToListAsync(ct)).Select(l => new MoveLine(l.DocType.IsReceipt(), l.DocDate, l.WarehouseId, l.ItemId, l.Quantity, l.Amount)).ToList();
         var items = await ItemsAsync(lines.Select(l => l.ItemId), ct);
@@ -151,7 +153,8 @@ public class InventoryReportService(IInventoryDbContext db, IAccessControl acces
         var docs = db.StockDocs.Where(d => Invoiceable.Contains(d.DocType));
         if (PersianDate.TryParse(f.From, out var from)) docs = docs.Where(d => d.DocDate >= from);
         if (PersianDate.TryParse(f.To, out var to)) docs = docs.Where(d => d.DocDate <= to);
-        if (f.WarehouseId is int w) docs = docs.Where(d => d.WarehouseId == w);
+        if (f.WarehouseId is int w) { access.DemandScope(ScopeKind.Warehouse, w); docs = docs.Where(d => d.WarehouseId == w); }
+        if (access.WarehouseIds() is { } allowed) docs = docs.Where(d => allowed.Contains(d.WarehouseId));
         var list = await docs.OrderBy(d => d.DocDate).ThenBy(d => d.DocNo)
             .Select(d => new { d.Id, d.DocType, d.DocNo, d.DocDate, d.WarehouseId, d.PartyId, Lines = d.Lines.Select(l => new { l.Id, l.ItemId, l.Quantity }).ToList() })
             .ToListAsync(ct);
@@ -180,7 +183,8 @@ public class InventoryReportService(IInventoryDbContext db, IAccessControl acces
         var docs = db.StockDocs.Where(d => d.DocType == StockDocType.Consumption);
         if (PersianDate.TryParse(f.From, out var from)) docs = docs.Where(d => d.DocDate >= from);
         if (PersianDate.TryParse(f.To, out var to)) docs = docs.Where(d => d.DocDate <= to);
-        if (f.WarehouseId is int w) docs = docs.Where(d => d.WarehouseId == w);
+        if (f.WarehouseId is int w) { access.DemandScope(ScopeKind.Warehouse, w); docs = docs.Where(d => d.WarehouseId == w); }
+        if (access.WarehouseIds() is { } allowed) docs = docs.Where(d => allowed.Contains(d.WarehouseId));
         var lines = (await docs.SelectMany(d => d.Lines.Select(l => new { l.CostCenterId, l.CostFactorId, l.Amount, d.Id })).ToListAsync(ct))
             .Select(l => new ConsLine(l.Id, l.CostCenterId, l.CostFactorId, l.Amount)).ToList();
         var centers = await db.Centers.ToDictionaryAsync(c => c.Id, c => c.Title, ct);
@@ -215,7 +219,12 @@ public class InventoryReportService(IInventoryDbContext db, IAccessControl acces
         subtitle.Add($"موجودی پایان {PersianDate.ToPersian(run.EndDate)} (آخرین ماه محاسبه‌شده){(run.Status == CostRunStatus.Stale ? " — نیازمند محاسبه دوباره" : "")}");
         subtitle.Add("اختلاف: رسید فاکتورنشده (بی‌بها)، سند دستی روی معین موجودی یا ماه محاسبه‌نشده.");
 
+        if (f.WarehouseId is int wh) access.DemandScope(ScopeKind.Warehouse, wh);
+        var allowed = access.WarehouseIds();
+        // کاربر محدود به چند انبار، مانده دفتر کل شرکت را با موجودی بخشی از انبارها مقایسه نمی‌کند
+        var partial = f.WarehouseId is not null || allowed is not null;
         var balances = await db.CostBalances.Where(x => x.RunId == run.Id && (f.WarehouseId == null || x.WarehouseId == f.WarehouseId))
+            .Where(x => allowed == null || allowed.Contains(x.WarehouseId))
             .Select(x => new { x.ItemId, x.Amount }).ToListAsync(ct);
         var items = await ItemsAsync(balances.Select(x => x.ItemId), ct);
         var categories = await db.ItemCategories.ToDictionaryAsync(c => c.Id, c => new { c.Title, c.InventoryAccountId }, ct);
@@ -231,10 +240,10 @@ public class InventoryReportService(IInventoryDbContext db, IAccessControl acces
             var stock = cats.Sum(c => byCategory.GetValueOrDefault(c.Key));
             var book = ledger.GetValueOrDefault(id);
             return Row(cats.Select(c => Row(null, ("title", c.Value.Title), ("stock", byCategory.GetValueOrDefault(c.Key)), ("ledger", null), ("diff", null))).ToList(),
-                ("title", accounts.GetValueOrDefault(id, "?")), ("stock", stock), ("ledger", f.WarehouseId is null ? book : null),
-                ("diff", f.WarehouseId is null ? book - stock : null));
+                ("title", accounts.GetValueOrDefault(id, "?")), ("stock", stock), ("ledger", partial ? null : book),
+                ("diff", partial ? null : book - stock));
         }).ToList();
-        if (f.WarehouseId is not null) subtitle.Add("با فیلتر انبار مانده دفتر (که انبار ندارد) نمایش داده نمی‌شود.");
+        if (partial) subtitle.Add("با فیلتر یا محدوده انبار، مانده دفتر (که انبار ندارد) نمایش داده نمی‌شود.");
         return new ReportTable("کنترل موجودی با دفتر معین", subtitle,
             [Text("title", "معین / نوع کالا"), Amt("stock", "موجودی ریالی انبار"), Amt("ledger", "مانده دفتر معین"), Amt("diff", "اختلاف (دفتر − انبار)")],
             rows, false, "به تفکیک نوع کالا");

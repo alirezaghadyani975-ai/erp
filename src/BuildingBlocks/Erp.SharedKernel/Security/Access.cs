@@ -44,6 +44,7 @@ public enum ScopeKind : byte
     BankAccount = 2,
     ImprestFund = 3,
     FiscalYear = 4,
+    Warehouse = 5,
 }
 
 /// <summary>
@@ -82,6 +83,7 @@ public static class AccessControlExtensions
             ScopeKind.CashBox => "صندوق",
             ScopeKind.BankAccount => "حساب بانکی",
             ScopeKind.ImprestFund => "تنخواه‌گردان",
+            ScopeKind.Warehouse => "انبار",
             _ => "سال مالی",
         };
         throw new ForbiddenException(title is null

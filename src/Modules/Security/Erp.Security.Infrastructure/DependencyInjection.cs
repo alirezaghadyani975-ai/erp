@@ -47,6 +47,7 @@ internal sealed class ScopeItemSource : IScopeItemSource
             UNION ALL SELECT 2, Id, Title, IsActive FROM trs.BankAccounts
             UNION ALL SELECT 3, Id, Title, IsActive FROM trs.ImprestFunds
             UNION ALL SELECT 4, Id, Title, CAST(CASE WHEN [Status] = 3 THEN 0 ELSE 1 END AS BIT) FROM fin.FiscalYears
+            UNION ALL SELECT 5, Id, Title, IsActive FROM inv.Warehouses
             """;
         var result = Enum.GetValues<ScopeKind>().ToDictionary(k => k, _ => new List<ScopeItem>());
         await using var connection = new SqlConnection(connectionString);

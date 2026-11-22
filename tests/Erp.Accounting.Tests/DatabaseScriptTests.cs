@@ -35,6 +35,6 @@ public class DatabaseScriptTests
     {
         var assembly = typeof(Erp.Database.DatabaseMigrator).Assembly;
         var names = assembly.GetManifestResourceNames().Where(n => n.StartsWith("Erp.Database.Central.")).Order().ToList();
-        Assert.Equal(["Erp.Database.Central.01_security.sql"], names);
+        Assert.Equal(["Erp.Database.Central.01_security.sql", "Erp.Database.Central.02_warehouse_scope.sql"], names);
     }
 }

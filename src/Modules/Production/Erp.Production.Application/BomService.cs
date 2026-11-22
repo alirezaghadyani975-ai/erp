@@ -19,7 +19,8 @@ public class BomService(IProductionDbContext db, IAccessControl access, TimeProv
             .Select(i => new ProductionItemDto(i.Id, i.Code, i.Title, i.Unit, i.Category, i.CanInput, i.CanOutput, i.IsScrap)).ToListAsync(ct);
 
     public async Task<List<LookupDto>> WarehousesAsync(CancellationToken ct) =>
-        await db.Warehouses.Where(w => w.IsActive).OrderBy(w => w.Code).Select(w => new LookupDto(w.Id, w.Title)).ToListAsync(ct);
+        (await db.Warehouses.Where(w => w.IsActive).OrderBy(w => w.Code).Select(w => new LookupDto(w.Id, w.Title)).ToListAsync(ct))
+            .Where(w => access.CanUse(ScopeKind.Warehouse, w.Id)).ToList();
 
     public async Task<List<LookupDto>> CentersAsync(CancellationToken ct) =>
         await db.Centers.Where(c => c.IsActive && c.IsProduction).OrderBy(c => c.Title).Select(c => new LookupDto(c.Id, c.Title)).ToListAsync(ct);

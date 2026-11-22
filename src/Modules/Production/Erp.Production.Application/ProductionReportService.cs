@@ -137,6 +137,8 @@ public class ProductionReportService(IProductionDbContext db, IAccessControl acc
 
         report.SetHeader(date, bom, r.Quantity, r.OutputWarehouseId, r.Description, clock.GetUtcNow().UtcDateTime);
         report.SetLines(r.Materials, r.Scraps, r.Operations, r.Operators);
+        foreach (var wh in report.Materials.Select(m => m.WarehouseId).Append(report.OutputWarehouseId).Distinct())
+            access.DemandScope(ScopeKind.Warehouse, wh);
 
         var itemIds = report.Materials.Select(m => m.ItemId).Concat(report.Scraps.Select(s => s.ItemId)).Append(report.ProductId).Distinct().ToList();
         var items = await db.Items.Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);

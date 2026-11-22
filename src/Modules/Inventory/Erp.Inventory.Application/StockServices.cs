@@ -16,7 +16,8 @@ public class WarehouseService(IInventoryDbContext db, IAccessControl access)
     /// <summary>فهرست انبارها (آزاد؛ فرم‌های انبار لازمش دارند).</summary>
     public async Task<List<WarehouseDto>> GetAllAsync(bool includeInactive, CancellationToken ct)
     {
-        var list = await db.Warehouses.AsNoTracking().Where(w => includeInactive || w.IsActive).OrderBy(w => w.Code).ToListAsync(ct);
+        var list = (await db.Warehouses.AsNoTracking().Where(w => includeInactive || w.IsActive).OrderBy(w => w.Code).ToListAsync(ct))
+            .Where(w => access.CanUse(ScopeKind.Warehouse, w.Id)).ToList();
         var counts = await db.StockDocs.GroupBy(d => d.WarehouseId).Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
         var keeperIds = list.Where(w => w.KeeperId is not null).Select(w => w.KeeperId!.Value).Distinct().ToList();
@@ -78,6 +79,7 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
         var query = db.StockDocs.AsNoTracking().Where(d => receipts ? (byte)d.DocType < 10 : (byte)d.DocType > 10);
         if (type is { } t) query = query.Where(d => d.DocType == t);
         if (access.OwnDocsOnly) query = query.Where(d => d.CreatedBy == access.UserId);
+        if (access.WarehouseIds() is { } allowed) query = query.Where(d => allowed.Contains(d.WarehouseId));
         if (!string.IsNullOrWhiteSpace(fromDate)) { var f = PersianDate.Parse(fromDate); query = query.Where(d => d.DocDate >= f); }
         if (!string.IsNullOrWhiteSpace(toDate)) { var e = PersianDate.Parse(toDate); query = query.Where(d => d.DocDate <= e); }
 
@@ -107,6 +109,7 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
     {
         var doc = await LoadAsync(id, tracking: false, ct);
         access.Demand(doc.IsReceipt ? InventoryPermissions.ReceiptView : InventoryPermissions.IssueView);
+        access.DemandScope(ScopeKind.Warehouse, doc.WarehouseId);
         return await ToDtoAsync(doc, ct);
     }
 
@@ -143,6 +146,7 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
     {
         access.Demand(request.Type.IsReceipt() ? InventoryPermissions.ReceiptCreate : InventoryPermissions.IssueCreate);
         if (request.Type.IsProduction()) throw new DomainException($"«{request.Type.Title()}» فقط از گزارش تولید ساخته می‌شود.");
+        access.DemandScope(ScopeKind.Warehouse, request.WarehouseId);
         return await CreateCoreAsync(request, null, ct);
     }
 
@@ -171,6 +175,8 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
         if (!fromSource)
         {
             access.Demand(doc.IsReceipt ? InventoryPermissions.ReceiptEdit : InventoryPermissions.IssueEdit);
+            access.DemandScope(ScopeKind.Warehouse, doc.WarehouseId);
+            access.DemandScope(ScopeKind.Warehouse, request.WarehouseId);
             EnsureNotSourced(doc);
         }
         if (doc.DocType != request.Type) throw new DomainException("نوع سند انبار عوض نمی‌شود.");
@@ -196,6 +202,7 @@ public class StockDocService(IInventoryDbContext db, IUnitOfWork uow, ICurrentUs
         if (!fromSource)
         {
             access.Demand(doc.IsReceipt ? InventoryPermissions.ReceiptDelete : InventoryPermissions.IssueDelete);
+            access.DemandScope(ScopeKind.Warehouse, doc.WarehouseId);
             EnsureNotSourced(doc);
         }
         await EnsureUnlockedAsync(doc, "حذف", ct);
@@ -500,7 +507,9 @@ public class StockReportService(IInventoryDbContext db, IAccessControl access)
         DateOnly? from = string.IsNullOrWhiteSpace(fromDate) ? null : PersianDate.Parse(fromDate);
         DateOnly? to = string.IsNullOrWhiteSpace(toDate) ? null : PersianDate.Parse(toDate);
 
+        if (warehouseId is int wh) access.DemandScope(ScopeKind.Warehouse, wh);
         var query = db.StockDocs.AsNoTracking().Where(d => warehouseId == null || d.WarehouseId == warehouseId);
+        if (access.WarehouseIds() is { } allowed) query = query.Where(d => allowed.Contains(d.WarehouseId));
         var lines = await query
             .SelectMany(d => d.Lines.Where(l => l.ItemId == itemId).Select(l => new
             {
@@ -547,8 +556,11 @@ public class StockReportService(IInventoryDbContext db, IAccessControl access)
     {
         access.Demand(InventoryPermissions.Kardex);
         DateOnly? until = string.IsNullOrWhiteSpace(date) ? null : PersianDate.Parse(date);
+        if (warehouseId is int wh) access.DemandScope(ScopeKind.Warehouse, wh);
+        var allowed = access.WarehouseIds();
         var sums = await db.StockDocs.AsNoTracking()
             .Where(d => (warehouseId == null || d.WarehouseId == warehouseId) && (until == null || d.DocDate <= until))
+            .Where(d => allowed == null || allowed.Contains(d.WarehouseId))
             .SelectMany(d => d.Lines.Select(l => new { l.ItemId, d.WarehouseId, Qty = (byte)d.DocType < 10 ? l.Quantity : -l.Quantity }))
             .GroupBy(x => new { x.ItemId, x.WarehouseId })
             .Select(g => new { g.Key.ItemId, g.Key.WarehouseId, Qty = g.Sum(x => x.Qty) })
@@ -576,4 +588,10 @@ public class StockReportService(IInventoryDbContext db, IAccessControl access)
             .Where(b => term is null || b.ItemTitle.Contains(term) || b.ItemCode.StartsWith(term) || b.GroupTitle.Contains(term))
             .OrderBy(b => b.ItemCode).ThenBy(b => b.Warehouse).ToList();
     }
+}
+
+/// <summary>محدوده داده انبار کاربر جاری (null = همه انبارها).</summary>
+internal static class InventoryAccess
+{
+    public static List<int>? WarehouseIds(this IAccessControl access) => access.Allowed(ScopeKind.Warehouse)?.ToList();
 }
