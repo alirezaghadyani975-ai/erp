@@ -33,9 +33,9 @@
         <MudPaper Class="pa-4" Elevation="1">
             <MudText Typo="Typo.subtitle1" Class="mb-2"><b>مشخصات</b></MudText>
             <MudGrid Spacing="2">
-                <MudItem xs="12"><MudTextField @bind-Value="_model.Title" Immediate="true" Label="عنوان مرکز" Required="true" Placeholder="مثلاً خط تولید یک" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_model.Title" Immediate="true" Label="عنوان مرکز" Required="true" RequiredError="عنوان مرکز الزامی است." Placeholder="مثلاً خط تولید یک" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
                 <MudItem xs="12">
-                    <MudSelect T="short?" Value="_model.CenterTypeId" ValueChanged="TypeChanged" Label="نوع مرکز" Required="true" Dense="true"
+                    <MudSelect T="short?" Value="_model.CenterTypeId" ValueChanged="TypeChanged" Label="نوع مرکز" Required="true" RequiredError="نوع مرکز الزامی است." Dense="true"
                                Variant="Variant.Outlined" Margin="Margin.Dense"
                                HelperText="@(Function is { } f ? $"در معین‌های «{Titles.Of(f)}» ثبت می‌شود" : null)">
                         @foreach (var t in _types.Where(t => t.IsActive || t.Id == _model.CenterTypeId).OrderBy(t => t.Function).ThenBy(t => t.SortOrder))

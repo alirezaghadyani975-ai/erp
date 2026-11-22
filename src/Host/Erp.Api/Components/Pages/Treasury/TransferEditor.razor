@@ -42,13 +42,13 @@
         </MudItem>
         <MudItem xs="12" sm="6" md="4"><MudTextField @bind-Value="_refNo" Label="شماره پیگیری" MaxLength="50" Class="code" Disabled="ReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
         <MudItem xs="12" md="6">
-            <MudSelect T="string" @bind-Value="_from" Label="از (مبدأ)" Required="true" Disabled="ReadOnly" Dense="true"
+            <MudSelect T="string" @bind-Value="_from" Label="از (مبدأ)" Required="true" RequiredError="از (مبدأ) الزامی است." Disabled="ReadOnly" Dense="true"
                        Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
                 @foreach (var f in FundItems(_from)) { <MudSelectItem T="string" Value="Key(f)">@KindTitle(f.Kind): @f.Display</MudSelectItem> }
             </MudSelect>
         </MudItem>
         <MudItem xs="12" md="6">
-            <MudSelect T="string" @bind-Value="_to" Label="به (مقصد)" Required="true" Disabled="ReadOnly" Dense="true"
+            <MudSelect T="string" @bind-Value="_to" Label="به (مقصد)" Required="true" RequiredError="به (مقصد) الزامی است." Disabled="ReadOnly" Dense="true"
                        Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
                 @foreach (var f in FundItems(_to).Where(f => Key(f) != _from)) { <MudSelectItem T="string" Value="Key(f)">@KindTitle(f.Kind): @f.Display</MudSelectItem> }
             </MudSelect>

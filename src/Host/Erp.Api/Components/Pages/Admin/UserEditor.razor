@@ -39,11 +39,11 @@
     <MudText Typo="Typo.subtitle1" Class="mb-2"><b>مشخصات</b></MudText>
     <MudGrid Spacing="2">
         <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_userName" Label="نام کاربری" Disabled="!IsNew" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+            <MudTextField @bind-Value="_userName" Label="نام کاربری" Disabled="!IsNew" Required="true" RequiredError="نام کاربری الزامی است." Variant="Variant.Outlined" Margin="Margin.Dense"
                           Class="code" HelperText="حروف لاتین، رقم، نقطه، خط تیره" AutoFocus="IsNew" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudTextField @bind-Value="_displayName" Label="نام و نام خانوادگی" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudTextField @bind-Value="_displayName" Label="نام و نام خانوادگی" Required="true" RequiredError="نام و نام خانوادگی الزامی است." Variant="Variant.Outlined" Margin="Margin.Dense" />
         </MudItem>
         <MudItem xs="6" sm="2" Class="d-flex align-center">
             <MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" />

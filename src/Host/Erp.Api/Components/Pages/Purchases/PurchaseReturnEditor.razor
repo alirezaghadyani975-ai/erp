@@ -47,7 +47,7 @@
         <MudItem xs="12" sm="6" md="5">
             <MudAutocomplete T="PurchaseInvoiceListItemDto" Value="_invoice" ValueChanged="InvoiceChanged" SearchFunc="SearchInvoices"
                              ToStringFunc="@(i => i is null ? null : $"{Format.No(i.DocNo)} — {i.SupplierName} ({i.Date})")"
-                             Label="فاکتور خرید مرجع" Required="true" Disabled="@(ReadOnly || !IsNew)" ResetValueOnEmptyText="true"
+                             Label="فاکتور خرید مرجع" Required="true" RequiredError="فاکتور خرید مرجع را انتخاب کنید." Disabled="@(ReadOnly || !IsNew)" ResetValueOnEmptyText="true"
                              Error="@(_check && _invoice is null)" ErrorText="فاکتور خرید مرجع را انتخاب کنید"
                              Dense="true" MaxItems="40" Variant="Variant.Outlined" Margin="Margin.Dense"
                              HelperText="شماره فاکتور، تأمین‌کننده یا شماره فاکتور فروشنده" />

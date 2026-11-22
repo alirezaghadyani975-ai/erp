@@ -48,7 +48,7 @@
     <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "بانک جدید" : "ویرایش بانک")</MudText></TitleContent>
     <DialogContent>
         <MudGrid Spacing="2">
-            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_title" Immediate="true" Label="نام بانک" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_title" Immediate="true" Label="نام بانک" Required="true" RequiredError="نام بانک الزامی است." Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField @bind-Value="_ibanCode" Label="کد شبا" Placeholder="017" MaxLength="3" InputMode="InputMode.numeric" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
             <MudItem xs="12"><MudTextField @bind-Value="_cardPrefixes" Label="پیش‌شماره‌های کارت" Placeholder="603799,170019" HelperText="شش رقمی؛ چند مورد را با کاما جدا کنید" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" /></MudItem>
             <MudItem xs="12"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>

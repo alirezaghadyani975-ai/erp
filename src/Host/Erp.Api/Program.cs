@@ -116,4 +116,5 @@ app.MapErpAuthEndpoints();
 app.MapControllers().RequireAuthorization();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode().RequireAuthorization();
 
+ModelWarmUp.Schedule(app);
 app.Run();

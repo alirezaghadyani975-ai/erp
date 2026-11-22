@@ -61,7 +61,7 @@
                           Required="true" Disabled="ReadOnly" />
         </MudItem>
         <MudItem xs="12" sm="6" md="4">
-            <MudSelect T="short?" @bind-Value="_typeId" Label="@(IsPayment ? "نوع پرداخت" : "نوع دریافت")" Required="true" Disabled="ReadOnly"
+            <MudSelect T="short?" @bind-Value="_typeId" Label="@(IsPayment ? "نوع پرداخت" : "نوع دریافت")" Required="true" RequiredError="این فیلد الزامی است." Disabled="ReadOnly"
                        Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
                 @foreach (var t in _types.Where(t => t.IsActive || t.Id == _typeId))
                 {

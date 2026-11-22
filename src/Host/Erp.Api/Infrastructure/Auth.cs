@@ -161,7 +161,7 @@ public static class Auth
                     http.User.Identity.Name, http.User.FindFirstValue(ErpClaims.Company), IpOf(http), null, http.RequestAborted);
                 await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             }
-            return Results.Redirect(idle == true ? $"{LoginPath}?idle=1" : LoginPath);
+            return Results.Redirect(idle == true ? $"{LoginPath}?idle=true" : LoginPath);
         }).AllowAnonymous();
 
         // تمدید کوکی در زمان کار با برنامه (اتصال Blazor درخواست HTTP نمی‌فرستد)

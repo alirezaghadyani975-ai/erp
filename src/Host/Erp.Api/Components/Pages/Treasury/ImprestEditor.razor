@@ -39,7 +39,7 @@
             <PersianDateField @bind-Value="_date" Label="تاریخ" Required="true" Disabled="ReadOnly" />
         </MudItem>
         <MudItem xs="12" sm="6" md="4">
-            <MudSelect T="int?" @bind-Value="_fundId" Label="تنخواه‌گردان" Required="true" Disabled="ReadOnly" Dense="true"
+            <MudSelect T="int?" @bind-Value="_fundId" Label="تنخواه‌گردان" Required="true" RequiredError="تنخواه‌گردان الزامی است." Disabled="ReadOnly" Dense="true"
                        Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter">
                 @foreach (var f in _funds.Where(f => f.IsActive || f.Id == _fundId))
                 {

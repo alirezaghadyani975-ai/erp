@@ -45,7 +45,7 @@
     <TitleContent><MudText Typo="Typo.h6">@(_editId is null ? "شرکت جدید" : "اصلاح شرکت")</MudText></TitleContent>
     <DialogContent>
         <MudGrid Spacing="2">
-            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_title" Label="نام شرکت" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
+            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_title" Label="نام شرکت" Required="true" RequiredError="نام شرکت الزامی است." Variant="Variant.Outlined" Margin="Margin.Dense" AutoFocus="true" /></MudItem>
             <MudItem xs="12" sm="4"><MudTextField @bind-Value="_key" Label="کلید (لاتین)" Disabled="_editId is not null" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" HelperText="مثل Main یا Branch2" /></MudItem>
             <MudItem xs="12">
                 <MudTextField @bind-Value="_connection" Label="رشته اتصال دیتابیس" Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" Class="code"

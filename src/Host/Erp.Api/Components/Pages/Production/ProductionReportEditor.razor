@@ -33,7 +33,7 @@
             <ProdItemPicker Value="_productId" ValueChanged="OnProduct" Items="_items" Filter="@(i => i.CanOutput)" Label="محصول" Required="true" />
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudSelect T="int?" @bind-Value="_bomId" Label="فرمول ساخت" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Required="true">
+            <MudSelect T="int?" @bind-Value="_bomId" Label="فرمول ساخت" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Required="true" RequiredError="فرمول ساخت الزامی است.">
                 @foreach (var b in _boms) { <MudSelectItem T="int?" Value="b.Id">@b.Title</MudSelectItem> }
             </MudSelect>
         </MudItem>

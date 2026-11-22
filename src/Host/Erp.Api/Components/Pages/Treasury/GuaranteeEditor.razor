@@ -84,7 +84,7 @@
                 </MudItem>
             }
             <MudItem xs="12" sm="6" md="4">
-                <MudSelect T="long?" Value="_leafId" ValueChanged="LeafChanged" Label="@(_kind == GuaranteeKind.Cheque ? "برگ چک" : "برگ سفته")" Required="true"
+                <MudSelect T="long?" Value="_leafId" ValueChanged="LeafChanged" Label="@(_kind == GuaranteeKind.Cheque ? "برگ چک" : "برگ سفته")" Required="true" RequiredError="این فیلد الزامی است."
                            Disabled="@(ReadOnly || (_kind == GuaranteeKind.Cheque && _bankAccountId is null))" Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense"
                            HelperText="@LeafHelper">
                     @foreach (var l in LeafChoices) { <MudSelectItem T="long?" Value="l.Id"><span class="code">@l.SerialNo</span> <span class="select-hint">@l.BookTitle</span></MudSelectItem> }
@@ -98,7 +98,7 @@
         else if (FromBankGuarantee)
         {
             <MudItem xs="12" md="8">
-                <MudSelect T="int?" Value="_bankGuaranteeId" ValueChanged="BankGuaranteeChanged" Label="ضمانت‌نامه بانکی" Required="true" Disabled="ReadOnly"
+                <MudSelect T="int?" Value="_bankGuaranteeId" ValueChanged="BankGuaranteeChanged" Label="ضمانت‌نامه بانکی" Required="true" RequiredError="ضمانت‌نامه بانکی الزامی است." Disabled="ReadOnly"
                            Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense" HelperText="از ضمانت‌نامه‌های نزد ما؛ مبلغ، شماره و اعتبار از همان">
                     @foreach (var g in BankGuaranteeChoices) { <MudSelectItem T="int?" Value="g.Id">@g.Display <span class="select-hint">@(g.ExpiryDate is null ? "" : $"اعتبار تا {g.ExpiryDate}")</span></MudSelectItem> }
                 </MudSelect>
