@@ -352,7 +352,35 @@ BEGIN TRY
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد رسید خرید برای محصول (فقط تولید)', N'50320', CAST(@err AS NVARCHAR(50)));
 DELETE inv.StockDocs WHERE Id = @PDoc;
-DELETE inv.Items WHERE Id = @Prod;
+
+-- 24) تولید (اسکریپت ۲۷): نوع محصول، مواد و ضایعات فرمول؛ سند تولید فقط با ماژول سازنده
+DECLARE @Mat INT, @Bom INT;
+INSERT inv.Items (Code, Title, Kind, GroupId, UnitId, CategoryId) VALUES (N'SMOKE-M', N'ماده تست', 1, @GoodsGroup, @Unit, 1);
+SET @Mat = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT prd.Boms (Code, Title, ProductId, BaseQuantity, OutputWarehouseId, IssueWarehouseId) VALUES (N'SMOKE-B0', N'تست', @Item, 1, @Wh, @Wh);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد فرمول ساخت برای کالای بازرگانی', N'50500', CAST(@err AS NVARCHAR(50)));
+INSERT prd.Boms (Code, Title, ProductId, BaseQuantity, OutputWarehouseId, IssueWarehouseId) VALUES (N'SMOKE-B1', N'تست', @Prod, 1, @Wh, @Wh);
+SET @Bom = SCOPE_IDENTITY();
+BEGIN TRY
+    INSERT prd.BomMaterials (BomId, RowNo, ItemId, Quantity) VALUES (@Bom, 1, @Item, 1);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد کالای بازرگانی در مواد فرمول', N'50501', CAST(@err AS NVARCHAR(50)));
+BEGIN TRY
+    INSERT prd.BomScraps (BomId, RowNo, ItemId, Quantity, ScrapType) VALUES (@Bom, 1, @Mat, 1, 1);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد کالای غیرضایعات در ردیف ضایعات', N'50503', CAST(@err AS NVARCHAR(50)));
+BEGIN TRY
+    INSERT inv.StockDocs (DocType, DocNo, DocDate, WarehouseId, CreatedBy) VALUES (14, -3, @D1, @Wh, 1);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد حواله مصرف تولید بدون گزارش تولید', N'547', CAST(@err AS NVARCHAR(50)));
+DELETE prd.Boms WHERE Id = @Bom;
+DELETE inv.Items WHERE Id IN (@Prod, @Mat);
 
 DELETE pur.PurchaseReturns WHERE Id = @PRet;
 DELETE pur.PurchaseInvoices WHERE Id = @PInv;

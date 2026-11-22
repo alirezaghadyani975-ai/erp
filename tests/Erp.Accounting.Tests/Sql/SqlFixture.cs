@@ -5,6 +5,7 @@ using Erp.Expenses.Infrastructure;
 using Erp.Inventory.Infrastructure.Persistence;
 using Erp.Payroll.Infrastructure;
 using Erp.Personnel.Infrastructure;
+using Erp.Production.Infrastructure;
 using Erp.Purchases.Infrastructure;
 using Erp.Sales.Infrastructure;
 using Erp.Treasury.Infrastructure;
@@ -60,6 +61,7 @@ public sealed class SqlFixture : IAsyncLifetime
         services.AddTreasuryModule();
         services.AddPersonnelModule();
         services.AddPayrollModule();
+        services.AddProductionModule();
         _services = services.BuildServiceProvider();
     }
 
