@@ -90,14 +90,18 @@
   با `SourceModule`. جذب، بها و سند تولید = مرحله ۲. زمان و اپراتور فقط روی مراکز تولیدی (`CenterRef.IsProduction`).
   گزارش‌های تحلیلی تولید: `ProductionAnalysisService` (`/production/analysis`، مجوز `prd.analysis.view`، ۱۱ گزارش با سطح دوم).
 - **گزارش جدولی مشترک**: `Erp.SharedKernel.Reports` (`ReportTable`/`ReportRow` با `Children` برای سطح دوم) و `Shared/ReportTableView`
-  (نمایش، باز/بسته کردن سطح دوم، چاپ، اکسل با ستون «سطح»). گزارش تازه هر ماژول همین را برگرداند.
+  (نمایش، باز/بسته کردن سطح دوم، چاپ، اکسل با ستون «سطح»). گزارش تازه هر ماژول همین را برگرداند؛ گروه‌بندی دوسطحی با `ReportBuilder.TwoLevel`.
+  گزارش‌ها: انبار (`InventoryReportService`)، فروش و خرید (`SalesReportService`، `PurchaseReportService`)، تراز مقایسه‌ای و تحلیل سنی (`AccountAnalysisService`).
+- **انتقال بین انبارها** (اسکریپت ۲۸، `StockTransferService`): جفت حواله ۱۵ و رسید ۵ با SourceModule `transfer`؛ بهای مقصد = میانگین مبدأ.
+  **محدوده داده انبار** نوع ۵ (`ScopeKind.Warehouse`، اسکریپت مرکزی ۰۲). سند: کپی و معکوس (`VoucherService.CopyAsync`).
+- پارامتر string کامپوننت را همیشه با `@` بده (`Value="@_date"`)؛ بدون `@` خود متن «_date» فرستاده می‌شود.
 - مخزن: گیت‌هاب خصوصی `alirezaghadyani975-ai/erp`؛ push فقط با دستور ساده `git push` از همین پوشه. وضعیت روز و قدم بعدی: `docs/HANDOFF.md`.
 - بعدی: بازبینی ظاهری فرم‌ها با افزونه UI Design Review، اتصال مستقیم سامانه مودیان (کلید، شماره مالیاتی، صف ارسال)،
   گزارش‌های فروش و خرید، سقف مبلغ و گردش تأیید.
 
 ## قواعد مهم
 1. **ساختار دیتابیس فقط با اسکریپت‌های `database/migrations`** (نه EF Migrations). اسکریپت اجراشده را
-   هرگز ویرایش نکن؛ تغییر جدید = فایل جدید با شماره بعدی (`28_...sql`؛ دیتابیس مرکزی: `database/central/02_...sql`).
+   هرگز ویرایش نکن؛ تغییر جدید = فایل جدید با شماره بعدی (`29_...sql`؛ دیتابیس مرکزی: `database/central/03_...sql`).
    EF فقط به جدول‌ها نگاشت می‌شود.
 2. جدول‌های دارای تریگر باید در EF با `HasTrigger` معرفی شوند.
 3. قواعد کسب‌وکار در Domain (C#) و پشتیبانش در تریگر/constraint دیتابیس. خطای دامنه = `DomainException` با پیام فارسی.
