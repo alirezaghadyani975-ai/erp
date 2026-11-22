@@ -125,6 +125,8 @@ public static class AppMenu
                 [
                     new("تراز آزمایشی", Icons.Material.Outlined.TableChart, "/reports/trial-balance", P(A.TrialBalance)),
                     new("مرور حساب‌ها", Icons.Material.Outlined.ManageSearch, "/reports/review", P(A.Review)),
+                    new("تراز مقایسه‌ای", Icons.Material.Outlined.CompareArrows, "/reports/analysis", P(A.TrialBalance)),
+                    new("تحلیل سنی", Icons.Material.Outlined.HourglassBottom, "/reports/analysis?type=aging", P(A.Ledger)),
                     new("ترازنامه و سود و زیان", Icons.Material.Outlined.Summarize, "/reports/statements", P(A.Statements)),
                     new("دفاتر قانونی", Icons.Material.Outlined.LibraryBooks, "/reports/books", P(A.Books)),
                     new("دفتر معین و تفصیلی", Icons.Material.Outlined.MenuBook, "/reports/ledger", P(A.Ledger)),
@@ -191,6 +193,7 @@ public static class AppMenu
         ("/reports/trial-balance", P(A.TrialBalance)),
         ("/reports/ledger", P(A.Ledger)),
         ("/reports/review", P(A.Review)),
+        ("/reports/analysis", P(A.TrialBalance)),
         ("/reports/statements", P(A.Statements)),
         ("/reports/books", P(A.Books)),
         ("/vouchers/numbering", P(A.VoucherPermanent, A.VoucherRenumber)),

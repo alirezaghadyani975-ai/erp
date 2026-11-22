@@ -77,5 +77,12 @@ public class NumberingTests(SqlFixture db)
         var copy = await db.Run<VoucherService, VoucherDto>(async s => await s.GetAsync(await s.CopyAsync(march, "1414/03/03", false, default), default));
         Assert.Equal((300m, 0m, "سند 1414/03/01"), (copy.Lines[0].Debit, copy.Lines[0].Credit, copy.Description));
         await Assert.ThrowsAsync<DomainException>(() => db.Run<VoucherService, long>(s => s.CopyAsync(march, "1399/01/01", false, default)));
+
+        // تراز مقایسه‌ای: کل ۷۰ تا پایان فروردین ۱۵۰ (۱۰۰ + ۵۰) و کل سال ۶۵۰؛ معین 7001 در سطح دوم
+        var cmp = await db.Run<AccountAnalysisService, Erp.SharedKernel.Reports.ReportTable>(s => s.ComparativeAsync(
+            new ComparativeRequest(new ReportFilter(year, null, "1414/01/31"), new ReportFilter(year)), default));
+        var g70 = cmp.Rows.Single(x => (string?)x["code"] == "70");
+        Assert.Equal((150m, 650m, 500m), ((decimal)g70["previous"]!, (decimal)g70["current"]!, (decimal)g70["change"]!));
+        Assert.Contains(g70.Children!, x => (string?)x["code"] == "7001");
     }
 }

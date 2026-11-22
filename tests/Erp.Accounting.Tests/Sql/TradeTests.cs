@@ -261,6 +261,12 @@ public class TradeTests(SqlFixture db)
         var vatRow = Assert.Single((await db.Run<SalesReportService, Erp.SharedKernel.Reports.ReportTable>(x => x.RunAsync("vat", salesFilter, default))).Rows);
         Assert.Equal(675m, vatRow["vat"]);                                         // ۹۰۰ − ۲۲۵
 
+        // تحلیل سنی دریافتنی 2411: فاکتور ۹۹۰۰ منهای برگشت ۲۴۷۵ = قلم باز ۷۴۲۵ از ۱۴۱۷/۰۴/۰۱
+        var year1417 = (await db.Run<FiscalYearService, List<FiscalYearDto>>(x => x.GetAllAsync(default))).First(y => y.StartDate.StartsWith("1417/")).Id;
+        var aging = await db.Run<Erp.Accounting.Application.Reports.AccountAnalysisService, Erp.SharedKernel.Reports.ReportTable>(x => x.AgingAsync(
+            new Erp.Accounting.Application.Reports.AgingRequest(year1417, "2411", "1417/04/20"), default));
+        Assert.Contains(aging.Rows, row => row.Children!.Any(c => (string?)c["date"] == "1417/04/01" && (decimal?)c["balance"] == 7425m && (decimal?)c["b0"] == 7425m));
+
         // اصلاح برگشت همان سند را بازنویسی می‌کند؛ حذف برگشت، فاکتور را دوباره قابل اصلاح می‌کند
         await db.Run<SalesReturnService>(x => x.UpdateAsync(retId,
             new SaveSalesReturnRequest("1417/04/03", id, null, [new SalesReturnLineRequest(invoice.Lines[0].Id, 1, back[0])]), default));

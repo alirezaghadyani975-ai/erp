@@ -1,0 +1,14 @@
+@* انتخاب سال مالی از فهرست آماده. *@
+<MudSelect T="short?" Value="Value" ValueChanged="ValueChanged" Label="@Label" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+    @foreach (var y in Years)
+    {
+        <MudSelectItem T="short?" Value="y.Id">@y.Title</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter] public short? Value { get; set; }
+    [Parameter] public EventCallback<short?> ValueChanged { get; set; }
+    [Parameter, EditorRequired] public List<FiscalYearDto> Years { get; set; } = [];
+    [Parameter] public string Label { get; set; } = "سال مالی";
+}

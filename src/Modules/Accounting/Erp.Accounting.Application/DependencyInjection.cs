@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<VoucherNumberingService>();
         services.AddScoped<FinanceLookupService>();
         services.AddScoped<ReportService>();
+        services.AddScoped<AccountAnalysisService>();
         services.AddScoped<DashboardService>();
         services.AddScoped<IVoucherPosting, PostingService>();
         services.AddScoped<PostingTemplateService>();

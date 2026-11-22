@@ -1,0 +1,86 @@
+@page "/reports/analysis"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+
+<TabTitle Text="@(_type == "aging" ? "تحلیل سنی" : "تراز مقایسه‌ای")" />
+
+<div class="no-print">
+    <MudText Typo="Typo.h5" Class="mb-2">@(_type == "aging" ? "تحلیل سنی مطالبات و بدهی‌ها" : "تراز مقایسه‌ای")</MudText>
+    <MudPaper Class="pa-3 mb-3" Elevation="1">
+        <MudGrid Spacing="2" Class="align-center">
+            <MudItem xs="12" sm="4" md="2">
+                <MudSelect T="string" @bind-Value="_type" Label="گزارش" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                    <MudSelectItem T="string" Value="@("comparative")">تراز مقایسه‌ای</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("aging")">تحلیل سنی</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            @if (_type == "comparative")
+            {
+                <MudItem xs="6" sm="4" md="2"><YearSelect @bind-Value="_prevYear" Years="_years" Label="سال دوره ۱" /></MudItem>
+                <MudItem xs="6" sm="4" md="2"><PersianDateField @bind-Value="_prevTo" Label="دوره ۱ تا تاریخ (خالی = پایان سال)" /></MudItem>
+                <MudItem xs="6" sm="4" md="2"><YearSelect @bind-Value="_curYear" Years="_years" Label="سال دوره ۲" /></MudItem>
+                <MudItem xs="6" sm="4" md="2"><PersianDateField @bind-Value="_curTo" Label="دوره ۲ تا تاریخ (خالی = پایان سال)" /></MudItem>
+            }
+            else
+            {
+                <MudItem xs="6" sm="4" md="2"><YearSelect @bind-Value="_curYear" Years="_years" Label="سال مالی" /></MudItem>
+                <MudItem xs="6" sm="4" md="2">
+                    <MudTextField @bind-Value="_account" Label="کد معین" Class="code" HelperText="مثلاً 2411 دریافتنی یا 5011 پرداختنی"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" sm="4" md="2"><PersianDateField @bind-Value="_asOf" Label="تا تاریخ" /></MudItem>
+            }
+            <MudItem xs="6" sm="4" md="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync" Disabled="_busy">نمایش</MudButton>
+            </MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
+            @(_type == "aging"
+                ? "مانده هر طرف حساب (تفصیلی سطح اول معین) به سن اقلام باز تقسیم می‌شود؛ دریافت یا پرداخت از قدیمی‌ترین قلم کم می‌شود. سطح دوم: اقلام باز."
+                : "مانده هر حساب کل در دو دوره کنار هم با مبلغ و درصد تغییر؛ سطح دوم معین‌ها. اسناد موقت و دائم.")
+        </MudText>
+    </MudPaper>
+</div>
+
+@if (_busy) { <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="no-print" /> }
+<ReportTableView Report="_report" />
+
+@code {
+    [SupplyParameterFromQuery(Name = "type")] public string? Type { get; set; }
+
+    private string _type = "comparative";
+    private List<FiscalYearDto> _years = [];
+    private short? _prevYear, _curYear;
+    private string? _prevTo, _curTo, _asOf, _account = "2411";
+    private bool _busy;
+    private ReportTable? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Type is "aging") _type = "aging";
+        _years = (await Backend.Run<FiscalYearService, List<FiscalYearDto>>(s => s.GetAllAsync(default))).Value ?? [];
+        var ordered = _years.OrderByDescending(y => y.StartDate).ToList();
+        _curYear = ordered.FirstOrDefault()?.Id;
+        _prevYear = ordered.Skip(1).FirstOrDefault()?.Id ?? _curYear;
+        _asOf = Format.Today();
+    }
+
+    private async Task RunAsync()
+    {
+        if (_curYear is null) { Snackbar.Add("سال مالی را انتخاب کنید.", Severity.Warning); return; }
+        _busy = true;
+        if (_type == "aging")
+        {
+            var request = new AgingRequest(_curYear.Value, PersianText.Normalize(_account ?? ""), _asOf);
+            var r = await Backend.Run<AccountAnalysisService, ReportTable>(s => s.AgingAsync(request, default));
+            if (r.Success) _report = r.Value; else Snackbar.Add(r.Error!, Severity.Error);
+        }
+        else
+        {
+            var request = new ComparativeRequest(new ReportFilter(_prevYear ?? _curYear.Value, null, _prevTo), new ReportFilter(_curYear.Value, null, _curTo));
+            var r = await Backend.Run<AccountAnalysisService, ReportTable>(s => s.ComparativeAsync(request, default));
+            if (r.Success) _report = r.Value; else Snackbar.Add(r.Error!, Severity.Error);
+        }
+        _busy = false;
+    }
+}

@@ -79,6 +79,8 @@ public static class AppForms
         new("ترتیب و دائم کردن اسناد", "حسابداری", "/vouchers/numbering", Icons.Material.Outlined.FormatListNumbered, "شماره گذاری مجدد مرتب سازی دائم گروهی"),
         new("بستن سال مالی", "تعاریف", "/fiscal-years/closing", Icons.Material.Outlined.EventBusy, "اختتامیه افتتاحیه پایان سال"),
         new("مرور حساب‌ها", "گزارش‌ها", "/reports/review", Icons.Material.Outlined.ManageSearch, "مرور گردش مانده تفصیلی سطح"),
+        new("تراز مقایسه‌ای", "گزارش‌ها", "/reports/analysis", Icons.Material.Outlined.CompareArrows, "مقایسه دو سال دو دوره تغییر مانده"),
+        new("تحلیل سنی", "گزارش‌ها", "/reports/analysis?type=aging", Icons.Material.Outlined.HourglassBottom, "سن مطالبات بدهی مشتری تأمین‌کننده معوق"),
         new("شخص جدید", "اطلاعات پایه", "/persons/new", Icons.Material.Outlined.PersonAdd, "مشتری تأمین‌کننده"),
         new("ورود اشخاص از اکسل", "اطلاعات پایه", "/persons/import", Icons.Material.Outlined.UploadFile, "ایمپورت مشتری تأمین‌کننده"),
         new("اشخاص", "اطلاعات پایه", "/persons", Icons.Material.Outlined.People, "مشتری تأمین‌کننده طرف حساب"),
