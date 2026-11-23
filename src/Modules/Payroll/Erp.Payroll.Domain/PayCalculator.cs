@@ -28,10 +28,15 @@ public sealed class PayCalculator
     private readonly List<string> _phase1 = [];
     private readonly List<string> _phase2 = [];
 
-    public PayCalculator(IEnumerable<PayItem> activeItems)
+    /// <param name="activeItems">اقلام محاسبه (همه اقلام فعال یا اقلام الگوی کارمند)</param>
+    /// <param name="formulaOverrides">فرمول جایگزین الگو (شناسه قلم ← متن)؛ نبود = فرمول پیش‌فرض قلم</param>
+    public PayCalculator(IEnumerable<PayItem> activeItems, IReadOnlyDictionary<int, string?>? formulaOverrides = null)
     {
         _items = activeItems.ToList();
-        _formulas = _items.Where(i => i.Formula is not null).ToDictionary(i => i.Code, i => i.ParsedFormula()!);
+        _formulas = _items
+            .Select(i => (i, Text: formulaOverrides?.GetValueOrDefault(i.Id) is { Length: > 0 } o && i.Source == PayItemSource.Formula ? o : i.Formula))
+            .Where(x => x.Text is not null)
+            .ToDictionary(x => x.i.Code, x => Formula.Parse(x.Text));
         var order = FormulaOrder.Sort(_formulas);
 
         var depends = new Dictionary<string, bool>();

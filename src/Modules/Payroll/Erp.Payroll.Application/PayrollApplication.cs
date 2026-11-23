@@ -15,6 +15,9 @@ public interface IPayrollDbContext
     IQueryable<PayRun> Runs { get; }
     IQueryable<Loan> Loans { get; }
     IQueryable<SalaryPayment> Payments { get; }
+    IQueryable<EmploymentGroup> Groups { get; }
+    IQueryable<CalcTemplate> Templates { get; }
+    IQueryable<EmployeeTemplate> EmployeeTemplates { get; }
     IQueryable<BankAccountRef> BankAccounts { get; }
 
     /// <summary>فقط‌خواندنی از کارگزینی.</summary>
@@ -70,6 +73,11 @@ public static class PayrollPermissions
     public const string PaymentCreate = "pay.payment.create";
     public const string PaymentDelete = "pay.payment.delete";
     public const string ReportView = "pay.report.view";
+    public const string TemplateView = "pay.template.view";
+    public const string TemplateCreate = "pay.template.create";
+    public const string TemplateEdit = "pay.template.edit";
+    public const string TemplateDelete = "pay.template.delete";
+    public const string TemplateAssign = "pay.template.assign";
 
     public static IPermissionSource List { get; } = new PermissionList("حقوق و دستمزد")
         .Add("pay.setup", "اقلام، پارامترهای سال و تنظیمات حقوق", ("edit", "تعریف و اصلاح"))
@@ -78,7 +86,9 @@ public static class PayrollPermissions
         .Add("pay.run", "اجرای حقوق (کارکرد، محاسبه، مالیات)", ("final", "قطعی کردن و صدور سند"))
         .Crud("pay.loan", "وام و مساعده کارکنان")
         .Add("pay.payment", "پرداخت حقوق", ("view", "مشاهده"), ("create", "ایجاد"), ("delete", "حذف"))
-        .Add("pay.report", "گزارش‌های حقوق و دستمزد", ("view", "مشاهده"));
+        .Add("pay.report", "گزارش‌های حقوق و دستمزد", ("view", "مشاهده"))
+        .Crud("pay.template", "گروه استخدامی و الگوی محاسبه")
+        .Add("pay.template", "گروه استخدامی و الگوی محاسبه", ("assign", "اتصال کارکنان به الگو"));
 }
 
 public sealed record PayItemDto(int Id, string Code, string Title, PayItemKind Kind, PayItemSource Source, string? Formula,
@@ -124,6 +134,7 @@ public static class DependencyInjection
         services.AddScoped<PaySettingsService>();
         services.AddScoped<DecreeService>();
         services.AddScoped<PayRunService>();
+        services.AddScoped<PayTemplateService>();
         services.AddScoped<LoanService>();
         services.AddScoped<SalaryPaymentService>();
         services.AddScoped<Reports.PayrollReportService>();

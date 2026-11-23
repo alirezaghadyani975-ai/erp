@@ -103,6 +103,54 @@ public class PayrollTests(SqlFixture db)
     }
 
     [Fact]
+    public async Task Template_and_group_rules_drive_monthly_calculation()
+    {
+        if (!db.Enabled) return;
+        var s = await SeedAsync();
+        var roles = await db.Run<PersonService, List<PersonRoleTypeDto>>(x => x.GetRoleTypesAsync(false, default));
+        var person = await db.Run<PersonService, int>(x => x.CreateAsync(new SavePersonRequest
+        {
+            Kind = PersonKind.Natural, FirstName = "کارمند", LastName = "الگوی محاسبه", NationalId = PersonTests.NewNationalCode(),
+            RoleIds = [roles.Single(r => r.Code == RoleCodes.Employee).Id]
+        }, default));
+        var workshop = await db.Run<WorkshopService, int>(x => x.CreateAsync(new SaveWorkshopRequest("9900887766", "کارگاه تست الگو"), default));
+        var employee = await db.Run<EmployeeService, int>(x => x.CreateAsync(new SaveEmployeeRequest(person, null, workshop, null,
+            ContractType.Temporary, "1405/01/15", "1234567892", InsuranceStatus.Insured, 0, s.Center), default));
+        var draft = await db.Run<DecreeService, DecreeDto>(x => x.DraftAsync(employee, default));
+        var wage = draft.Items.Single(i => i.Code == DecreeService.DailyWageCode).PayItemId;
+        await db.Run<DecreeService, int>(x => x.CreateAsync(
+            new SaveDecreeRequest(employee, "1405/01/15", DecreeType.Hire, null, [new DecreeItemInput(wage, 6_000_000)]), default));
+
+        // گروه: مسکن ۱۰ میلیون به‌جای پارامتر سال، بیمه سهم کارگر صفر؛ الگو: بدون بن، مزد پایه ۱۰٪ بیشتر
+        var code = $"T{Guid.NewGuid():N}"[..10];
+        var group = await db.Run<PayTemplateService, int>(x => x.CreateGroupAsync(new SaveGroupRequest(code, "گروه تست", 0, null, null, true, null,
+            [new GroupParamDto("HOUSING", 10_000_000)]), default));
+        var items = await db.Run<PayItemService, List<PayItemDto>>(x => x.GetAllAsync(false, default));
+        int Id(string c) => items.Single(i => i.Code == c).Id;
+        var rows = items.Where(i => i.Code != "FOOD_PAY")
+            .Select(i => new TemplateItemDto(i.Id, i.Code == "BASE" ? "ROUND(DAILY_WAGE * DAYS * 1.1, 0)" : null)).ToList();
+        var template = await db.Run<PayTemplateService, int>(x => x.CreateTemplateAsync(new SaveTemplateRequest(code, "الگوی تست", group, true, null, rows), default));
+        Assert.Equal(1, await db.Run<PayTemplateService, int>(x => x.AssignAsync(new AssignTemplateRequest([employee], template, "1405/01/15"), default)));
+        Assert.Equal(template, Assert.Single(await db.Run<PayTemplateService, List<EmployeeTemplateDto>>(x => x.HistoryAsync(employee, default))).TemplateId);
+
+        var runId = await db.Run<PayRunService, int>(x => x.CreateAsync(new CreatePayRunRequest(1405, 2, workshop), default));
+        await db.Run<PayRunService, CalcResultDto>(x => x.CalculateAsync(runId, default));
+        var slip = await db.Run<PayRunService, PayslipDto>(x => x.PayslipAsync(runId, employee, default));
+        Assert.Equal(198_000_000, slip.Earnings.Single(l => l.Code == "BASE").Amount);   // ۶ میلیون × ۳۰ × ۱٫۱
+        Assert.Equal(10_000_000, slip.Earnings.Single(l => l.Code == "HOUSING_PAY").Amount);
+        Assert.DoesNotContain(slip.Earnings, l => l.Code == "FOOD_PAY");
+        Assert.DoesNotContain(slip.Deductions, l => l.Code == "INS_WORKER" && l.Amount != 0);
+
+        // الگوی به‌کاررفته حذف نمی‌شود؛ گروه دارای الگو هم
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<PayTemplateService>(x => x.DeleteTemplateAsync(template, default)));
+        await Assert.ThrowsAsync<DomainException>(() => db.Run<PayTemplateService>(x => x.DeleteGroupAsync(group, default)));
+        // فرمول نامعتبر در الگو رد می‌شود
+        var bad = await Assert.ThrowsAsync<DomainException>(() => db.Run<PayTemplateService>(x => x.UpdateTemplateAsync(template,
+            new SaveTemplateRequest(code, "الگوی تست", group, true, null, [new TemplateItemDto(Id("BASE"), "ROUND(DAILY_WAGE *")]), default)));
+        Assert.Contains("پایه", bad.Message);
+    }
+
+    [Fact]
     public async Task Year_params_copy_to_next_year()
     {
         if (!db.Enabled) return;

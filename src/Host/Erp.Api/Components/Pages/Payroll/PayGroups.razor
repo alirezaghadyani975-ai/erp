@@ -1,0 +1,184 @@
+@page "/payroll/groups"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="گروه‌های استخدامی" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2">
+    <MudText Typo="Typo.h5">گروه‌های استخدامی</MudText>
+    <MudSpacer />
+    <IfAllowed Permission="@PayrollPermissions.TemplateCreate">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New">گروه جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر گروه قواعد خودش را دارد: روز عیدی و سقف آن، روز سنوات، روز مرخصی سال، ساعت کار و ضریب اضافه‌کار و شب‌کاری، سقف بیمه و نرخ‌های بیمه.
+    قاعده خالی یعنی همان پارامتر قانونی سال. الگوهای محاسبه به گروه وصل می‌شوند.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="EmploymentGroupDto" Items="_groups" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Edit(a.Item!))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>کد</MudTh>
+            <MudTh>عنوان</MudTh>
+            <MudTh>قواعد جایگزین</MudTh>
+            <MudTh>نرخ بیمه (کارگر / کارفرما / بیکاری)</MudTh>
+            <MudTh Style="text-align:left">الگو</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Code</span></MudTd>
+            <MudTd>
+                @context.Title
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd>@(context.Params.Count == 0 ? "—" : string.Join("، ", context.Params.Select(p => $"{RuleTitle(p.Code)}: {p.Value:#,0.##}")))</MudTd>
+            <MudTd>@Rate(context.EmployeeRate) / @Rate(context.EmployerRate) / @Rate(context.UnemploymentRate)</MudTd>
+            <MudTd Class="num">@context.TemplateCount</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">گروهی تعریف نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_open" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">@(_id is null ? "گروه استخدامی جدید" : $"گروه {_title}")</MudText></TitleContent>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="4"><MudTextField @bind-Value="_code" Label="کد" Required="true" RequiredError="کد الزامی است." MaxLength="20" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="8"><MudTextField @bind-Value="_title" Label="عنوان" Required="true" RequiredError="عنوان الزامی است." MaxLength="100" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">قواعد (خالی = پارامتر قانونی سال)</MudText>
+        <table class="voucher-grid">
+            <thead><tr><th>بخش</th><th>قاعده</th><th>مقدار سال</th><th>مقدار این گروه</th></tr></thead>
+            <tbody>
+                @foreach (var r in _rules)
+                {
+                    <tr>
+                        <td>@r.Section</td>
+                        <td>@r.Title <span class="code" style="color:var(--mud-palette-text-secondary)">@r.Code</span></td>
+                        <td class="num">@(r.YearValue?.ToString("#,0.##") ?? "—")</td>
+                        <td>
+                            <MudNumericField T="decimal?" Value="_values.GetValueOrDefault(r.Code)" ValueChanged="@(v => SetValue(r.Code, v))" Min="0"
+                                             HideSpinButtons="true" Clearable="true" Class="num" Variant="Variant.Text" Margin="Margin.Dense" aria-label="@r.Title" />
+                        </td>
+                    </tr>
+                }
+                @foreach (var p in _custom)
+                {
+                    <tr>
+                        <td>سایر</td>
+                        <td><MudTextField @bind-Value="p.Code" Placeholder="کد پارامتر (لاتین)" Class="code" Variant="Variant.Text" Margin="Margin.Dense" /></td>
+                        <td></td>
+                        <td>
+                            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                <MudNumericField T="decimal" @bind-Value="p.Value" HideSpinButtons="true" Class="num" Variant="Variant.Text" Margin="Margin.Dense" />
+                                <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small" aria-label="حذف" OnClick="() => _custom.Remove(p)" />
+                            </MudStack>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" Class="mt-1" OnClick="@(() => _custom.Add(new CustomParam()))">پارامتر دیگر</MudButton>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">نرخ بیمه (خالی = نرخ کارگاه)</MudText>
+        <MudGrid Spacing="2">
+            <MudItem xs="4"><MudNumericField T="decimal?" @bind-Value="_employeeRate" Label="سهم کارگر ٪" Min="0" Max="100" HideSpinButtons="true" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="4"><MudNumericField T="decimal?" @bind-Value="_employerRate" Label="سهم کارفرما ٪" Min="0" Max="100" HideSpinButtons="true" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="4"><MudNumericField T="decimal?" @bind-Value="_unemploymentRate" Label="بیمه بیکاری ٪" Min="0" Max="100" HideSpinButtons="true" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="9"><MudTextField @bind-Value="_notes" Label="توضیحات" MaxLength="500" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+            <MudItem xs="3" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        @if (_id is not null)
+        {
+            <IfAllowed Permission="@PayrollPermissions.TemplateDelete">
+                <MudButton Color="Color.Error" OnClick="DeleteAsync" Disabled="_busy">حذف</MudButton>
+            </IfAllowed>
+        }
+        <MudSpacer />
+        <MudButton OnClick="() => _open = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_busy">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private sealed class CustomParam
+    {
+        public string? Code { get; set; }
+        public decimal Value { get; set; }
+    }
+
+    private List<EmploymentGroupDto> _groups = [];
+    private List<GroupRuleDto> _rules = [];
+    private bool _loading = true, _open, _busy, _active = true;
+    private int? _id;
+    private string? _code, _title, _notes;
+    private decimal? _employeeRate, _employerRate, _unemploymentRate;
+    private Dictionary<string, decimal?> _values = [];
+    private List<CustomParam> _custom = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _rules = (await Backend.Run<PayTemplateService, List<GroupRuleDto>>(s => s.RulesAsync(default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<PayTemplateService, List<EmploymentGroupDto>>(s => s.GroupsAsync(default));
+        if (r.Success) _groups = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+
+    private string RuleTitle(string code) => _rules.FirstOrDefault(r => r.Code == code)?.Title ?? code;
+    private static string Rate(decimal? r) => r is null ? "کارگاه" : $"{r:0.##}٪";
+    private void SetValue(string code, decimal? v) => _values[code] = v;
+
+    private void New()
+    {
+        (_id, _code, _title, _notes, _employeeRate, _employerRate, _unemploymentRate, _active) = (null, null, null, null, null, null, null, true);
+        _values = [];
+        _custom = [];
+        _open = true;
+    }
+
+    private void Edit(EmploymentGroupDto g)
+    {
+        (_id, _code, _title, _notes, _employeeRate, _employerRate, _unemploymentRate, _active) =
+            (g.Id, g.Code, g.Title, g.Notes, g.EmployeeRate, g.EmployerRate, g.UnemploymentRate, g.IsActive);
+        _values = g.Params.Where(p => _rules.Any(r => r.Code == p.Code)).ToDictionary(p => p.Code, p => (decimal?)p.Value);
+        _custom = g.Params.Where(p => _rules.All(r => r.Code != p.Code)).Select(p => new CustomParam { Code = p.Code, Value = p.Value }).ToList();
+        _open = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        var parameters = _values.Where(v => v.Value is not null).Select(v => new GroupParamDto(v.Key, v.Value!.Value))
+            .Concat(_custom.Where(c => !string.IsNullOrWhiteSpace(c.Code)).Select(c => new GroupParamDto(c.Code!.Trim().ToUpperInvariant(), c.Value))).ToList();
+        var request = new SaveGroupRequest(_code ?? "", _title ?? "", _employeeRate, _employerRate, _unemploymentRate, _active, _notes, parameters);
+        _busy = true;
+        string? error;
+        if (_id is int id) error = (await Backend.Run<PayTemplateService>(s => s.UpdateGroupAsync(id, request, default))).Error;
+        else error = (await Backend.Run<PayTemplateService, int>(s => s.CreateGroupAsync(request, default))).Error;
+        _busy = false;
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        Snackbar.Add("گروه ذخیره شد.", Severity.Success);
+        _open = false;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.DeleteAsync($"گروه «{_title}»")) return;
+        var id = _id!.Value;
+        var r = await Backend.Run<PayTemplateService>(s => s.DeleteGroupAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _open = false;
+        await LoadAsync();
+    }
+}

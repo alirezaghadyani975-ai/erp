@@ -1,0 +1,178 @@
+@page "/payroll/templates/new"
+@page "/payroll/templates/{Id:int}"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject TabService Tabs
+
+<TabTitle Text="@(Id is null ? "الگوی محاسبه جدید" : $"الگو {_code}")" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h5">@(Id is null ? "الگوی محاسبه جدید" : $"الگوی محاسبه {_title}")</MudText>
+    @if (_employeeCount > 0) { <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_employeeCount کارمند</MudChip> }
+    <MudSpacer />
+    <IfAllowed Permission="@(Id is null ? PayrollPermissions.TemplateCreate : PayrollPermissions.TemplateEdit)">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Save" OnClick="SaveAsync" Disabled="_busy">ذخیره</MudButton>
+    </IfAllowed>
+    @if (Id is not null)
+    {
+        <IfAllowed Permission="@PayrollPermissions.TemplateCreate">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.ContentCopy" OnClick="() => _copyOpen = true" Disabled="_busy">کپی</MudButton>
+        </IfAllowed>
+        <IfAllowed Permission="@PayrollPermissions.TemplateDelete">
+            <MudButton Color="Color.Error" OnClick="DeleteAsync" Disabled="_busy">حذف</MudButton>
+        </IfAllowed>
+    }
+    <MudButton OnClick="@(() => Tabs.Go("/payroll/templates"))">فهرست</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="6" sm="2"><MudTextField @bind-Value="_code" Label="کد" Required="true" RequiredError="کد الزامی است." MaxLength="20" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="6" sm="4"><MudTextField @bind-Value="_title" Label="عنوان" Required="true" RequiredError="عنوان الزامی است." MaxLength="100" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="int?" @bind-Value="_groupId" Label="گروه استخدامی (قواعد)" Required="true" RequiredError="گروه استخدامی را انتخاب کنید."
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" ToStringFunc="@(id => _groups.FirstOrDefault(g => g.Id == id)?.Title)">
+                @foreach (var g in _groups) { <MudSelectItem T="int?" Value="g.Id">@g.Title</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_active" Color="Color.Success" Label="فعال" /></MudItem>
+        <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="توضیحات" MaxLength="500" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudText Typo="Typo.h6" Class="mb-1">اقلام الگو</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+        قلم تیک‌خورده در این الگو محاسبه می‌شود. «فرمول در این الگو» خالی یعنی همان فرمول پیش‌فرض قلم. تغییر فرمول اقلام قانونی (قفل) مجاز است
+        ولی هنگام ذخیره هشدار می‌دهد و در تاریخچه ثبت می‌شود.
+    </MudText>
+    @foreach (var kind in Enum.GetValues<PayItemKind>())
+    {
+        var rows = _rows.Where(r => r.Item.Kind == kind).ToList();
+        if (rows.Count == 0) continue;
+        <MudText Typo="Typo.subtitle2" Class="mt-2">@Titles.Of(kind)</MudText>
+        <table class="voucher-grid">
+            <thead><tr><th style="width:40px"></th><th>قلم</th><th>منبع</th><th>فرمول پیش‌فرض</th><th>فرمول در این الگو</th></tr></thead>
+            <tbody>
+                @foreach (var r in rows)
+                {
+                    <tr style="@(r.Included ? null : "opacity:.55")">
+                        <td><MudCheckBox T="bool" @bind-Value="r.Included" Dense="true" aria-label="@r.Item.Title" /></td>
+                        <td>
+                            @r.Item.Title <span class="code" style="color:var(--mud-palette-text-secondary)">@r.Item.Code</span>
+                            @if (r.Item.IsSystem) { <MudIcon Icon="@Icons.Material.Outlined.Lock" Size="Size.Small" Style="vertical-align:middle" Title="قلم قانونی" /> }
+                        </td>
+                        <td>@Titles.Of(r.Item.Source)</td>
+                        <td class="code" style="font-size:.8rem;white-space:normal">@r.Item.Formula</td>
+                        <td style="min-width:240px">
+                            @if (r.Item.Source == PayItemSource.Formula)
+                            {
+                                <MudTextField @bind-Value="r.Formula" Placeholder="همان پیش‌فرض" Disabled="!r.Included" Class="code"
+                                              Variant="Variant.Text" Margin="Margin.Dense" aria-label="@($"فرمول {r.Item.Title}")" />
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</MudPaper>
+
+<MudDialog @bind-Visible="_copyOpen" Options="new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">کپی الگو</MudText></TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_copyCode" Label="کد الگوی تازه" MaxLength="20" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudTextField @bind-Value="_copyTitle" Label="عنوان الگوی تازه" MaxLength="100" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _copyOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CopyAsync" Disabled="_busy">کپی</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private sealed class Row(PayItemDto item)
+    {
+        public PayItemDto Item { get; } = item;
+        public bool Included { get; set; }
+        public string? Formula { get; set; }
+    }
+
+    private List<EmploymentGroupDto> _groups = [];
+    private List<Row> _rows = [];
+    private string? _code, _title, _notes, _copyCode, _copyTitle;
+    private int? _groupId;
+    private bool _active = true, _busy, _copyOpen;
+    private int _employeeCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _groups = (await Backend.Run<PayTemplateService, List<EmploymentGroupDto>>(s => s.GroupsAsync(default))).Value ?? [];
+        var items = (await Backend.Run<PayItemService, List<PayItemDto>>(s => s.GetAllAsync(false, default))).Value ?? [];
+        _rows = items.OrderBy(i => i.SortOrder).ThenBy(i => i.Code).Select(i => new Row(i) { Included = Id is null }).ToList();
+        if (Id is int id)
+        {
+            var r = await Backend.Run<PayTemplateService, CalcTemplateDto>(s => s.TemplateAsync(id, default));
+            if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+            var t = r.Value!;
+            (_code, _title, _groupId, _active, _notes, _employeeCount) = (t.Code, t.Title, t.GroupId, t.IsActive, t.Notes, t.EmployeeCount);
+            foreach (var row in _rows)
+            {
+                var ti = t.Items.FirstOrDefault(x => x.PayItemId == row.Item.Id);
+                (row.Included, row.Formula) = (ti is not null, ti?.Formula);
+            }
+        }
+        else _groupId = _groups.FirstOrDefault(g => g.IsActive)?.Id;
+    }
+
+    private async Task SaveAsync()
+    {
+        var overridden = _rows.Where(r => r.Included && r.Item.IsSystem && !string.IsNullOrWhiteSpace(r.Formula)).Select(r => r.Item.Title).ToList();
+        if (overridden.Count > 0 && !await Dialogs.AskAsync("فرمول اقلام قانونی",
+                $"فرمول این اقلام قانونی در این الگو عوض شده است: {string.Join("، ", overridden)}. محاسبه بیمه، عیدی، سنوات یا ذخیره‌ها برای کارکنان این الگو تغییر می‌کند و تغییر در تاریخچه ثبت می‌شود.",
+                "ذخیره کن")) return;
+        var request = new SaveTemplateRequest(_code ?? "", _title ?? "", _groupId ?? 0, _active, _notes,
+            _rows.Where(r => r.Included).Select(r => new TemplateItemDto(r.Item.Id, string.IsNullOrWhiteSpace(r.Formula) ? null : r.Formula)).ToList());
+        _busy = true;
+        try
+        {
+            if (Id is int id)
+            {
+                var r = await Backend.Run<PayTemplateService>(s => s.UpdateTemplateAsync(id, request, default));
+                if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+                Snackbar.Add("الگو ذخیره شد.", Severity.Success);
+            }
+            else
+            {
+                var r = await Backend.Run<PayTemplateService, int>(s => s.CreateTemplateAsync(request, default));
+                if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+                Snackbar.Add("الگو ذخیره شد.", Severity.Success);
+                Tabs.Go($"/payroll/templates/{r.Value}");
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CopyAsync()
+    {
+        var (id, code, title) = (Id!.Value, _copyCode ?? "", _copyTitle ?? "");
+        _busy = true;
+        var r = await Backend.Run<PayTemplateService, int>(s => s.CopyTemplateAsync(id, code, title, default));
+        _busy = false;
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        _copyOpen = false;
+        Tabs.Go($"/payroll/templates/{r.Value}");
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await Dialogs.DeleteAsync($"الگوی «{_title}»", "الگویی که به کارکنان وصل است یا در حقوق آمده حذف نمی‌شود.")) return;
+        var id = Id!.Value;
+        var r = await Backend.Run<PayTemplateService>(s => s.DeleteTemplateAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Tabs.CloseCurrentAndGo("/payroll/templates");
+    }
+}

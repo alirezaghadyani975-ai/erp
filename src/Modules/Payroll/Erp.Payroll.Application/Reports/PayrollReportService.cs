@@ -113,11 +113,15 @@ public class PayrollReportService(IPayrollDbContext db, IAccessControl access)
         access.Demand(PayrollPermissions.ReportView);
         var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
         var leaveDays = await db.YearParams.AsNoTracking().Where(p => p.Code == "LEAVE_DAYS").ToDictionaryAsync(p => p.Year, p => p.Value, ct);
+        // روز مرخصی گروه استخدامی الگوی آن ماه (اگر گروه جایگزین کرده باشد)
+        var groupLeave = await db.Templates.AsNoTracking()
+            .Join(db.Groups.AsNoTracking().SelectMany(g => g.Params.Where(p => p.Code == "LEAVE_DAYS")), t => t.GroupId, p => p.GroupId, (t, p) => new { t.Id, p.Value })
+            .ToDictionaryAsync(x => x.Id, x => x.Value, ct);
         var query = db.Runs.AsNoTracking().Include(r => r.Attendances).Where(r => r.Year <= f.Year);
         if (f.WorkshopId is int w) query = query.Where(r => r.WorkshopId == w);
         var runs = await query.ToListAsync(ct);
         var movements = runs.SelectMany(r => r.Attendances.Where(a => f.EmployeeId == null || a.EmployeeId == f.EmployeeId)
-                .Select(a => (r.Year, r.Month, a.EmployeeId, a.WorkDays, a.LeaveDays, a.IsSettlement)))
+                .Select(a => (r.Year, r.Month, a.EmployeeId, a.WorkDays, a.LeaveDays, a.IsSettlement, a.TemplateId)))
             .OrderBy(m => m.Year).ThenBy(m => m.Month).ToList();
         var ids = movements.Select(m => m.EmployeeId).Distinct().ToList();
         var employees = await db.Employees.Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
@@ -144,7 +148,8 @@ public class PayrollReportService(IPayrollDbContext db, IAccessControl access)
             if (detail) rows.Add(new ReportRow(new Dictionary<string, object?> { ["month"] = "مانده از سال‌های قبل", ["balance"] = 0m }));
             foreach (var m in movements.Where(x => x.EmployeeId == id))
             {
-                var earned = Math.Round(leaveDays.GetValueOrDefault(m.Year) * m.WorkDays / YearDays(m.Year), 2);
+                var yearLeave = m.TemplateId is int tid && groupLeave.TryGetValue(tid, out var gl) ? gl : leaveDays.GetValueOrDefault(m.Year);
+                var earned = Math.Round(yearLeave * m.WorkDays / YearDays(m.Year), 2);
                 balance += earned - m.LeaveDays;
                 var bought = m.IsSettlement ? Math.Max(0, balance) : 0;
                 if (m.IsSettlement) balance = 0;

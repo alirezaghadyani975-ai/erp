@@ -216,7 +216,6 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
     {
         run.EnsureEditable();
         var items = await db.PayItems.AsNoTracking().Where(i => i.IsActive).ToListAsync(ct);
-        var calculator = new PayCalculator(items);
         var parameters = await db.YearParams.AsNoTracking().Where(p => p.Year == run.Year).ToDictionaryAsync(p => p.Code, p => p.Value, ct);
         if (parameters.Count == 0)
             throw new DomainException($"پارامترهای قانونی سال {run.Year} ثبت نشده است.");
@@ -224,6 +223,8 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
         var (start, end) = Period(run);
         var ids = run.Attendances.Select(a => a.EmployeeId).ToList();
         var employees = await db.Employees.Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id, ct);
+        // الگوی معتبر پایان ماه برای هر کارمند (اقلام، فرمول‌ها، قواعد گروه)
+        var plans = await PayPlans.LoadAsync(db, ids, end, parameters, ct);
         var decrees = await db.Decrees.AsNoTracking().Include(d => d.Items).Where(d => ids.Contains(d.EmployeeId) && d.EffectiveDate <= end)
             .OrderBy(d => d.EffectiveDate).ToListAsync(ct);
         var loans = await db.Loans.AsNoTracking().Where(l => ids.Contains(l.EmployeeId)).ToListAsync(ct);
@@ -233,7 +234,7 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
             .GroupBy(d => d.LoanId).ToDictionary(g => g.Key, g => g.Sum(d => d.Amount));
         var loanItems = items.Where(i => i.Source == PayItemSource.Loan).ToDictionary(i => i.Code, i => i.Id);
         var loanDeductions = new List<RunLoanDeduction>();
-        var facts = await FactsAsync(run, employees, parameters.GetValueOrDefault("LEAVE_DAYS"), ct);
+        var facts = await FactsAsync(run, employees, id => plans[id].Parameters.GetValueOrDefault("LEAVE_DAYS"), ct);
 
         var warnings = new List<CalcWarningDto>();
         var lines = new List<RunLine>();
@@ -242,6 +243,9 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
         {
             var e = employees[a.EmployeeId];
             void Warn(string message) => warnings.Add(new CalcWarningDto(e.PersonnelNo, e.DisplayName, message));
+            var plan = plans[e.Id];
+            if (plan.TemplateId is int templateId) a.UseTemplate(templateId);
+            else Warn("الگوی محاسبه ندارد؛ همه اقلام فعال با پارامترهای سال محاسبه شد.");
 
             var decree = DecreeAmounts(decrees.Where(d => d.EmployeeId == e.Id).ToList(), e, start, end);
             if (decree is null) Warn("حکم حقوقی نافذ در این ماه ندارد؛ اقلام حکمی صفر لحاظ شد.");
@@ -251,8 +255,8 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
             var (empRate, erRate, unRate) = e.InsuranceStatus switch
             {
                 InsuranceStatus.NotInsured => (0m, 0m, 0m),
-                InsuranceStatus.RetiredWorking => (e.EmployeeRate, e.EmployerRate, 0m),
-                _ => (e.EmployeeRate, e.EmployerRate, e.UnemploymentRate)
+                InsuranceStatus.RetiredWorking => (plan.EmployeeRate ?? e.EmployeeRate, plan.EmployerRate ?? e.EmployerRate, 0m),
+                _ => (plan.EmployeeRate ?? e.EmployeeRate, plan.EmployerRate ?? e.EmployerRate, plan.UnemploymentRate ?? e.UnemploymentRate)
             };
             var ctx = new PayCalcContext(a.WorkDays, e.InsuranceStatus == InsuranceStatus.NotInsured ? 0 : a.InsuranceDays, run.MonthDays,
                 a.OtHours, a.NightHours, a.HolidayHours, a.AbsentDays, e.ChildrenCount, e.IsMarried, empRate, erRate, unRate,
@@ -276,7 +280,7 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
                 inputs[itemId] = inputs.GetValueOrDefault(itemId) + installment;
                 loanDeductions.Add(new RunLoanDeduction(loan.Id, installment));
             }
-            var result = calculator.Calculate(ctx, parameters, decree ?? new Dictionary<int, decimal>(), inputs);
+            var result = plan.Calculator.Calculate(ctx, plan.Parameters, decree ?? new Dictionary<int, decimal>(), inputs);
             foreach (var w in result.Warnings) Warn(w);
 
             lines.AddRange(result.Amounts.Where(x => x.Value != 0).Select(x => new RunLine(e.Id, x.Key, x.Value)));
@@ -324,7 +328,7 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
     /// متغیرهای عیدی، سنوات و مرخصی هر کارمند: کارکرد امسال تا این ماه، روزهای خدمت از استخدام یا آخرین تسویه
     /// تا ترک کار (یا پایان ماه)، و مانده مرخصی = استحقاق (LEAVE_DAYS × کارکرد ÷ روزهای سال) − مرخصی استفاده‌شده از شروع خدمت.
     /// </summary>
-    private async Task<Facts> FactsAsync(PayRun run, Dictionary<int, EmployeeRef> employees, decimal leaveDaysPerYear, CancellationToken ct)
+    private async Task<Facts> FactsAsync(PayRun run, Dictionary<int, EmployeeRef> employees, Func<int, decimal> leaveDaysFor, CancellationToken ct)
     {
         var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
         decimal yearDays = settings.MonthDaysMode == MonthDaysMode.Thirty ? 360 : Enumerable.Range(1, 12).Sum(m => PersianDate.DaysInMonth(run.Year, m));
@@ -358,7 +362,7 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
             var since = mine.Where(o => o.Year * 100 + o.Month > lastSettlement).ToList();
             var worked = since.Sum(o => o.WorkDays) + a.WorkDays;
             var used = since.Sum(o => o.LeaveDays) + a.LeaveDays;
-            facts.LeaveBalance[e.Id] = Math.Round(leaveDaysPerYear * worked / yearDays - used, 2);
+            facts.LeaveBalance[e.Id] = Math.Round(leaveDaysFor(e.Id) * worked / yearDays - used, 2);
         }
         return facts;
     }
@@ -432,8 +436,9 @@ public class PayRunService(IPayrollDbContext db, IAccessControl access, ICurrent
         var a = run.Attendances.FirstOrDefault(x => x.EmployeeId == employeeId) ?? throw new NotFoundException("کارمند در این اجرا نیست.");
         var e = await db.Employees.FirstAsync(x => x.Id == employeeId, ct);
         var items = await db.PayItems.AsNoTracking().ToDictionaryAsync(i => i.Id, ct);
-        var leaveDays = await db.YearParams.Where(p => p.Year == run.Year && p.Code == "LEAVE_DAYS").Select(p => p.Value).FirstOrDefaultAsync(ct);
-        var facts = await FactsAsync(run, new Dictionary<int, EmployeeRef> { [e.Id] = e }, leaveDays, ct);
+        var yearParams = await db.YearParams.AsNoTracking().Where(p => p.Year == run.Year).ToDictionaryAsync(p => p.Code, p => p.Value, ct);
+        var plan = (await PayPlans.LoadAsync(db, [e.Id], Period(run).End, yearParams, ct))[e.Id];
+        var facts = await FactsAsync(run, new Dictionary<int, EmployeeRef> { [e.Id] = e }, _ => plan.Parameters.GetValueOrDefault("LEAVE_DAYS"), ct);
         var mine = run.Lines.Where(l => l.EmployeeId == employeeId).Select(l => (Item: items[l.PayItemId], l.Amount)).ToList();
         decimal Code(string c) => mine.Where(x => x.Item.Code == c).Sum(x => x.Amount);
         var earnings = mine.Where(x => x.Item.Kind == PayItemKind.Earning).Sum(x => x.Amount);

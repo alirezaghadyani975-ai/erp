@@ -1,0 +1,173 @@
+@page "/payroll/templates/assign"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<TabTitle Text="اتصال کارکنان به الگو" />
+
+<MudText Typo="Typo.h5" Class="mb-1">اتصال کارکنان به الگوی محاسبه</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    کارکنان را با فیلتر پیدا و تیک بزنید، الگو و تاریخ شروع را انتخاب کنید و «اتصال» بزنید. اتصال از آن تاریخ به بعد معتبر است و سابقه هر کارمند
+    می‌ماند؛ ماهی که حقوقش قطعی شده تغییر نمی‌کند.
+</MudText>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudGrid Spacing="2" Class="align-center">
+        <MudItem xs="12" sm="3">
+            <MudTextField @bind-Value="_term" Label="جستجو (نام یا شماره پرسنلی)" Immediate="true" DebounceInterval="250" Clearable="true"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudSelect T="int?" @bind-Value="_workshop" Label="کارگاه" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                       ToStringFunc="@(id => _employees.FirstOrDefault(e => e.WorkshopId == id)?.Workshop)">
+                @foreach (var w in _employees.GroupBy(e => e.WorkshopId)) { <MudSelectItem T="int?" Value="w.Key">@w.First().Workshop</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudSelect T="int?" @bind-Value="_current" Label="الگوی فعلی" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                       ToStringFunc="@(id => id == 0 ? "بدون الگو" : _templates.FirstOrDefault(t => t.Id == id)?.Title)">
+                <MudSelectItem T="int?" Value="0">بدون الگو</MudSelectItem>
+                @foreach (var t in _templates) { <MudSelectItem T="int?" Value="t.Id">@t.Title</MudSelectItem> }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="6" sm="3"><MudSwitch T="bool" @bind-Value="_activeOnly" Color="Color.Primary" Label="فقط شاغل" /></MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudPaper Class="pa-3 mb-3" Elevation="1">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.subtitle2">@_selected.Count کارمند انتخاب شده</MudText>
+        <MudSpacer />
+        <MudSelect T="int?" @bind-Value="_target" Label="اتصال به الگو" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Style="min-width:220px"
+                   ToStringFunc="@(id => _templates.FirstOrDefault(t => t.Id == id)?.Title)">
+            @foreach (var t in _templates.Where(t => t.IsActive)) { <MudSelectItem T="int?" Value="t.Id">@t.Title</MudSelectItem> }
+        </MudSelect>
+        <div style="width:170px"><PersianDateField @bind-Value="_from" Label="از تاریخ" Required="true" /></div>
+        <IfAllowed Permission="@PayrollPermissions.TemplateAssign">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Link" OnClick="AssignAsync"
+                       Disabled="@(_busy || _selected.Count == 0 || _target is null || string.IsNullOrEmpty(_from))">اتصال</MudButton>
+        </IfAllowed>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="TemplateEmployeeDto" Items="Visible" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              MultiSelection="true" @bind-SelectedItems="_selected" SelectOnRowClick="true">
+        <HeaderContent>
+            <MudTh>پرسنلی</MudTh>
+            <MudTh>نام و نام خانوادگی</MudTh>
+            <MudTh>کارگاه</MudTh>
+            <MudTh>شغل</MudTh>
+            <MudTh>الگوی فعلی</MudTh>
+            <MudTh>از تاریخ</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.PersonnelNo</span></MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.Workshop</MudTd>
+            <MudTd>@context.JobTitle</MudTd>
+            <MudTd>@(context.Template ?? "—")</MudTd>
+            <MudTd><span class="code">@context.FromDate</span></MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Outlined.History" Size="Size.Small" aria-label="سابقه الگو" OnClick="@(() => OpenHistory(context))" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">کارمندی با این فیلتر نیست.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+<MudDialog @bind-Visible="_historyOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">سابقه الگوی @_historyName</MudText></TitleContent>
+    <DialogContent>
+        <MudSimpleTable Dense="true">
+            <thead><tr><th>از تاریخ</th><th>الگو</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var h in _history)
+                {
+                    <tr>
+                        <td class="code">@h.FromDate</td>
+                        <td>@h.Template</td>
+                        <td>
+                            <IfAllowed Permission="@PayrollPermissions.TemplateAssign">
+                                <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" aria-label="حذف اتصال" OnClick="() => RemoveAsync(h)" />
+                            </IfAllowed>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+        @if (_history.Count == 0) { <MudText Typo="Typo.body2" Color="Color.Secondary">اتصالی ندارد؛ با الگوی «پیش‌فرض» محاسبه می‌شود.</MudText> }
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private List<TemplateEmployeeDto> _employees = [];
+    private List<CalcTemplateListItemDto> _templates = [];
+    private HashSet<TemplateEmployeeDto> _selected = [];
+    private string? _term, _from = Format.Today(), _historyName;
+    private int? _workshop, _current, _target;
+    private bool _activeOnly = true, _loading = true, _busy, _historyOpen;
+    private int _historyEmployee;
+    private List<EmployeeTemplateDto> _history = [];
+
+    private IEnumerable<TemplateEmployeeDto> Visible
+    {
+        get
+        {
+            var term = PersianText.NormalizeOrNull(_term);
+            return _employees.Where(e =>
+                (!_activeOnly || e.Status == EmployeeStatus.Active)
+                && (_workshop is null || e.WorkshopId == _workshop)
+                && (_current is null || (e.TemplateId ?? 0) == _current)
+                && (term is null || e.Name.Contains(term) || e.PersonnelNo.StartsWith(term)));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _templates = (await Backend.Run<PayTemplateService, List<CalcTemplateListItemDto>>(s => s.TemplatesAsync(default))).Value ?? [];
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Backend.Run<PayTemplateService, List<TemplateEmployeeDto>>(s => s.EmployeesAsync(default));
+        if (r.Success) _employees = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _selected = [];
+        _loading = false;
+    }
+
+    private async Task AssignAsync()
+    {
+        var request = new AssignTemplateRequest(_selected.Select(e => e.Id).ToList(), _target!.Value, _from!);
+        var title = _templates.First(t => t.Id == _target).Title;
+        if (!await Dialogs.AskAsync("اتصال به الگو", $"{request.EmployeeIds.Count} کارمند از {_from} به الگوی «{title}» وصل شوند؟", "اتصال")) return;
+        _busy = true;
+        var r = await Backend.Run<PayTemplateService, int>(s => s.AssignAsync(request, default));
+        _busy = false;
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        Snackbar.Add($"{r.Value} کارمند به الگوی «{title}» وصل شد.", Severity.Success);
+        await LoadAsync();
+    }
+
+    private async Task OpenHistory(TemplateEmployeeDto e)
+    {
+        (_historyEmployee, _historyName) = (e.Id, e.Name);
+        var id = e.Id;
+        _history = (await Backend.Run<PayTemplateService, List<EmployeeTemplateDto>>(s => s.HistoryAsync(id, default))).Value ?? [];
+        _historyOpen = true;
+    }
+
+    private async Task RemoveAsync(EmployeeTemplateDto h)
+    {
+        if (!await Dialogs.DeleteAsync($"اتصال از {h.FromDate} به «{h.Template}»")) return;
+        var id = h.Id;
+        var r = await Backend.Run<PayTemplateService>(s => s.RemoveAssignmentAsync(id, default));
+        if (!r.Success) { Snackbar.Add(r.Error!, Severity.Error); return; }
+        var employee = _historyEmployee;
+        _history = (await Backend.Run<PayTemplateService, List<EmployeeTemplateDto>>(s => s.HistoryAsync(employee, default))).Value ?? [];
+        await LoadAsync();
+    }
+}

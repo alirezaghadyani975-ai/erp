@@ -139,7 +139,11 @@ public class Attendance
     public decimal LeaveDays { get; private set; }
     /// <summary>این ماه تسویه حساب کارمند است (عیدی، بازخرید سنوات و مرخصی، کسر کامل مانده وام‌ها).</summary>
     public bool IsSettlement { get; private set; }
+    /// <summary>الگوی محاسبه به‌کاررفته در آخرین محاسبه (pay.CalcTemplates).</summary>
+    public int? TemplateId { get; private set; }
     public IReadOnlyList<AttendanceCenter> Centers => _centers.AsReadOnly();
+
+    public void UseTemplate(int templateId) => TemplateId = templateId;
     public IReadOnlyList<AttendanceInput> Inputs => _inputs.AsReadOnly();
 
     /// <param name="monthDays">سقف روز کارکرد (MONTH_DAYS)</param>

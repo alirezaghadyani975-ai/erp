@@ -1,0 +1,57 @@
+@page "/payroll/templates"
+@inject Backend Backend
+@inject ISnackbar Snackbar
+@inject TabService Tabs
+
+<TabTitle Text="الگوهای محاسبه حقوق" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1" Spacing="2" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h5">الگوهای محاسبه حقوق</MudText>
+    <MudSpacer />
+    <IfAllowed Permission="@PayrollPermissions.TemplateAssign">
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.GroupAdd" OnClick="@(() => Tabs.Go("/payroll/templates/assign"))">اتصال کارکنان</MudButton>
+    </IfAllowed>
+    <IfAllowed Permission="@PayrollPermissions.TemplateCreate">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Tabs.Go("/payroll/templates/new"))">الگوی جدید</MudButton>
+    </IfAllowed>
+</MudStack>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    هر الگو اقلامی را که برای گروهی از کارکنان محاسبه می‌شود و فرمول هر قلم را نگه می‌دارد و به یک گروه استخدامی (قواعد عیدی، سنوات،
+    مرخصی و بیمه) وصل است. هر کارمند از یک تاریخ به یک الگو وصل می‌شود؛ تغییر الگو حقوق قطعی‌شده را عوض نمی‌کند.
+</MudText>
+
+<MudPaper Class="pa-3" Elevation="1">
+    <MudTable T="CalcTemplateListItemDto" Items="_rows" Dense="true" Hover="true" Elevation="0" Loading="_loading"
+              OnRowClick="@(a => Tabs.Go($"/payroll/templates/{a.Item!.Id}"))" RowStyle="cursor:pointer">
+        <HeaderContent>
+            <MudTh>کد</MudTh>
+            <MudTh>عنوان</MudTh>
+            <MudTh>گروه استخدامی</MudTh>
+            <MudTh Style="text-align:left">اقلام</MudTh>
+            <MudTh Style="text-align:left">کارکنان</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><span class="code">@context.Code</span></MudTd>
+            <MudTd>
+                @context.Title
+                @if (!context.IsActive) { <MudChip T="string" Size="Size.Small">غیرفعال</MudChip> }
+            </MudTd>
+            <MudTd>@context.Group</MudTd>
+            <MudTd Class="num">@context.ItemCount</MudTd>
+            <MudTd Class="num">@context.EmployeeCount</MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText Class="pa-4">الگویی تعریف نشده است.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private List<CalcTemplateListItemDto> _rows = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Backend.Run<PayTemplateService, List<CalcTemplateListItemDto>>(s => s.TemplatesAsync(default));
+        if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
+        _loading = false;
+    }
+}

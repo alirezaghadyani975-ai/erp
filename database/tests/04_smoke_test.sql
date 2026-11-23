@@ -395,6 +395,14 @@ BEGIN TRY
 END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
 INSERT @R VALUES (N'رد انتقال به همان انبار', N'50330', CAST(@err AS NVARCHAR(50)));
 DELETE inv.StockDocs WHERE Id = @TIss;
+
+-- ۲۹: نرخ بیمه گروه استخدامی بین ۰ و ۱۰۰
+BEGIN TRY
+    INSERT pay.EmploymentGroups (Code, Title, EmployeeRate) VALUES (N'SMOKE-G', N'گروه دود', 150);
+    SET @err = 0;
+END TRY BEGIN CATCH SET @err = ERROR_NUMBER(); END CATCH;
+INSERT @R VALUES (N'رد نرخ بیمه بیش از ۱۰۰ در گروه استخدامی', N'547', CAST(@err AS NVARCHAR(50)));
+DELETE pay.EmploymentGroups WHERE Code = N'SMOKE-G';
 DELETE prd.Boms WHERE Id = @Bom;
 DELETE inv.Items WHERE Id IN (@Prod, @Mat);
 

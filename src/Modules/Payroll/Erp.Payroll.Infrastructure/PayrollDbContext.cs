@@ -20,6 +20,9 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
     public IQueryable<PayRun> Runs => Set<PayRun>();
     public IQueryable<Loan> Loans => Set<Loan>();
     public IQueryable<SalaryPayment> Payments => Set<SalaryPayment>();
+    public IQueryable<EmploymentGroup> Groups => Set<EmploymentGroup>();
+    public IQueryable<CalcTemplate> Templates => Set<CalcTemplate>();
+    public IQueryable<EmployeeTemplate> EmployeeTemplates => Set<EmployeeTemplate>();
     public IQueryable<BankAccountRef> BankAccounts => Set<BankAccountRef>().AsNoTracking();
     public IQueryable<CenterRef> Centers => Set<CenterRef>().AsNoTracking();
     public IQueryable<WorkshopRef> Workshops => Set<WorkshopRef>().AsNoTracking();
@@ -34,6 +37,44 @@ public class PayrollDbContext : DbContext, IPayrollDbContext
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        // اسکریپت ۲۹: گروه استخدامی، الگوی محاسبه، اتصال کارکنان
+        b.Entity<EmploymentGroup>(e =>
+        {
+            e.ToTable("EmploymentGroups", "pay");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.EmployeeRate).HasPrecision(5, 2);
+            e.Property(x => x.EmployerRate).HasPrecision(5, 2);
+            e.Property(x => x.UnemploymentRate).HasPrecision(5, 2);
+            e.HasMany(x => x.Params).WithOne().HasForeignKey(p => p.GroupId).OnDelete(DeleteBehavior.Cascade);
+            e.Navigation(x => x.Params).UsePropertyAccessMode(PropertyAccessMode.Field);
+            e.Ignore(x => x.DomainEvents);
+        });
+        b.Entity<GroupParam>(e =>
+        {
+            e.ToTable("GroupParams", "pay");
+            e.HasKey(x => new { x.GroupId, x.Code });
+            e.Property(x => x.Code).IsUnicode(false);
+            e.Property(x => x.Value).HasPrecision(24, 6);
+        });
+        b.Entity<CalcTemplate>(e =>
+        {
+            e.ToTable("CalcTemplates", "pay");
+            e.HasKey(x => x.Id);
+            e.HasMany(x => x.Items).WithOne().HasForeignKey(i => i.TemplateId).OnDelete(DeleteBehavior.Cascade);
+            e.Navigation(x => x.Items).UsePropertyAccessMode(PropertyAccessMode.Field);
+            e.Ignore(x => x.DomainEvents);
+        });
+        b.Entity<TemplateItem>(e =>
+        {
+            e.ToTable("TemplateItems", "pay");
+            e.HasKey(x => new { x.TemplateId, x.PayItemId });
+        });
+        b.Entity<EmployeeTemplate>(e =>
+        {
+            e.ToTable("EmployeeTemplates", "pay");
+            e.HasKey(x => x.Id);
+        });
+
         b.Entity<PayItem>(e =>
         {
             e.ToTable("PayItems", "pay");
