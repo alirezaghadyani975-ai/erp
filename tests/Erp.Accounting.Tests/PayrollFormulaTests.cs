@@ -50,6 +50,16 @@ public class PayrollFormulaTests
     }
 
     [Fact]
+    public void Split_gives_formula_builder_tokens_with_same_rules()
+    {
+        var tokens = Formula.Split("round(daily_wage * ۳۰, 0) <> 5");
+        Assert.Equal(["name", "lparen", "name", "op", "number", "comma", "number", "rparen", "op", "number"], tokens.Select(t => t.Kind));
+        Assert.Equal(["ROUND", "(", "DAILY_WAGE", "*", "30", ",", "0", ")", "<>", "5"], tokens.Select(t => t.Text));
+        Assert.Contains("IF", Formula.FunctionNames);
+        Assert.Throws<DomainException>(() => Formula.Split("A # B"));
+    }
+
+    [Fact]
     public void Order_follows_dependencies_and_detects_cycles()
     {
         var order = FormulaOrder.Sort(new Dictionary<string, Formula>

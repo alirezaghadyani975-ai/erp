@@ -50,7 +50,7 @@
             </MudTd>
             <MudTd>@Titles.Of(context.Kind)</MudTd>
             <MudTd>@Titles.Of(context.Source)</MudTd>
-            <MudTd><bdi class="formula">@context.Formula</bdi></MudTd>
+            <MudTd><span title="@context.Formula">@FormulaText.Persian(context.Formula, _variables)</span></MudTd>
             <MudTd>@(context.InsuranceSubject ? "مشمول" : "")</MudTd>
             <MudTd>@(context.TaxSubject ? "مشمول" : "")</MudTd>
             <MudTd>
@@ -101,32 +101,16 @@
             @if (_source == PayItemSource.Formula)
             {
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="_formula" Label="فرمول" Lines="2" MaxLength="1000" Class="formula-input" Immediate="true"
-                                  HelperText="مثال: ROUND(DAILY_WAGE * DAYS, 0) — تابع‌ها: MIN، MAX، ROUND، FLOOR، CEILING، ABS، IF(شرط, بله, نه)"
-                                  Variant="Variant.Outlined" Margin="Margin.Dense" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Outlined.FactCheck"
-                                  OnAdornmentClick="CheckAsync" AdornmentAriaLabel="کنترل فرمول" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">فرمول</MudText>
+                    <FormulaBuilder @bind-Value="_formula" Catalog="@(_variables.Where(v => v.Code != _code).ToList())" />
+                    <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Outlined.FactCheck" OnClick="CheckAsync" Class="mt-1">
+                        کنترل کامل (وابستگی اقلام)</MudButton>
                     @if (_check is { } c)
                     {
                         <MudAlert Severity="@(c.Ok ? Severity.Success : Severity.Error)" Dense="true" Class="mt-1">
-                            @(c.Ok ? $"فرمول درست است. متغیرها: {string.Join("، ", c.Variables)}" : c.Error)
+                            @(c.Ok ? "فرمول و وابستگی اقلام درست است." : c.Error)
                         </MudAlert>
                     }
-                    <MudExpansionPanels Elevation="0" Class="mt-2">
-                        <MudExpansionPanel Text="متغیرهای قابل استفاده (برای افزودن به فرمول کلیک کنید)">
-                            @foreach (var g in _variables.GroupBy(v => v.Group))
-                            {
-                                <MudText Typo="Typo.subtitle2" Class="mt-1">@g.Key</MudText>
-                                <div class="d-flex flex-wrap gap-1">
-                                    @foreach (var v in g.Where(v => v.Code != _code))
-                                    {
-                                        <MudTooltip Text="@v.Title">
-                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" OnClick="() => Append(v.Code)"><bdi>@v.Code</bdi></MudChip>
-                                        </MudTooltip>
-                                    }
-                                </div>
-                            }
-                        </MudExpansionPanel>
-                    </MudExpansionPanels>
                 </MudItem>
             }
 
@@ -208,7 +192,7 @@
         _loading = true;
         var r = await Backend.Run<PayItemService, List<PayItemDto>>(s => s.GetAllAsync(true, default));
         if (r.Success) _rows = r.Value!; else Snackbar.Add(r.Error!, Severity.Error);
-        _variables = (await Backend.Run<PayItemService, List<FormulaVariableDto>>(s => s.VariablesAsync(default))).Value ?? [];
+        _variables = (await Backend.Run<PayFormulaService, List<FormulaVariableDto>>(s => s.CatalogAsync(default))).Value ?? [];
         _loading = false;
     }
 
@@ -238,12 +222,6 @@
         if (kind is PayItemKind.Deduction or PayItemKind.Info) _factorId = null;
         if (kind is PayItemKind.Earning or PayItemKind.Info) _accountId = null;
         if (kind == PayItemKind.Info) _slip = false;
-    }
-
-    private void Append(string code)
-    {
-        _formula = string.IsNullOrWhiteSpace(_formula) ? code : $"{_formula.TrimEnd()} {code}";
-        _check = null;
     }
 
     private SavePayItemRequest Request() => new(_code ?? "", _title ?? "", _kind ?? PayItemKind.Earning, _source ?? PayItemSource.Formula,

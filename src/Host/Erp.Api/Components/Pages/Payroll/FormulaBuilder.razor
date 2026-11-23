@@ -1,0 +1,314 @@
+@* فرمول‌ساز ماشین‌حسابی: فرمول با نام فارسی پارامترها نمایش داده می‌شود و با دکمه‌ها و انتخاب پارامتر ساخته می‌شود؛ ذخیره با کد.
+   مکان‌نما (خط چشمک‌زن) با کلیک روی هر قطعه جابه‌جا می‌شود و دکمه‌ها همان‌جا درج می‌کنند. «ویرایش متنی» برای کاربر حرفه‌ای است.
+   «آزمایش»: مقدار پارامترها از آخرین حقوق یک کارمند (یا دستی) و نتیجه زنده. *@
+@using Erp.SharedKernel.Domain
+@inject Backend Backend
+
+<div class="formula-builder">
+    <div class="formula-display @(_error is null ? null : "formula-error")" @onclick="() => _cursor = _tokens.Count" aria-label="فرمول">
+        @if (_tokens.Count == 0 && _cursor == 0)
+        {
+            <span class="formula-cursor"></span>
+            <span class="formula-placeholder">پارامتر و دکمه‌ها را بزنید؛ مثلاً [مزد روزانه] × [روز کارکرد]</span>
+        }
+        @for (var i = 0; i < _tokens.Count; i++)
+        {
+            var index = i;
+            var t = _tokens[i];
+            @if (_cursor == i) { <span class="formula-cursor"></span> }
+            <span class="formula-token @Css(index)" title="@t.Text" @onclick="() => _cursor = index + 1" @onclick:stopPropagation="true">@Show(index)</span>
+        }
+        @if (_cursor == _tokens.Count && _tokens.Count > 0) { <span class="formula-cursor"></span> }
+    </div>
+    <MudText Typo="Typo.caption" Class="d-block mt-1" Color="@(_error is null ? Color.Success : Color.Error)">
+        @(_error ?? (_tokens.Count == 0 ? "" : Unknown.Count > 0 ? $"پارامتر ناشناخته: {string.Join("، ", Unknown)}" : "فرمول درست است."))
+    </MudText>
+
+    @if (!Disabled)
+    {
+        <MudGrid Spacing="2" Class="mt-1">
+            <MudItem xs="12" md="5">
+                <div class="formula-keys">
+                    @foreach (var k in new[] { "7", "8", "9", "4", "5", "6", "1", "2", "3", "0", "." })
+                    {
+                        var key = k;
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="() => Digit(key)">@key</MudButton>
+                    }
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => Insert("comma", ","))" title="جداکننده بخش‌های تابع">،</MudButton>
+                    @foreach (var (op, label) in Ops)
+                    {
+                        var o = op;
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary" OnClick="@(() => Insert("op", o))">@label</MudButton>
+                    }
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => Insert("lparen", "("))" title="پرانتز باز">)</MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => Insert("rparen", ")"))" title="پرانتز بسته">(</MudButton>
+                </div>
+                <div class="formula-keys mt-1">
+                    @foreach (var (fn, label, hint) in Functions)
+                    {
+                        var f = fn;
+                        <MudTooltip Text="@hint"><MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Secondary" OnClick="() => Function(f)">@label</MudButton></MudTooltip>
+                    }
+                </div>
+                <MudStack Row="true" Spacing="1" Class="mt-1">
+                    <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.ChevronRight" OnClick="@(() => _cursor = Math.Max(0, _cursor - 1))" aria-label="مکان‌نما به راست">قبلی</MudButton>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" EndIcon="@Icons.Material.Filled.ChevronLeft" OnClick="@(() => _cursor = Math.Min(_tokens.Count, _cursor + 1))" aria-label="مکان‌نما به چپ">بعدی</MudButton>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Outlined.Backspace" OnClick="Back">پاک</MudButton>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Error" OnClick="Clear">پاک کردن همه</MudButton>
+                </MudStack>
+            </MudItem>
+            <MudItem xs="12" md="7">
+                <MudTextField @bind-Value="_search" Placeholder="جستجوی پارامتر (نام یا کد)" Immediate="true" Clearable="true" Variant="Variant.Outlined"
+                              Margin="Margin.Dense" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search" />
+                <MudChipSet T="string" @bind-SelectedValue="_category" SelectionMode="SelectionMode.ToggleSelection" Class="my-1">
+                    @foreach (var c in Catalog.Select(v => v.Group).Distinct())
+                    {
+                        <MudChip T="string" Value="c" Size="Size.Small">@c</MudChip>
+                    }
+                </MudChipSet>
+                <div class="formula-params">
+                    @foreach (var v in Filtered)
+                    {
+                        var code = v.Code;
+                        <div class="formula-param" @onclick="@(() => Insert("name", code))">
+                            <span>@v.Title</span><span class="code">@v.Code</span>
+                        </div>
+                    }
+                </div>
+            </MudItem>
+        </MudGrid>
+
+        <MudExpansionPanels Elevation="0" Class="mt-2" Dense="true">
+            <MudExpansionPanel Text="ویرایش متنی (با کد)">
+                <MudTextField T="string" Value="_text" ValueChanged="OnText" Lines="2" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              HelperText="برای کاربر حرفه‌ای: کد پارامترها، + - * /، پرانتز، مقایسه و MIN، MAX، ROUND، IF" />
+            </MudExpansionPanel>
+            <MudExpansionPanel Text="آزمایش فرمول">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                    <MudSelect T="int?" @bind-Value="_employee" Label="مقدار نمونه از کارمند" Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               Dense="true" Style="min-width:220px" ToStringFunc="@(id => _employees.FirstOrDefault(e => e.Id == id)?.Name)">
+                        @foreach (var e in _employees) { <MudSelectItem T="int?" Value="e.Id">@e.PersonnelNo — @e.Name</MudSelectItem> }
+                    </MudSelect>
+                    <MudButton Variant="Variant.Outlined" OnClick="LoadSampleAsync">بارگذاری مقدارها</MudButton>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@_sampleSource</MudText>
+                </MudStack>
+                @if (Parsed is { } f)
+                {
+                    <MudSimpleTable Dense="true" Class="mt-2">
+                        <thead><tr><th>پارامتر</th><th>مقدار</th></tr></thead>
+                        <tbody>
+                            @foreach (var name in f.Variables.Order())
+                            {
+                                var n = name;
+                                <tr>
+                                    <td>@Title(n) <span class="code" style="color:var(--mud-palette-text-secondary)">@n</span></td>
+                                    <td><NumCell Value="_sample.GetValueOrDefault(n)" ValueChanged="@(v => _sample[n] = v)" Amount="true" Label="@Title(n)" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">نتیجه: <b>@Result</b></MudAlert>
+                }
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter, EditorRequired] public List<FormulaVariableDto> Catalog { get; set; } = [];
+    /// <summary>الگو برای مقدار نمونه قواعد گروه (اختیاری).</summary>
+    [Parameter] public int? TemplateId { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private static readonly (string Op, string Label)[] Ops =
+        [("+", "+"), ("-", "−"), ("*", "×"), ("/", "÷"), ("=", "="), ("<>", "≠"), ("<", "<"), ("<=", "≤"), (">", ">"), (">=", "≥")];
+
+    private static readonly (string Fn, string Label, string Hint)[] Functions =
+    [
+        ("IF", "اگر", "اگر(شرط ، مقدار اگر درست ، مقدار اگر نادرست)"),
+        ("MIN", "کمینه", "کوچک‌ترین مقدار: کمینه(الف ، ب ، ...)"),
+        ("MAX", "بیشینه", "بزرگ‌ترین مقدار: بیشینه(الف ، ب ، ...)"),
+        ("ROUND", "گرد", "گرد کردن: گرد(مقدار ، رقم اعشار)"),
+        ("FLOOR", "کف", "گرد به پایین"),
+        ("CEILING", "سقف", "گرد به بالا"),
+        ("ABS", "قدر مطلق", "قدر مطلق"),
+    ];
+
+    private List<(string Kind, string Text)> _tokens = [];
+    private int _cursor;
+    private string? _text, _lastValue, _error, _search, _category, _sampleSource;
+    private int? _employee;
+    private List<TemplateEmployeeDto> _employees = [];
+    private Dictionary<string, decimal> _sample = [];
+    private bool _employeesLoaded;
+
+    protected override void OnParametersSet()
+    {
+        if (Value == _lastValue && _text is not null) return;
+        _lastValue = Value;
+        _text = Value ?? "";
+        _error = null;
+        try
+        {
+            _tokens = Formula.Split(_text).ToList();
+            _cursor = _tokens.Count;
+        }
+        catch (DomainException ex) { _error = ex.Message; }
+        Validate();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _employeesLoaded || Disabled) return;
+        _employeesLoaded = true;
+        _employees = (await Backend.Run<PayTemplateService, List<TemplateEmployeeDto>>(s => s.EmployeesAsync(default))).Value ?? [];
+    }
+
+    private IEnumerable<FormulaVariableDto> Filtered
+    {
+        get
+        {
+            var term = PersianText.NormalizeOrNull(_search);
+            return Catalog.Where(v => (_category is null || v.Group == _category)
+                                      && (term is null || v.Title.Contains(term) || v.Code.Contains(term.ToUpperInvariant())));
+        }
+    }
+
+    private Formula? Parsed
+    {
+        get
+        {
+            if (_error is not null || _tokens.Count == 0) return null;
+            try { return Formula.Parse(_text); } catch (DomainException) { return null; }
+        }
+    }
+
+    private List<string> Unknown =>
+        Parsed?.Variables.Where(v => Catalog.All(c => c.Code != v)).Order().ToList() ?? [];
+
+    private string Result
+    {
+        get
+        {
+            try { return Parsed!.Evaluate(n => _sample.GetValueOrDefault(n)).ToString("#,0.####"); }
+            catch (DomainException ex) { return ex.Message; }
+        }
+    }
+
+    private string Title(string code) => Catalog.FirstOrDefault(c => c.Code == code)?.Title ?? code;
+
+    private bool IsFunction(int i) =>
+        _tokens[i].Kind == "name" && Formula.FunctionNames.Contains(_tokens[i].Text) && i + 1 < _tokens.Count && _tokens[i + 1].Kind == "lparen";
+
+    private string Show(int i)
+    {
+        var (kind, text) = _tokens[i];
+        return kind switch
+        {
+            "name" when IsFunction(i) => Functions.First(f => f.Fn == text).Label,
+            "name" => Title(text),
+            "op" => Ops.FirstOrDefault(o => o.Op == text).Label ?? text,
+            "comma" => "،",
+            // هر پرانتز قطعه جداست و مرورگر قرینه‌اش نمی‌کند؛ در نمایش راست‌به‌چپ پرانتز باز «)» دیده می‌شود
+            "lparen" => ")",
+            "rparen" => "(",
+            _ => text
+        };
+    }
+
+    private string Css(int i) => _tokens[i].Kind switch
+    {
+        "name" when IsFunction(i) => "formula-fn",
+        "name" when Catalog.All(c => c.Code != _tokens[i].Text) => "formula-unknown",
+        "name" => "formula-var",
+        "op" or "comma" => "formula-op",
+        "lparen" or "rparen" => "formula-paren",
+        _ => "formula-num"
+    };
+
+    private Task Insert(string kind, string text)
+    {
+        _tokens.Insert(_cursor, (kind, text));
+        _cursor++;
+        return Emit();
+    }
+
+    private Task Function(string fn)
+    {
+        _tokens.Insert(_cursor, ("name", fn));
+        _tokens.Insert(_cursor + 1, ("lparen", "("));
+        _cursor += 2;
+        return Emit();
+    }
+
+    private Task Digit(string d)
+    {
+        if (_cursor > 0 && _tokens[_cursor - 1].Kind == "number")
+        {
+            var prev = _tokens[_cursor - 1].Text;
+            if (d == "." && prev.Contains('.')) return Task.CompletedTask;
+            _tokens[_cursor - 1] = ("number", prev + d);
+            return Emit();
+        }
+        return Insert("number", d == "." ? "0." : d);
+    }
+
+    private Task Back()
+    {
+        if (_cursor == 0) return Task.CompletedTask;
+        var (kind, text) = _tokens[_cursor - 1];
+        if (kind == "number" && text.Length > 1) _tokens[_cursor - 1] = (kind, text[..^1]);
+        else { _tokens.RemoveAt(_cursor - 1); _cursor--; }
+        return Emit();
+    }
+
+    private Task Clear()
+    {
+        _tokens.Clear();
+        _cursor = 0;
+        return Emit();
+    }
+
+    private async Task OnText(string? text)
+    {
+        _text = text ?? "";
+        _error = null;
+        try
+        {
+            _tokens = Formula.Split(_text).ToList();
+            _cursor = _tokens.Count;
+        }
+        catch (DomainException ex) { _error = ex.Message; }
+        Validate();
+        _lastValue = string.IsNullOrWhiteSpace(_text) ? null : Formula.Normalize(_text);
+        await ValueChanged.InvokeAsync(_lastValue);
+    }
+
+    private async Task Emit()
+    {
+        _text = string.Join(" ", _tokens.Select(t => t.Text));
+        _error = null;
+        Validate();
+        _lastValue = _tokens.Count == 0 ? null : _text;
+        await ValueChanged.InvokeAsync(_lastValue);
+    }
+
+    private void Validate()
+    {
+        if (_error is not null || _tokens.Count == 0) return;
+        try { Formula.Parse(_text); }
+        catch (DomainException ex) { _error = ex.Message; }
+    }
+
+    private async Task LoadSampleAsync()
+    {
+        var (employee, template) = (_employee, TemplateId);
+        var r = await Backend.Run<PayFormulaService, FormulaSampleDto>(s => s.SampleAsync(employee, template, default));
+        if (!r.Success) { _sampleSource = r.Error; return; }
+        _sample = r.Value!.Values;
+        _sampleSource = r.Value.Source;
+    }
+}

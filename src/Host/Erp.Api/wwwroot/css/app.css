@@ -350,3 +350,24 @@ kbd { font-family: inherit; font-size: .75rem; padding: 1px 5px; border: 1px sol
     .book-account { page-break-after: always; break-after: page; }
     .book-account:last-of-type { page-break-after: auto; break-after: auto; }
 }
+
+/* فرمول‌ساز حقوق */
+.formula-display { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: 56px; padding: 8px 10px;
+    border: 1px solid var(--mud-palette-lines-default); border-radius: 6px; background: var(--mud-palette-surface); cursor: text; }
+.formula-display.formula-error { border-color: var(--mud-palette-error); }
+.formula-placeholder { color: var(--mud-palette-text-secondary); font-size: .85rem; }
+.formula-token { padding: 2px 6px; border-radius: 4px; cursor: pointer; line-height: 1.6; }
+.formula-var { background: var(--mud-palette-primary-lighten); color: var(--mud-palette-primary-text); }
+.formula-unknown { background: var(--mud-palette-error); color: var(--mud-palette-error-text); }
+.formula-fn { background: var(--mud-palette-secondary); color: var(--mud-palette-secondary-text); }
+.formula-op { font-weight: 700; padding: 2px 3px; }
+.formula-paren { font-weight: 700; font-size: 1.1rem; padding: 0 2px; }
+.formula-num { font-variant-numeric: tabular-nums; }
+.formula-cursor { width: 2px; height: 22px; background: var(--mud-palette-primary); animation: formula-blink 1s step-end infinite; }
+@keyframes formula-blink { 50% { opacity: 0; } }
+.formula-keys { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+.formula-keys .mud-button-root { min-width: 0; }
+.formula-params { max-height: 220px; overflow-y: auto; border: 1px solid var(--mud-palette-lines-default); border-radius: 6px; }
+.formula-param { display: flex; justify-content: space-between; gap: 8px; padding: 4px 8px; cursor: pointer; font-size: .85rem; }
+.formula-param:hover { background: var(--mud-palette-action-default-hover); }
+.formula-param .code { color: var(--mud-palette-text-secondary); font-size: .75rem; }

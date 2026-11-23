@@ -141,6 +141,14 @@ public class PayrollTests(SqlFixture db)
         Assert.DoesNotContain(slip.Earnings, l => l.Code == "FOOD_PAY");
         Assert.DoesNotContain(slip.Deductions, l => l.Code == "INS_WORKER" && l.Amount != 0);
 
+        // فرمول‌ساز: پارامترها با نام فارسی و مقدار نمونه از آخرین حقوق کارمند و قواعد گروه الگو
+        var catalog = await db.Run<PayFormulaService, List<FormulaVariableDto>>(x => x.CatalogAsync(default));
+        Assert.Contains(catalog, v => v.Code == "DAYS" && v.Group == "کارکرد ماه");
+        Assert.Contains(catalog, v => v.Code == "BONUS_DAYS" && v.Group == "پارامترهای سال");
+        Assert.Contains(catalog, v => v.Code == "BASE" && v.Group == "اقلام حقوق");
+        var sample = await db.Run<PayFormulaService, FormulaSampleDto>(x => x.SampleAsync(employee, template, default));
+        Assert.Equal((30m, 198_000_000m, 10_000_000m), (sample.Values["DAYS"], sample.Values["BASE"], sample.Values["HOUSING"]));
+
         // الگوی به‌کاررفته حذف نمی‌شود؛ گروه دارای الگو هم
         await Assert.ThrowsAsync<DomainException>(() => db.Run<PayTemplateService>(x => x.DeleteTemplateAsync(template, default)));
         await Assert.ThrowsAsync<DomainException>(() => db.Run<PayTemplateService>(x => x.DeleteGroupAsync(group, default)));

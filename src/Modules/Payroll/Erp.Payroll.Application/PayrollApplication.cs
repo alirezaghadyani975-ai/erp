@@ -135,6 +135,7 @@ public static class DependencyInjection
         services.AddScoped<DecreeService>();
         services.AddScoped<PayRunService>();
         services.AddScoped<PayTemplateService>();
+        services.AddScoped<PayFormulaService>();
         services.AddScoped<LoanService>();
         services.AddScoped<SalaryPaymentService>();
         services.AddScoped<Reports.PayrollReportService>();

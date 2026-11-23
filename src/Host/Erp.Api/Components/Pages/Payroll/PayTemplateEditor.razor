@@ -64,12 +64,15 @@
                             @if (r.Item.IsSystem) { <MudIcon Icon="@Icons.Material.Outlined.Lock" Size="Size.Small" Style="vertical-align:middle" Title="قلم قانونی" /> }
                         </td>
                         <td>@Titles.Of(r.Item.Source)</td>
-                        <td class="code" style="font-size:.8rem;white-space:normal">@r.Item.Formula</td>
+                        <td style="font-size:.82rem;white-space:normal" title="@r.Item.Formula">@FormulaText.Persian(r.Item.Formula, _catalog)</td>
                         <td style="min-width:240px">
                             @if (r.Item.Source == PayItemSource.Formula)
                             {
-                                <MudTextField @bind-Value="r.Formula" Placeholder="همان پیش‌فرض" Disabled="!r.Included" Class="code"
-                                              Variant="Variant.Text" Margin="Margin.Dense" aria-label="@($"فرمول {r.Item.Title}")" />
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <span style="font-size:.82rem;white-space:normal;flex:1" title="@r.Formula">@(string.IsNullOrWhiteSpace(r.Formula) ? "همان پیش‌فرض" : FormulaText.Persian(r.Formula, _catalog))</span>
+                                    <MudIconButton Icon="@Icons.Material.Outlined.Calculate" Size="Size.Small" Disabled="!r.Included" OnClick="() => EditFormula(r)"
+                                                   aria-label="@($"فرمول‌ساز {r.Item.Title}")" />
+                                </MudStack>
                             }
                         </td>
                     </tr>
@@ -78,6 +81,26 @@
         </table>
     }
 </MudPaper>
+
+<MudDialog @bind-Visible="_formulaOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true }">
+    <TitleContent><MudText Typo="Typo.h6">فرمول «@_formulaRow?.Item.Title» در این الگو</MudText></TitleContent>
+    <DialogContent>
+        @if (_formulaRow is { } fr)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                پیش‌فرض قلم: @FormulaText.Persian(fr.Item.Formula, _catalog)
+                @if (fr.Item.IsSystem) { <b> — قلم قانونی است؛ تغییر فرمول آن هنگام ذخیره الگو هشدار می‌دهد.</b> }
+            </MudText>
+            <FormulaBuilder @bind-Value="_formulaDraft" Catalog="@(_catalog.Where(v => v.Code != fr.Item.Code).ToList())" TemplateId="Id" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="ResetFormula">برگشت به پیش‌فرض</MudButton>
+        <MudSpacer />
+        <MudButton OnClick="() => _formulaOpen = false">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyFormula">تأیید</MudButton>
+    </DialogActions>
+</MudDialog>
 
 <MudDialog @bind-Visible="_copyOpen" Options="new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, CloseButton = true }">
     <TitleContent><MudText Typo="Typo.h6">کپی الگو</MudText></TitleContent>
@@ -105,12 +128,35 @@
     private List<Row> _rows = [];
     private string? _code, _title, _notes, _copyCode, _copyTitle;
     private int? _groupId;
-    private bool _active = true, _busy, _copyOpen;
+    private bool _active = true, _busy, _copyOpen, _formulaOpen;
     private int _employeeCount;
+    private List<FormulaVariableDto> _catalog = [];
+    private Row? _formulaRow;
+    private string? _formulaDraft;
+
+    private void EditFormula(Row r)
+    {
+        (_formulaRow, _formulaDraft, _formulaOpen) = (r, string.IsNullOrWhiteSpace(r.Formula) ? r.Item.Formula : r.Formula, true);
+    }
+
+    /// <summary>اگر با پیش‌فرض قلم یکی باشد، جایگزین نگه داشته نمی‌شود.</summary>
+    private void ApplyFormula()
+    {
+        var text = string.IsNullOrWhiteSpace(_formulaDraft) ? null : Formula.Normalize(_formulaDraft);
+        _formulaRow!.Formula = text == _formulaRow.Item.Formula ? null : text;
+        _formulaOpen = false;
+    }
+
+    private void ResetFormula()
+    {
+        _formulaRow!.Formula = null;
+        _formulaOpen = false;
+    }
 
     protected override async Task OnInitializedAsync()
     {
         _groups = (await Backend.Run<PayTemplateService, List<EmploymentGroupDto>>(s => s.GroupsAsync(default))).Value ?? [];
+        _catalog = (await Backend.Run<PayFormulaService, List<FormulaVariableDto>>(s => s.CatalogAsync(default))).Value ?? [];
         var items = (await Backend.Run<PayItemService, List<PayItemDto>>(s => s.GetAllAsync(false, default))).Value ?? [];
         _rows = items.OrderBy(i => i.SortOrder).ThenBy(i => i.Code).Select(i => new Row(i) { Included = Id is null }).ToList();
         if (Id is int id)

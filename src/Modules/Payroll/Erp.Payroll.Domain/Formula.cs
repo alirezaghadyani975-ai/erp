@@ -66,6 +66,20 @@ public sealed class Formula
         return string.Join(' ', new string(chars.ToArray()).Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
+    /// <summary>نام تابع‌های مجاز (برای فرمول‌ساز).</summary>
+    public static IReadOnlyCollection<string> FunctionNames => Functions.Keys;
+
+    /// <summary>
+    /// شکستن متن فرمول به قطعه‌ها با همان قاعده تجزیه (برای نمایش و ویرایش در فرمول‌ساز).
+    /// نوع: number، name، op، lparen، rparen، comma. متن نامعتبر = DomainException.
+    /// </summary>
+    public static IReadOnlyList<(string Kind, string Text)> Split(string? text) =>
+        Tokenize(Normalize(text)).Where(t => t.Kind != T.End)
+            .Select(t => (t.Kind switch
+            {
+                T.Number => "number", T.Name => "name", T.Op => "op", T.LParen => "lparen", T.RParen => "rparen", _ => "comma"
+            }, t.Text)).ToList();
+
     // ---------------- tokenizer ----------------
 
     private enum T { Number, Name, Op, LParen, RParen, Comma, End }
