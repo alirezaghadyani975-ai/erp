@@ -1,0 +1,81 @@
+@* ورود مدت زمان در یک خانه به شکل ساعت:دقیقه:ثانیه. با تایپ رقم‌ها «:» خودش می‌افتد (از راست: ۲ رقم ثانیه، ۲ رقم دقیقه،
+   بقیه ساعت؛ مثلاً 13000 ← 1:30:00) و می‌شود «:» را هم خودتان بزنید (1:30 = یک دقیقه و سی ثانیه، 1:30:00 = یک ساعت و نیم).
+   مقدار به ثانیه است؛ زیر خانه متن خوانا («۱ ساعت و ۳۰ دقیقه») دیده می‌شود. *@
+<MudTextField T="string" Value="_text" ValueChanged="OnTextChanged" Immediate="true" OnBlur="OnBlur" Disabled="Disabled"
+              Placeholder="ساعت:دقیقه:ثانیه" HelperText="@Helper" aria-label="@Label" Label="@(Compact ? null : Label)"
+              Variant="@(Compact ? Variant.Text : Variant.Outlined)" Margin="Margin.Dense" Class="code duration-field"
+              InputMode="InputMode.numeric" Style="min-width:120px" />
+
+@code {
+    /// <summary>مدت به ثانیه.</summary>
+    [Parameter] public decimal Value { get; set; }
+    [Parameter] public EventCallback<decimal> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    /// <summary>داخل جدول: بدون قاب و برچسب.</summary>
+    [Parameter] public bool Compact { get; set; } = true;
+
+    private string? _text;
+    private decimal _seconds = -1;
+
+    protected override void OnParametersSet()
+    {
+        if (Value == _seconds) return;
+        _seconds = Value;
+        _text = Value == 0 ? null : Format(Value);
+    }
+
+    private string? Helper => _seconds > 0 ? Words(_seconds) : null;
+
+    private async Task OnTextChanged(string? text)
+    {
+        _text = Group(text);
+        _seconds = Parse(_text);
+        await ValueChanged.InvokeAsync(_seconds);
+    }
+
+    /// <summary>بعد از خروج از خانه، شکل استاندارد (مثلاً 0:90 ← 0:01:30).</summary>
+    private void OnBlur(FocusEventArgs _) => _text = _seconds == 0 ? null : Format(_seconds);
+
+    /// <summary>فقط رقم و «:»؛ بدون «:» رقم‌ها از راست دوتا‌دوتا جدا می‌شوند.</summary>
+    internal static string? Group(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var clean = new string(PersianText.Normalize(text).Where(c => char.IsAsciiDigit(c) || c == ':').ToArray());
+        if (clean.Contains(':')) return clean;
+        var d = clean;
+        return d.Length switch
+        {
+            <= 2 => d,
+            <= 4 => $"{d[..^2]}:{d[^2..]}",
+            _ => $"{d[..^4]}:{d[^4..^2]}:{d[^2..]}"
+        };
+    }
+
+    /// <summary>بخش‌ها از راست: ثانیه، دقیقه، ساعت.</summary>
+    internal static decimal Parse(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return 0;
+        var parts = text.Split(':').Reverse().Select(p => long.TryParse(p, out var n) ? n : 0).ToArray();
+        long total = 0, unit = 1;
+        for (var i = 0; i < parts.Length && i < 3; i++, unit *= 60) total += parts[i] * unit;
+        return total;
+    }
+
+    internal static string Format(decimal seconds)
+    {
+        var s = (long)Math.Round(seconds);
+        return $"{s / 3600}:{s % 3600 / 60:00}:{s % 60:00}";
+    }
+
+    internal static string Words(decimal seconds)
+    {
+        var s = (long)Math.Round(seconds);
+        var (h, m, sec) = (s / 3600, s % 3600 / 60, s % 60);
+        var parts = new List<string>();
+        if (h > 0) parts.Add($"{h:#,0} ساعت");
+        if (m > 0) parts.Add($"{m} دقیقه");
+        if (sec > 0) parts.Add($"{sec} ثانیه");
+        return string.Join(" و ", parts);
+    }
+}

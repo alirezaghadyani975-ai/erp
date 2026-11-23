@@ -12,12 +12,10 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="6" sm="4" md="2">
-            <MudTextField @bind-Value="Model.FromDate" Label="از تاریخ" Placeholder="1405/01/01" Class="code"
-                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <PersianDateField @bind-Value="Model.FromDate" Label="از تاریخ" />
         </MudItem>
         <MudItem xs="6" sm="4" md="2">
-            <MudTextField @bind-Value="Model.ToDate" Label="تا تاریخ" Placeholder="1405/12/29" Class="code"
-                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <PersianDateField @bind-Value="Model.ToDate" Label="تا تاریخ" />
         </MudItem>
         <MudItem xs="6" sm="3" md="1">
             <MudNumericField T="int?" @bind-Value="Model.FromVoucherNo" Label="از سند" HideSpinButtons="true" Min="1"

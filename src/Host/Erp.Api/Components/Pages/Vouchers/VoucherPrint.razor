@@ -31,10 +31,10 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="6" sm="4" md="2">
-                    <MudTextField @bind-Value="_from" Label="از تاریخ" Placeholder="1405/01/01" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <PersianDateField @bind-Value="_from" Label="از تاریخ" />
                 </MudItem>
                 <MudItem xs="6" sm="4" md="2">
-                    <MudTextField @bind-Value="_to" Label="تا تاریخ" Placeholder="1405/12/29" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <PersianDateField @bind-Value="_to" Label="تا تاریخ" />
                 </MudItem>
                 <MudItem xs="6" sm="3" md="1">
                     <MudNumericField T="int?" @bind-Value="_fromNo" Label="از شماره" HideSpinButtons="true" Min="1" Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" />

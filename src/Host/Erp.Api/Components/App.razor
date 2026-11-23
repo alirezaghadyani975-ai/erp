@@ -14,6 +14,20 @@
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script>
+        // تاریخ شمسی: با تایپ رقم‌ها «/» خودش می‌افتد (14050825 ← 1405/08/25)؛ ارقام فارسی و عربی هم پذیرفته می‌شوند.
+        // در مرحله capture و پیش از Blazor اجرا می‌شود تا مقدار نهایی خوانده شود؛ در پاک کردن کاری نمی‌کند.
+        document.addEventListener('input', e => {
+            const el = e.target;
+            if (!(el instanceof HTMLInputElement) || !el.closest('.auto-date')) return;
+            if (e.inputType && e.inputType.startsWith('delete')) return;
+            const latin = el.value.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+            const d = latin.replace(/\D/g, '').slice(0, 8);
+            let v = d.slice(0, 4);
+            if (d.length >= 4) v += '/' + d.slice(4, 6);
+            if (d.length >= 6) v += '/' + d.slice(6, 8);
+            if (v !== el.value) { el.value = v; el.setSelectionRange(v.length, v.length); }
+        }, true);
+
         // میانبرهای فرم: Ctrl+S ذخیره، F2 اصلاح، Esc انصراف، Alt+N جدید (با هر چیدمان صفحه‌کلید)
         window.erpShortcuts = {
             attach(dotnet) {

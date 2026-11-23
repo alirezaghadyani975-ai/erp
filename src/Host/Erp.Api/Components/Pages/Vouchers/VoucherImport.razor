@@ -33,8 +33,8 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="4" md="2">
-            <MudTextField @bind-Value="_date" Label="تاریخ سند" Placeholder="1405/01/01" Class="code" Variant="Variant.Outlined" Margin="Margin.Dense"
-                          Disabled="_type == VoucherType.Opening" HelperText="@(_type == VoucherType.Opening ? "روز اول سال" : null)" />
+            <PersianDateField @bind-Value="_date" Label="تاریخ سند"
+                          Disabled="@(_type == VoucherType.Opening)" HelperText="@(_type == VoucherType.Opening ? "روز اول سال" : null)" />
         </MudItem>
         <MudItem xs="12" sm="12" md="4">
             <MudTextField @bind-Value="_description" Label="شرح سند" Variant="Variant.Outlined" Margin="Margin.Dense" />

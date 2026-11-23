@@ -8,7 +8,7 @@
                RequiredError="@($"{Label} الزامی است.")" MinDate="MinDate" MaxDate="MaxDate"
                Error="@(ShowErrors && Required && _date is null)" ErrorText="@($"{Label} الزامی است.")"
                Validation="@(new Func<DateTime?, string?>(Validate))" Disabled="Disabled" HelperText="@HelperText"
-               Variant="Variant.Outlined" Margin="Margin.Dense" Class="code" AutoClose="true" />
+               Variant="Variant.Outlined" Margin="Margin.Dense" Class="code auto-date" AutoClose="true" />
 
 @code {
     [Parameter] public string? Value { get; set; }

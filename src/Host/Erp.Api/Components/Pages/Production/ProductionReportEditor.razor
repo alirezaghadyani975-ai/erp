@@ -12,7 +12,7 @@
     <MudSpacer />
     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Timer" OnClick="OpenTimes">زمان (@_ops.Count)</MudButton>
     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.Engineering" OnClick="OpenOperators">
-        اپراتورها (@_operators.Count، @_operators.Sum(o => o.Hours).ToString("#,0.##") ساعت)
+        اپراتورها (@_operators.Count، @DurationField.Format(_operators.Sum(o => o.Hours) * 3600))
     </MudButton>
     <IfAllowed Permission="@(Id is null ? ProductionPermissions.ReportCreate : ProductionPermissions.ReportEdit)">
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Save" OnClick="SaveAsync" Disabled="_busy">ذخیره</MudButton>
@@ -73,7 +73,7 @@
         <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _materials.Add(new MaterialRow { WarehouseId = _warehouses.FirstOrDefault()?.Id }))">ماده خارج از فرمول</MudButton>
     </MudStack>
     <table class="voucher-grid">
-        <thead><tr><th>#</th><th>ماده</th><th>جایگزین</th><th>انبار برداشت</th><th>استاندارد</th><th>واقعی</th><th>انحراف</th><th>واحد</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>ماده</th><th>جایگزین</th><th>انبار برداشت</th><th>مقدار مصرف</th><th>واحد</th><th></th></tr></thead>
         <tbody>
             @for (var i = 0; i < _materials.Count; i++)
             {
@@ -104,9 +104,7 @@
                             @foreach (var w in _warehouses) { <MudSelectItem T="int?" Value="w.Id">@w.Title</MudSelectItem> }
                         </MudSelect>
                     </td>
-                    <td class="num">@row.Std.ToString("#,0.######")</td>
-                    <td><NumCell @bind-Value="row.Actual" Label="مقدار واقعی" /></td>
-                    <td class="num" style="@VarStyle(row.Actual - row.Std)">@Var(row.Actual - row.Std)</td>
+                    <td><NumCell @bind-Value="row.Actual" Label="مقدار" /></td>
                     <td>@Unit(row.ItemId)</td>
                     <td>
                         @if (row.BomMaterialId is null)
@@ -128,7 +126,7 @@
         <MudButton StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _scraps.Add(new ScrapRow()))">ردیف ضایعات</MudButton>
     </MudStack>
     <table class="voucher-grid">
-        <thead><tr><th>#</th><th>کالای ضایعات</th><th>نوع</th><th>استاندارد</th><th>واقعی</th><th>انحراف</th><th>واحد</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>کالای ضایعات</th><th>نوع</th><th>مقدار</th><th>واحد</th><th></th></tr></thead>
         <tbody>
             @for (var i = 0; i < _scraps.Count; i++)
             {
@@ -143,9 +141,7 @@
                             <MudSelectItem T="ScrapType" Value="ScrapType.Full">مواد + سهم دستمزد و سربار</MudSelectItem>
                         </MudSelect>
                     </td>
-                    <td class="num">@row.Std.ToString("#,0.######")</td>
-                    <td><NumCell @bind-Value="row.Actual" Label="مقدار واقعی" /></td>
-                    <td class="num" style="@VarStyle(row.Actual - row.Std)">@Var(row.Actual - row.Std)</td>
+                    <td><NumCell @bind-Value="row.Actual" Label="مقدار" /></td>
                     <td>@Unit(row.ItemId)</td>
                     <td><MudIconButton Icon="@Icons.Material.Outlined.Delete" Class="row-delete" Size="Size.Small" aria-label="حذف ردیف" OnClick="() => _scraps.Remove(row)" /></td>
                 </tr>
@@ -155,10 +151,10 @@
 </MudPaper>
 
 <MudDialog @bind-Visible="_timeOpen" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
-    <TitleContent><MudText Typo="Typo.h6">زمان استاندارد و واقعی مراکز</MudText></TitleContent>
+    <TitleContent><MudText Typo="Typo.h6">زمان کار مراکز</MudText></TitleContent>
     <DialogContent>
         <table class="voucher-grid">
-            <thead><tr><th>مرکز هزینه</th><th>نفر-زمان استاندارد</th><th>نفر-زمان واقعی</th><th>واحد</th><th>ماشین-زمان استاندارد</th><th>ماشین-زمان واقعی</th><th>واحد</th><th></th></tr></thead>
+            <thead><tr><th>مرکز هزینه</th><th>نفر-زمان</th><th>ماشین-زمان</th><th></th></tr></thead>
             <tbody>
                 @foreach (var op in _opEdit)
                 {
@@ -168,12 +164,8 @@
                                 @foreach (var c in _centers) { <MudSelectItem T="int?" Value="c.Id">@c.Title</MudSelectItem> }
                             </MudSelect>
                         </td>
-                        <td>@TimeUnits.Text(op.StdMan)</td>
-                        <td><NumCell @bind-Value="op.Man" Label="نفر-زمان واقعی" /></td>
-                        <td><UnitSelect @bind-Value="op.ManUnit" /></td>
-                        <td>@TimeUnits.Text(op.StdMachine)</td>
-                        <td><NumCell @bind-Value="op.Machine" Label="ماشین-زمان واقعی" /></td>
-                        <td><UnitSelect @bind-Value="op.MachineUnit" /></td>
+                        <td><DurationField @bind-Value="op.Man" Label="نفر-زمان" /></td>
+                        <td><DurationField @bind-Value="op.Machine" Label="ماشین-زمان" /></td>
                         <td>
                             @if (!op.FromBom) { <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small" aria-label="حذف" OnClick="() => _opEdit.Remove(op)" /> }
                         </td>
@@ -181,7 +173,7 @@
                 }
             </tbody>
         </table>
-        <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _opEdit.Add(new OpRow { ManUnit = TimeUnit.Minute, MachineUnit = TimeUnit.Minute }))">مرکز خارج از فرمول</MudButton>
+        <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _opEdit.Add(new OpRow()))">مرکز خارج از فرمول</MudButton>
         @if (_centers.Count == 0)
         {
             <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">مرکز تولیدی تعریف نشده است؛ در «مراکز هزینه» مرکزی با نوع تولیدی بسازید.</MudText>
@@ -197,7 +189,7 @@
     <TitleContent><MudText Typo="Typo.h6">اپراتورها</MudText></TitleContent>
     <DialogContent>
         <table class="voucher-grid">
-            <thead><tr><th>اپراتور</th><th>مرکز هزینه</th><th>ساعت کار</th><th></th></tr></thead>
+            <thead><tr><th>اپراتور</th><th>مرکز هزینه</th><th>مدت کار</th><th></th></tr></thead>
             <tbody>
                 @foreach (var o in _operatorEdit)
                 {
@@ -212,7 +204,7 @@
                                 @foreach (var c in _centers) { <MudSelectItem T="int?" Value="c.Id">@c.Title</MudSelectItem> }
                             </MudSelect>
                         </td>
-                        <td><NumCell @bind-Value="o.Hours" Label="ساعت" /></td>
+                        <td><DurationField @bind-Value="o.Seconds" Label="مدت کار" /></td>
                         <td><MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small" aria-label="حذف" OnClick="() => _operatorEdit.Remove(o)" /></td>
                     </tr>
                 }
@@ -254,17 +246,17 @@
         public bool FromBom { get; set; }
         public decimal StdMan { get; set; }
         public decimal StdMachine { get; set; }
+        /// <summary>ثانیه.</summary>
         public decimal Man { get; set; }
-        public TimeUnit ManUnit { get; set; }
         public decimal Machine { get; set; }
-        public TimeUnit MachineUnit { get; set; }
     }
 
     private sealed class OperatorRow
     {
         public int? EmployeeId { get; set; }
         public int? CenterId { get; set; }
-        public decimal Hours { get; set; }
+        /// <summary>مدت کار به ثانیه (در گزارش به ساعت ذخیره می‌شود).</summary>
+        public decimal Seconds { get; set; }
     }
 
     private List<ProductionItemDto> _items = [];
@@ -314,8 +306,6 @@
     private string Title(int itemId) => _items.FirstOrDefault(x => x.Id == itemId)?.Title ?? "؟";
     private string ItemText(int? itemId) => itemId is int i && _items.FirstOrDefault(x => x.Id == i) is { } x ? $"{x.Code} {x.Title}" : "؟";
     private DraftMaterialDto? Draft(int? bomMaterialId) => bomMaterialId is int b ? _draft.GetValueOrDefault(b) : null;
-    private static string Var(decimal v) => v == 0 ? "—" : (v > 0 ? "+" : "−") + Math.Abs(v).ToString("#,0.######");
-    private static string VarStyle(decimal v) => v > 0 ? "color:var(--mud-palette-error)" : v < 0 ? "color:var(--mud-palette-success)" : "";
 
     private async Task OnDate(string? v) { _date = v; await LoadBomsAsync(); }
 
@@ -373,11 +363,10 @@
     {
         _opEdit = _ops.Select(o =>
         {
-            var (mu, cu) = (TimeUnits.Best(o.ActualManSeconds), TimeUnits.Best(o.ActualMachineSeconds));
             return new OpRow
             {
                 CenterId = o.CostCenterId, FromBom = o.StdManSeconds > 0 || o.StdMachineSeconds > 0, StdMan = o.StdManSeconds, StdMachine = o.StdMachineSeconds,
-                Man = o.ActualManSeconds / TimeUnits.Factor(mu), ManUnit = mu, Machine = o.ActualMachineSeconds / TimeUnits.Factor(cu), MachineUnit = cu
+                Man = o.ActualManSeconds, Machine = o.ActualMachineSeconds
             };
         }).ToList();
         _timeOpen = true;
@@ -386,21 +375,21 @@
     private void ApplyTimes()
     {
         _ops = _opEdit.Where(o => o.CenterId is not null && (o.FromBom || o.Man > 0 || o.Machine > 0))
-            .Select(o => new ProductionOperationInput(o.CenterId!.Value, o.StdMan, o.StdMachine, o.Man * TimeUnits.Factor(o.ManUnit), o.Machine * TimeUnits.Factor(o.MachineUnit)))
+            .Select(o => new ProductionOperationInput(o.CenterId!.Value, o.StdMan, o.StdMachine, o.Man, o.Machine))
             .ToList();
         _timeOpen = false;
     }
 
     private void OpenOperators()
     {
-        _operatorEdit = _operators.Select(o => new OperatorRow { EmployeeId = o.EmployeeId, CenterId = o.CostCenterId, Hours = o.Hours }).ToList();
+        _operatorEdit = _operators.Select(o => new OperatorRow { EmployeeId = o.EmployeeId, CenterId = o.CostCenterId, Seconds = o.Hours * 3600 }).ToList();
         if (_operatorEdit.Count == 0) _operatorEdit.Add(new OperatorRow { CenterId = _ops.FirstOrDefault()?.CostCenterId });
         _opOpen = true;
     }
 
     private void ApplyOperators()
     {
-        _operators = _operatorEdit.Where(o => o.EmployeeId is not null).Select(o => new ProductionOperatorInput(o.EmployeeId!.Value, o.CenterId, o.Hours)).ToList();
+        _operators = _operatorEdit.Where(o => o.EmployeeId is not null).Select(o => new ProductionOperatorInput(o.EmployeeId!.Value, o.CenterId, Math.Round(o.Seconds / 3600m, 4))).ToList();
         _opOpen = false;
     }
 

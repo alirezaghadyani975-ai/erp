@@ -99,9 +99,7 @@ else
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="4" md="2">
-                <MudTextField T="string" Label="تاریخ" @bind-Value="_date" Mask="@(new PatternMask("0000/00/00"))"
-                              Placeholder="1405/07/21" Variant="Variant.Outlined" Margin="Margin.Dense"
-                              Disabled="ReadOnly" Class="code" />
+                <PersianDateField @bind-Value="_date" Label="تاریخ" Disabled="ReadOnly" />
             </MudItem>
             <MudItem xs="12" md="8">
                 <MudTextField T="string" Label="شرح سند" @bind-Value="_description" Variant="Variant.Outlined"

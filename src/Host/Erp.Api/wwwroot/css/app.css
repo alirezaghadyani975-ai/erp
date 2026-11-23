@@ -20,6 +20,8 @@ html, body {
 }
 
 .code { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+/* ورود تاریخ و مدت با ماسک: جهت چپ‌به‌راست تا مکان‌نما و «/» و «:» درست بیفتند (در صفحه راست‌چین) */
+.code input { direction: ltr; text-align: right; unicode-bidi: plaintext; }
 
 /* فرمول اقلام حقوق: چپ‌به‌راست با قلم هم‌عرض */
 .formula { direction: ltr; unicode-bidi: isolate; font-family: Consolas, "Courier New", monospace; font-size: .8rem; }

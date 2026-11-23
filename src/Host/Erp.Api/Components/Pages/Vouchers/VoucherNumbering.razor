@@ -24,8 +24,7 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="4" md="2">
-            <MudTextField @bind-Value="_toDate" Label="دائم کردن تا تاریخ" Placeholder="1405/06/31" Class="code" Variant="Variant.Outlined"
-                          Margin="Margin.Dense" Immediate="false" OnBlur="LoadAsync" />
+            <PersianDateField Value="@_toDate" ValueChanged="@(async v => { _toDate = v; await LoadAsync(); })" Label="دائم کردن تا تاریخ" />
         </MudItem>
         <MudItem xs="12" sm="4" md="2">
             <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="LoadAsync" aria-label="به‌روزرسانی" />
